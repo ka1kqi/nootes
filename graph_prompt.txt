@@ -1,0 +1,202 @@
+RECONSTRUCTION PROMPT — nootes graph visualizer
+================================================
+Use this prompt with Claude (Sonnet or Opus) to regenerate the full project from scratch.
+
+---
+
+Build a full-stack AI-powered task graph visualizer called "nootes" using the following stack and specifications.
+
+## Stack
+- Vite + React 19 + TypeScript
+- Tailwind CSS v4 (via @tailwindcss/vite plugin)
+- Bun as package manager
+- @xyflow/react v12 for graph rendering
+- framer-motion for animations
+- react-markdown + remark-math + rehype-katex for LaTeX/markdown rendering
+- react-syntax-highlighter for code blocks
+
+## Design Language — Bauhaus + Zen + Notebook
+Color palette (GMK Botanical):
+  --forest:    #264635  (primary dark green, backgrounds, borders)
+  --sage:      #A3B18A  (accent green, labels, secondary elements)
+  --cream:     #E9E4D4  (page background)
+  --bark:      #5C4A32  (warm brown, warnings)
+  --moss:      #3D6B4F  (hover states)
+  --parchment: #F5F0E8  (card/panel backgrounds)
+  --ink:       #1A1A18  (body text)
+
+Typography — three fonts, each with a strict role:
+  - "Gamja Flower" (Google Fonts): display/personality — page titles, node labels, celebration copy
+  - "JetBrains Mono": monospace — code blocks, metadata, UI labels, technical copy
+  - Body fallback: DM Sans / Helvetica
+
+Component rules:
+  - Cards: rectangles, bold 2px solid #264635 borders, no border-radius, no drop shadows
+  - Buttons: flat fills, no gradients, no rounded corners
+  - All icons: minimal SVG line-drawn forms
+  - Bauhaus geometry throughout: circles, squares, triangles as decorative elements
+
+## File Structure
+frontend/
+  index.html          — loads Google Fonts (Gamja Flower + JetBrains Mono), sets title "nootes — ai study companion"
+  src/
+    main.tsx          — standard React 19 createRoot entry
+    index.css         — Tailwind import, CSS variables, paper texture overlay via SVG noise,
+                        custom scrollbar, .font-gamja / .font-mono utility classes,
+                        float/spin/fadeSlideUp keyframe animations, .prose-nootes styles
+    App.tsx           — main application
+    GraphView.tsx     — ReactFlow graph component
+gpt_prompt.txt        — OpenAI system prompt (see below)
+
+## gpt_prompt.txt (system prompt for OpenAI)
+The system prompt instructs the model to convert a user's idea into a JSON array of task objects.
+Each object has:
+  - "name": 2–6 word label
+  - "text": full description with deliverables
+  - "depends_on": array of "name" strings that this task unblocks (its children in the DAG)
+After the JSON array, the model writes a 2–3 sentence plain-text summary.
+Output rules: no markdown, no code fences, JSON first then blank line then summary.
+Dependency graph must be a valid DAG. At least 6 items. Roots have no task pointing to them.
+
+## App.tsx — Full Specification
+
+### Layout (h-screen, flex-col, overflow-hidden on root)
+  [header — fixed, bg #264635]
+  [main — flex-1, overflow-hidden when graph exists, overflow-y-auto on empty state]
+  [input bar — outside main, always visible at bottom, flex-shrink-0]
+
+### Header
+  - Left: triangle icon + "nootes" (Gamja Flower, 2xl, #E9E4D4) + "ai study companion" (mono, 10px, #A3B18A)
+  - Right: pulsing dot + "api.openai.com · gpt-4o" label, "export pdf" button (disabled when no messages), "clear" button
+
+### Empty State (isEmpty = messages.length === 0)
+  - Absolute-positioned background: floating Doodle SVGs (circle+leaf shape), LeafDoodle, GridDoodle (rotating square)
+  - Subtle 40px grid lines via CSS background-image
+  - Centered: icon, "what are you building?" (Gamja Flower, 4xl, #264635), description text
+  - 2×2 grid of example prompt cards with icons: ◈ ◉ ⟨⟩ ∿
+  - "renders as interactive graph" hint card at bottom
+  - All elements staggered fade-in via framer-motion
+
+### Graph State (messages.length > 0)
+  - main area: full-height graph canvas (absolute inset-0 inside flex-1 div)
+  - Shows ONLY the most recent graph response (latestGraph = useMemo scanning messages[] in reverse)
+  - While waiting for first response: centered spinner + "generating graph…" label
+  - Summary bar: slides up from bottom (framer-motion), shows "● summary" label + summary text (line-clamp-2)
+    + node count badge (e.g. "8 nodes"), pinned above input bar
+  - Graph transitions in with opacity fade (AnimatePresence mode="wait")
+
+### Message Processing
+  - interface Message { id, role: 'user'|'assistant'|'error', content, timestamp }
+  - parseGraphResponse(content): extracts JSON array between first [ and last ], returns { items: TaskItem[], summary: string }
+  - sendPrompt(): POST to https://api.openai.com/v1/chat/completions with gpt-4o,
+    maintains historyRef for multi-turn conversation, appends to messages[]
+  - expandTask(item, context): same API call asking to expand a single task into subtasks
+
+### Input Bar
+  - Left: 4px wide #264635 vertical accent stripe
+  - Auto-resizing textarea (min 52px, max 200px), placeholder changes based on isEmpty
+  - Send button (w-9 h-9, #264635 bg): spinning loader when loading, SVG arrow when idle
+  - Hint text: "shift+enter for newline · enter to send" + character counter (turns #5C4A32 at 1800+)
+  - Enter (no shift) sends; Cmd/Ctrl+Enter inside graph panel also expands
+
+### Export to PDF
+  - Opens a new window with a fully styled HTML print document
+  - First user message = document title (Gamja Flower 30pt, #264635)
+  - Brand line: "nootes · ai study companion" + generated date (JetBrains Mono)
+  - Each graph response → section with:
+    - Gamja Flower section title with circle bullet
+    - Task list: each item as a card with 3pt left border, task name (Gamja Flower 13pt) + description
+    - Summary block: tinted amber-left-bordered box
+  - Follow-up user messages: dark green (#264635) bar with "follow-up" label
+  - Fonts loaded from Google Fonts; window.print() triggered after 600ms delay for font load
+  - escHtml() helper for XSS safety
+
+## GraphView.tsx — Full Specification
+
+### Types
+  - TaskItem: { name: string, text: string, depends_on?: string[] }
+  - ExpandFn: (item, context) => Promise<{ items: TaskItem[], summary: string }>
+  - CircleNodeData: { label, text, index, total, isRoot, isExpanded? }
+
+### Custom Edge: CurvedEdge
+  - Uses getBezierPath + BaseEdge from @xyflow/react
+  - Reads data.curvature (default 0.25) to actually apply curvature (built-in 'bezier' ignores this)
+  - Registered as edgeType 'curved'
+
+### Custom Node: CircleNode
+  - 80px diameter circle, no border-radius clip (uses borderRadius: '50%' on div)
+  - Background: #F5F0E8 (unselected) or #264635 (selected)
+  - Border: 2px solid #264635, or #A3B18A when isExpanded
+  - Ring shadow on selection: 0 0 0 4px #A3B18A, 0 0 0 8px rgba(38,70,53,0.10)
+  - Interior: dashed inner ring (1px dashed, opacity 0.2)
+  - Root nodes: rotated 45° square (diamond) inside
+  - Non-root nodes: zero-padded index in JetBrains Mono (01, 02, …)
+  - isExpanded indicator: small dot (7px) bottom-right
+  - Label below circle: Gamja Flower, 11–13px, 2-line clamp
+  - Handles: both source (bottom) and target (top), pinned to circle centre, invisible (1×1px, opacity 0)
+
+### buildCircularLayout(items: TaskItem[])
+  - Parses depends_on to build adjacency (childrenOf, parentsOf)
+  - Fallback: if no edges, chain items sequentially
+  - Topological sort → clockwise ring order
+  - Radius: max(n × (max(NW,NH)+30) / 2π, 240)
+  - Each node positioned at angle = (2π × ringPos / n) − π/2
+  - Edge curvature: 0.1 + (wrap/n) × 0.8 (higher for long-chord edges)
+  - All edges use type 'curved' with data.curvature
+
+### getExpansionCircularPositions(parentCx, parentCy, items, existingNames)
+  - Same topo-sort → clockwise ring logic as buildCircularLayout
+  - Ring centre offset from parent: RADIUS × 1.8 outward (along parent's radial direction from origin)
+  - This gives ~0.8×RADIUS separation between parent and nearest child node
+  - Returns Map<name, {x, y}> for brand-new nodes only (existing nodes keep their positions)
+
+### handleExpand (inside GraphView)
+  - Called when user clicks "⊕ expand subtasks" in the node panel
+  - Calls onExpand(panel.item, panel.context) to get newItems from API
+  - Inside setNodes callback (to snapshot current state):
+    1. Build existingByLabel map (label → nodeId) from current nodes
+    2. Build nameToId map: existing nodes reuse their id, new nodes get exp-{counter}-{i}
+    3. Call getExpansionCircularPositions for brand-new items only
+    4. Create Node objects for brand-new items
+    5. Inside setEdges callback:
+       a. Build existingEdgeSet to prevent duplicates
+       b. getNextCurvature(src): alternates ±0.2, ±0.35, ±0.5… per source to spread parallel edges
+       c. Internal DAG edges: for each item's depends_on, wire dep→item (handles existing nodes too)
+       d. Root attachment: items with no incoming edge from within the new set get edge from panel.nodeId
+    6. Mark expanded node with isExpanded: true
+
+### Deduplication
+  - Before creating new nodes, check existingByLabel for same label
+  - Duplicates: no new node created, edge wired to existing node instead
+  - Duplicate edges (same source→target): skipped
+
+### Node Panel (right-side overlay, AnimatePresence)
+  - Opens on node click, closes on ✕ or second click on same node
+  - Header: "subtask" label (mono, uppercase) + ✕ button
+  - Body: node name (Gamja Flower, 18px) + description text
+  - Form: textarea for additional context, "⊕ expand subtasks" button
+  - Loading state: spinning border div + "expanding…" text
+  - Error display below button
+  - Expansion summary slides in at bottom after successful expand
+  - Cmd/Ctrl+Enter in textarea triggers expand
+
+### ReactFlow config
+  - fitView with padding 0.18
+  - minZoom 0.08, maxZoom 2.5
+  - Background: BackgroundVariant.Dots, gap 28, size 1.2, color rgba(38,70,53,0.1)
+  - Controls: bg #264635, border #A3B18A, no border-radius, showInteractive false
+  - proOptions: hideAttribution true
+  - edgeTypes: { curved: CurvedEdge }
+  - nodeTypes: { circle: CircleNode }
+
+## Environment Variables
+  VITE_OPENAI_API=<your OpenAI API key>   (in frontend/.env)
+
+## Key Implementation Notes
+- The root div uses h-screen + overflow-hidden; main uses flex-1 + overflow-hidden (graph) or overflow-y-auto (empty)
+- Input bar lives OUTSIDE <main> as a direct sibling in the root flex-col (prevents overflow clipping)
+- latestGraph is computed via useMemo scanning messages[] in reverse for the most recent parseable response
+- GraphView receives items[] and re-initialises only when items.length changes (useMemo dependency)
+- expCounter useRef tracks expansion batches so node/edge IDs never collide across multiple expansions
+- Paper texture applied via body::before with an SVG fractalNoise filter at z-index 9999, pointer-events none
+- Tailwind v4 is configured via @tailwindcss/vite plugin (no tailwind.config.js needed)
