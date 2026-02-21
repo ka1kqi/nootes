@@ -13,6 +13,7 @@ import Profile from './pages/Profile.tsx'
 import Diff from './pages/Diff.tsx'
 import Chat from './pages/Chat.tsx'
 import AuraStore from './pages/AuraStore.tsx'
+import Graph_Creation from './pages/Graph_Creation.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -28,6 +29,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/diff" element={<Diff />} />
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/store" element={<ProtectedRoute><AuraStore /></ProtectedRoute>} />
+          <Route path="/graph" element={<Graph_Creation />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
