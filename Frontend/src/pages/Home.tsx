@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { KaTeX } from '../components/KaTeX'
 
 /* ------------------------------------------------------------------ */
 /* Home — Authenticated dashboard                                       */
-/* Quick actions, trending repos, recent activity, featured notes      */
+/* Quick actions, trending nootbooks, recent activity, featured nootes */
 /* ------------------------------------------------------------------ */
 
 const user = {
@@ -15,9 +15,48 @@ const user = {
   streak: 23,
 }
 
+const greetings = {
+  earlyMorning: [
+    "You're up early, {name} ✦",
+    "Birds aren't even up yet ✦",
+    "Early bird behavior ✦",
+  ],
+  morning: [
+    "Hey {name} ✦",
+    "Mornin' {name} ✦",
+    "Coffee first, nootes second ✦",
+  ],
+  afternoon: [
+    "Still here, {name}? ✦",
+    "Post-lunch brain unlocked ✦",
+    "Hey, {name} ✦",
+  ],
+  evening: [
+    "Closing shift, {name} ✦",
+    "One more noote ✦",
+    "Good evening, {name} ✦",
+  ],
+  night: [
+    "Time for bed, {name} ✦",
+    "Late night {name}? ✦",
+    "Past your bedtime {name} ✦",
+  ],
+}
+
+function getGreeting(firstName: string): string {
+  const hour = new Date().getHours()
+  let pool: string[]
+  if (hour >= 5 && hour < 7)       pool = greetings.earlyMorning
+  else if (hour >= 7 && hour < 12) pool = greetings.morning
+  else if (hour >= 12 && hour < 18) pool = greetings.afternoon
+  else if (hour >= 18 && hour < 22) pool = greetings.evening
+  else                              pool = greetings.night
+  const pick = pool[Math.floor(Math.random() * pool.length)]
+  return pick.replace('{name}', firstName)
+}
+
 const quickActions = [
   {
-    label: 'New Note',
     desc: 'Open the editor',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -28,8 +67,8 @@ const quickActions = [
     accent: 'bg-forest text-parchment',
   },
   {
-    label: 'Browse Repos',
-    desc: 'Find class notes',
+    label: 'Browse Nootbooks',
+    desc: 'Find class nootes',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -39,8 +78,8 @@ const quickActions = [
     accent: 'bg-sage/15 text-sage border border-sage/30',
   },
   {
-    label: 'My Repos',
-    desc: 'Manage your notes',
+    label: 'My Nootbooks',
+    desc: 'Manage your nootes',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 3L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
@@ -51,7 +90,7 @@ const quickActions = [
   },
   {
     label: 'AI Chat',
-    desc: 'Ask about your notes',
+    desc: 'Ask about your nootes',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
@@ -130,6 +169,7 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 export default function Home() {
+  const greeting = getGreeting(user.name.split(' ')[0])
   return (
     <div className="min-h-screen bg-cream flex flex-col">
       <Navbar variant="light" breadcrumbs={[{ label: user.university }, { label: 'Home' }]} />
@@ -142,7 +182,7 @@ export default function Home() {
             <div>
               <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-1">DASHBOARD</span>
               <h1 className="font-[family-name:var(--font-display)] text-4xl text-forest leading-tight">
-                Good morning, {user.name.split(' ')[0]} ✦
+                {greeting}
               </h1>
               <p className="font-[family-name:var(--font-body)] text-sm text-forest/45 mt-1">
                 {user.streak}-day streak · {user.aura.toLocaleString()} aura
@@ -202,7 +242,7 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-0.5">FEATURED</span>
-                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Top Note Today</h2>
+                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Top Noote Today</h2>
                   </div>
                   <Link to="/repos" className="font-mono text-[10px] text-forest/30 hover:text-forest transition-colors">
                     browse all →
@@ -243,7 +283,7 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-0.5">TRENDING</span>
-                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Active Repositories</h2>
+                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Active Nootbooks</h2>
                   </div>
                   <Link to="/repos" className="font-mono text-[10px] text-forest/30 hover:text-forest transition-colors">
                     see all →
@@ -269,7 +309,7 @@ export default function Home() {
                       <div className="flex items-center gap-5 shrink-0">
                         <div className="text-center hidden sm:block">
                           <span className="font-[family-name:var(--font-display)] text-lg text-forest/70 block">{repo.notes}</span>
-                          <span className="font-mono text-[9px] text-forest/25 uppercase">notes</span>
+                          <span className="font-mono text-[9px] text-forest/25 uppercase">nootes</span>
                         </div>
                         <div className="text-center hidden sm:block">
                           <span className="font-[family-name:var(--font-display)] text-lg text-forest/70 block">{repo.contributors}</span>

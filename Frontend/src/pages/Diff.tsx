@@ -35,7 +35,7 @@ const mergeInfo = {
 
 const diffBlocks: { filename: string; language: string; lines: DiffLine[] }[] = [
   {
-    filename: 'notes/chain-rule.md',
+    filename: 'nootes/chain-rule.md',
     language: 'markdown',
     lines: [
       { type: 'info', content: '@@ -12,14 +12,28 @@ ## The Chain Rule' },
@@ -65,7 +65,7 @@ const diffBlocks: { filename: string; language: string; lines: DiffLine[] }[] = 
     ],
   },
   {
-    filename: 'notes/complexity.md',
+    filename: 'nootes/complexity.md',
     language: 'markdown',
     lines: [
       { type: 'info', content: '@@ -5,8 +5,12 @@ ## Time Complexity' },
@@ -107,8 +107,8 @@ const diffBlocks: { filename: string; language: string; lines: DiffLine[] }[] = 
 ]
 
 const comments = [
-  { author: 'James K.', initials: 'JK', file: 'notes/chain-rule.md', line: 17, text: 'Love the Leibniz notation addition — makes it way clearer for people coming from physics background.', time: '1h ago' },
-  { author: 'Aisha M.', initials: 'AM', file: 'notes/chain-rule.md', line: 28, text: 'Added the substitution step based on your feedback!', time: '45m ago' },
+  { author: 'James K.', initials: 'JK', file: 'nootes/chain-rule.md', line: 17, text: 'Love the Leibniz notation addition — makes it way clearer for people coming from physics background.', time: '1h ago' },
+  { author: 'Aisha M.', initials: 'AM', file: 'nootes/chain-rule.md', line: 28, text: 'Added the substitution step based on your feedback!', time: '45m ago' },
   { author: 'James K.', initials: 'JK', file: 'code/binary_search.py', line: 2, text: 'Good call adding the docstring. Maybe also add type hints?', time: '30m ago' },
   { author: 'Aisha M.', initials: 'AM', file: 'code/binary_search.py', line: 14, text: 'Will add type hints in a follow-up push.', time: '15m ago' },
 ]
@@ -380,7 +380,7 @@ export default function Diff() {
                     <span className="font-[family-name:var(--font-body)] text-xs text-forest/40">All checks passed · Ready to merge</span>
                   </div>
                   <button className="bg-sage text-parchment font-mono text-xs px-5 py-2.5 squircle-sm hover:bg-sage/80 transition-colors shadow-sm">
-                    Merge Notes
+                    Merge Nootes
                   </button>
                 </div>
               </div>

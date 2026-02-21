@@ -116,7 +116,7 @@ export default function Login() {
             merge ideas,<br />not just text
           </p>
           <p className="font-[family-name:var(--font-body)] text-sm text-sage/50 leading-relaxed mb-10">
-            Join the community that's building the world's best notes — together. Write, fork, merge, and learn.
+            Join the community that's building the world's best nootes — together. Write, fork, merge, and learn.
           </p>
 
           {/* Testimonial card */}
@@ -137,7 +137,7 @@ export default function Login() {
           <div className="flex items-center gap-6 mt-8">
             {[
               { value: '3.2k', label: 'contributors' },
-              { value: '487', label: 'repositories' },
+              { value: '487', label: 'nootbooks' },
               { value: '98%', label: 'merge rate' },
             ].map((s, i) => (
               <div key={i} className="text-center">
@@ -167,7 +167,7 @@ export default function Login() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">WELCOME BACK</span>
           <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest mb-2 leading-tight">Sign in</h1>
           <p className="font-[family-name:var(--font-body)] text-sm text-forest/45 mb-10">
-            Pick up where you left off — your notes are waiting.
+            Pick up where you left off — your nootes are waiting.
           </p>
 
           {/* Google Sign-In button */}
@@ -208,7 +208,7 @@ export default function Login() {
               {showEduPrompt && (
                 <p className="font-mono text-[10px] text-amber/70 mt-2 flex items-center gap-1.5">
                   <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
-                  Use a .edu email for school-specific repositories
+                  Use a .edu email for school-specific nootbooks
                 </p>
               )}
             </div>
@@ -266,7 +266,7 @@ export default function Login() {
               <span className="font-[family-name:var(--font-display)] text-lg text-sage">Student?</span>
             </div>
             <p className="font-[family-name:var(--font-body)] text-xs text-forest/40 leading-relaxed">
-              Sign in with your <span className="font-mono text-sage/70">.edu</span> email to unlock class repositories, school channels, and campus leaderboards.
+              Sign in with your <span className="font-mono text-sage/70">.edu</span> email to unlock class nootbooks, school channels, and campus leaderboards.
             </p>
           </div>
 

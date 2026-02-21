@@ -288,7 +288,7 @@ export default function Design1() {
                     {masterDoc ? `${masterDoc.course} / ${masterDoc.professor} / ${masterDoc.semester} — MASTER` : 'Loading…'}
                   </span>
                   <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                    {masterDoc?.title ?? 'Master Notes'}
+                    {masterDoc?.title ?? 'Master Nootes'}
                   </h1>
 
                   {/* Decorative wave */}
@@ -337,7 +337,7 @@ export default function Design1() {
                     {doc ? `${doc.course} / ${doc.professor} / ${doc.semester} — PERSONAL` : 'Loading…'}
                   </span>
                   <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                    {doc?.title ?? 'My Notes'}
+                    {doc?.title ?? 'My Nootes'}
                   </h1>
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">

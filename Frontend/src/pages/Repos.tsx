@@ -152,16 +152,16 @@ export default function Repos() {
     <div className="min-h-screen bg-cream flex flex-col">
       <Navbar
         variant="light"
-        breadcrumbs={[{ label: 'Repositories' }]}
+        breadcrumbs={[{ label: 'Nootbooks' }]}
       />
 
       <div className="flex-1 overflow-y-auto stagger">
         {/* Header */}
         <div className="max-w-5xl mx-auto px-6 pt-12 pb-8">
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">BROWSE</span>
-          <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Repositories</h1>
+          <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Nootbooks</h1>
           <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/50 max-w-lg">
-            Explore class notes across universities. Fork, contribute, and build the best study resources together.
+            Explore class nootes across universities. Fork, contribute, and build the best study resources together.
           </p>
 
           {/* Search + filter bar */}
@@ -172,7 +172,7 @@ export default function Repos() {
               </svg>
               <input
                 type="text"
-                placeholder="Search repositories..."
+                placeholder="Search nootbooks..."
                 className="w-full bg-parchment border border-forest/10 squircle pl-10 pr-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/30 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
               />
             </div>
@@ -238,7 +238,7 @@ export default function Repos() {
                   </div>
                   <div className="flex items-center gap-1 text-forest/30">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-                    <span className="font-mono text-[10px]">{repo.notes} notes</span>
+                    <span className="font-mono text-[10px]">{repo.notes} nootes</span>
                   </div>
                   <div className="flex items-center gap-1 text-forest/30">
                     <BranchIcon />

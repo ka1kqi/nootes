@@ -130,9 +130,9 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
       <div className="relative bg-cream border border-forest/15 squircle-xl shadow-[0_32px_80px_-16px_rgba(38,70,53,0.25)] w-full max-w-xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="px-8 pt-8 pb-6 border-b border-forest/[0.08]">
-          <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-2">NEW REPOSITORY</span>
+          <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-2">NEW NOOTBOOK</span>
           <h2 className="font-[family-name:var(--font-display)] text-4xl text-forest leading-tight">
-            Create a repo
+            Create a nootbook
           </h2>
           <p className="font-[family-name:var(--font-body)] text-[13px] text-forest/40 mt-1">
             You'll be set as the owner automatically.
@@ -164,7 +164,7 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
               rows={2}
               value={form.description}
               onChange={e => set('description', e.target.value)}
-              placeholder="A short description of the repo..."
+              placeholder="A short description of the nootbook..."
               className="w-full bg-parchment border border-forest/10 squircle px-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all resize-none"
             />
           </div>
@@ -294,7 +294,7 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
               >
                 <span className={`block w-3.5 h-3.5 bg-white rounded-full absolute top-0.75 transition-transform shadow-sm ${form.is_class ? 'translate-x-4.5' : 'translate-x-0.75'}`} />
               </button>
-              <span className="font-mono text-[11px] text-forest/50 group-hover:text-forest/70 transition-colors">Class repo</span>
+              <span className="font-mono text-[11px] text-forest/50 group-hover:text-forest/70 transition-colors">Class nootbook</span>
             </label>
 
             <label className="flex items-center gap-2.5 cursor-pointer group">
@@ -345,7 +345,7 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  Create Repo
+                  Create Nootbook
                 </>
               )}
             </button>
@@ -400,7 +400,7 @@ export default function MyRepos() {
 
   return (
     <div className="min-h-screen bg-cream flex flex-col">
-      <Navbar variant="light" breadcrumbs={[{ label: 'My Repositories' }]} />
+      <Navbar variant="light" breadcrumbs={[{ label: 'My Nootbooks' }]} />
 
       <div className="flex-1 overflow-y-auto stagger">
         {/* Header */}
@@ -409,10 +409,10 @@ export default function MyRepos() {
           <div className="flex items-end justify-between mb-4">
             <div>
               <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-3">
-                Your Repos
+                Your Nootbooks
               </h1>
               <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/45">
-                All the repositories you own, contribute to, or have forked.
+                All the nootbooks you own, contribute to, or have forked.
               </p>
             </div>
             <button
@@ -422,7 +422,7 @@ export default function MyRepos() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
-              New Repo
+              New Nootbook
             </button>
           </div>
         </div>
@@ -432,7 +432,7 @@ export default function MyRepos() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
               {
-                label: 'Total Repos',
+                label: 'Total Nootbooks',
                 value: String(repos.length),
                 icon: (
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -491,7 +491,7 @@ export default function MyRepos() {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search your repos..."
+                placeholder="Search your nootbooks..."
                 className="w-full bg-parchment border border-forest/10 squircle pl-10 pr-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/30 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
               />
             </div>
@@ -639,14 +639,14 @@ export default function MyRepos() {
               {!loading && filtered.length === 0 && (
                 <div className="text-center py-16">
                   <p className="font-[family-name:var(--font-display)] text-3xl text-forest/20 mb-2">
-                    {repos.length === 0 ? 'no repos yet' : 'nothing here'}
+                    {repos.length === 0 ? 'no nootbooks yet' : 'nothing here'}
                   </p>
                   <p className="font-[family-name:var(--font-body)] text-sm text-forest/30">
                     {repos.length === 0
-                      ? 'Create your first repo to get started.'
+                      ? 'Create your first nootbook to get started.'
                       : search
                       ? 'Try a different search term.'
-                      : 'Switch tabs or create a new repo.'}
+                      : 'Switch tabs or create a new nootbook.'}
                   </p>
                   {repos.length === 0 && (
                     <button
@@ -656,7 +656,7 @@ export default function MyRepos() {
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                       </svg>
-                      Create your first repo
+                      Create your first nootbook
                     </button>
                   )}
                 </div>

@@ -14,7 +14,7 @@ const user = {
   university: 'NYU',
   department: 'Computer Science',
   year: 'Junior',
-  bio: 'Algorithms nerd. I take notes so I don\'t have to think twice.',
+  bio: 'Algorithms nerd. I take nootes so I don\'t have to think twice.',
   aura: 1847,
   joinedDate: 'Sep 2024',
   streak: 23,
@@ -22,7 +22,7 @@ const user = {
 
 const stats = [
   { label: 'Aura', value: '1,847', icon: '✦' },
-  { label: 'Notes', value: '34', icon: null },
+  { label: 'Nootes', value: '34', icon: null },
   { label: 'Merges', value: '127', icon: null },
   { label: 'Repos', value: '8', icon: null },
 ]
@@ -182,7 +182,7 @@ export default function Profile() {
               {/* Pinned Notes */}
               <div>
                 <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">PINNED</span>
-                <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-4">Top Notes</h2>
+                <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-4">Top Nootes</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {pinnedNotes.map((note, i) => (
                     <Link

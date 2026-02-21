@@ -308,7 +308,7 @@ export const GraphMessage = ({ msg, items, summary, onExpand, onQuery }: { msg: 
 // ─── EXPORT TO PDF ───────────────────────────────────────────────────────────
 function exportToPDF(messages: Message[]) {
   const userMessages  = messages.filter(m => m.role === 'user')
-  const mainPrompt    = userMessages[0]?.content ?? 'Notes'
+  const mainPrompt    = userMessages[0]?.content ?? 'Nootes'
   const generatedAt   = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   // Build content sections in conversation order, skipping the first user msg (used as title)

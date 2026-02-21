@@ -59,7 +59,7 @@ const features = [
       </svg>
     ),
     title: 'Git-style Merges',
-    desc: 'Branch, diff, and merge notes like code. Resolve conflicts visually.',
+    desc: 'Branch, diff, and merge nootes like code. Resolve conflicts visually.',
   },
   {
     icon: (
@@ -77,14 +77,14 @@ const features = [
       </svg>
     ),
     title: 'Organized Repos',
-    desc: 'Browse notes by university, department, class, and topic — like GitHub.',
+    desc: 'Browse nootes by university, department, class, and topic — like GitHub.',
   },
 ]
 
 const stats = [
-  { value: '12,847', label: 'Notes shared' },
+  { value: '12,847', label: 'Nootes shared' },
   { value: '3,214', label: 'Contributors' },
-  { value: '487', label: 'Repositories' },
+  { value: '487', label: 'Nootbooks' },
   { value: '98%', label: 'Merge success' },
 ]
 
@@ -124,14 +124,14 @@ export default function Landing() {
         </svg>
 
         <div className="relative z-10">
-          <span className="font-mono text-[10px] text-sage/60 tracking-[0.4em] uppercase block mb-6">GITHUB FOR CLASS NOTES</span>
+          <span className="font-mono text-[10px] text-sage/60 tracking-[0.4em] uppercase block mb-6">GITHUB FOR CLASS NOOTES</span>
           <h1 className="logo-wave logo-wave-lg font-[family-name:var(--font-display)] text-[7rem] leading-[0.85] text-forest tracking-tight mb-6 flex cursor-default">
             {'nootes'.split('').map((letter, i) => (
               <span key={i} className="wave-letter">{letter}</span>
             ))}
           </h1>
           <p className="font-[family-name:var(--font-body)] text-xl text-forest/65 max-w-lg leading-relaxed mb-4">
-            Write beautiful notes with live LaTeX and code. Branch, merge, and collaborate — just like developers do with code.
+            Write beautiful nootes with live LaTeX and code. Branch, merge, and collaborate — just like developers do with code.
           </p>
           <p className="font-[family-name:var(--font-display)] text-2xl text-sage/40 mb-10">
             merge ideas, not just text ✦
@@ -214,7 +214,7 @@ export default function Landing() {
         <div className="flex items-center justify-center gap-4 flex-wrap">
           {[
             { step: '01', label: 'Create a repo for your class', link: '/repos' },
-            { step: '02', label: 'Write notes in the editor', link: '/editor' },
+            { step: '02', label: 'Write nootes in the editor', link: '/editor' },
             { step: '03', label: 'Review diffs & merge', link: '/diff' },
             { step: '04', label: 'Build your profile', link: '/profile' },
           ].map((s, i) => (

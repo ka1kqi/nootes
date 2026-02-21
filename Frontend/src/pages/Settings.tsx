@@ -61,7 +61,7 @@ export default function Settings() {
   const [displayName, setDisplayName] = useState('Aisha Malik')
   const [handle, setHandle] = useState('@aisha.m')
   const [email, setEmail] = useState('aisha.malik@nyu.edu')
-  const [bio, setBio] = useState("Algorithms nerd. I take notes so I don't have to think twice.")
+  const [bio, setBio] = useState("Algorithms nerd. I take nootes so I don't have to think twice.")
 
   // Appearance
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light')
@@ -241,16 +241,16 @@ export default function Settings() {
               {/* Notifications */}
               {activeSection === 'notifications' && (
                 <SectionCard title="Notifications">
-                  <SettingRow label="Merge activity" description="When someone merges into your notes">
+                  <SettingRow label="Merge activity" description="When someone merges into your nootes">
                     <Toggle checked={notifyMerges} onChange={setNotifyMerges} />
                   </SettingRow>
-                  <SettingRow label="Comments" description="When someone comments on your notes">
+                  <SettingRow label="Comments" description="When someone comments on your nootes">
                     <Toggle checked={notifyComments} onChange={setNotifyComments} />
                   </SettingRow>
                   <SettingRow label="Aura milestones" description="Celebrate aura point milestones">
                     <Toggle checked={notifyAura} onChange={setNotifyAura} />
                   </SettingRow>
-                  <SettingRow label="Weekly digest" description="Summary of your note activity">
+                  <SettingRow label="Weekly digest" description="Summary of your noote activity">
                     <Toggle checked={notifyDigest} onChange={setNotifyDigest} />
                   </SettingRow>
                   <SettingRow label="Email notifications" description="Send notifications to your university email">
@@ -268,7 +268,7 @@ export default function Settings() {
                   <SettingRow label="Activity visible" description="Show your contribution graph publicly">
                     <Toggle checked={activityVisible} onChange={setActivityVisible} />
                   </SettingRow>
-                  <SettingRow label="Public repos by default" description="New repositories are public unless changed">
+                  <SettingRow label="Public repos by default" description="New nootbooks are public unless changed">
                     <Toggle checked={reposPublicDefault} onChange={setReposPublicDefault} />
                   </SettingRow>
                   <SettingRow label="Show aura score" description="Display your aura points on your profile">
@@ -285,7 +285,7 @@ export default function Settings() {
                     {[
                       {
                         label: 'Export all data',
-                        description: 'Download a copy of all your notes, repos, and account data.',
+                        description: 'Download a copy of all your nootes, nootbooks, and account data.',
                         action: 'Export',
                         style: 'border border-forest/15 text-forest/50 hover:border-forest/30 hover:text-forest',
                       },

@@ -3,8 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logoImg from '../assets/logo.png'
 
 const navLinks = [
-  { path: '/repos', label: 'Repos' },
-  { path: '/my-repos', label: 'My Repos' },
+  { path: '/repos', label: 'Nootbooks' },
+  { path: '/my-repos', label: 'My Nootbooks' },
   { path: '/editor', label: 'Editor' },
   { path: '/diff', label: 'Diff' },
   { path: '/chat', label: 'Chat' },
