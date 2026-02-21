@@ -73,3 +73,30 @@ export interface Reaction {
   emoji: string
   created_at: string
 }
+
+export interface Repository {
+  id: string
+  title: string
+  description: string | null
+  course: string | null
+  professor: string | null
+  semester: string | null
+  university: string | null
+  department: string | null
+  is_class: boolean
+  is_public: boolean
+  tags: string[]
+  star_count: number
+  contributor_count: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RepositoryContributor {
+  repo_id: string
+  user_id: string
+  role: 'owner' | 'contributor' | 'forked'
+  aura_earned: number
+  joined_at: string
+}

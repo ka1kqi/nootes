@@ -178,3 +178,8 @@ VALUES
     0
   )
 ON CONFLICT (id) DO NOTHING;
+
+alter publication supabase_realtime add table channels;
+alter publication supabase_realtime add table messages;
+alter publication supabase_realtime add table reactions;
+alter publication supabase_realtime add table channel_members;
