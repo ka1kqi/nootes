@@ -4,9 +4,14 @@ from pydantic import BaseModel
 from typing import Any, Optional
 import uuid
 import copy
+import os
 from pathlib import Path
 from datetime import datetime, timezone
+from dotenv import load_dotenv
+import httpx
 from md_utils import document_to_markdown, markdown_to_document
+
+load_dotenv(Path(__file__).parent.parent / "Frontend" / ".env")
 
 app = FastAPI(title="Nootes API")
 
@@ -169,3 +174,39 @@ def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
     doc["updatedAt"] = now_iso()
     write_doc(doc)
     return {"data": doc}
+
+
+# ─── AI Proxy ─────────────────────────────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class PromptRequest(BaseModel):
+    messages: list[ChatMessage]
+    model: str = "gpt-4o"
+
+
+@app.post("/api/prompt")
+async def proxy_prompt(body: PromptRequest):
+    api_key = os.environ.get("OPENAI_API")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API key not configured")
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            json={
+                "model": body.model,
+                "messages": [m.model_dump() for m in body.messages],
+            },
+        )
+    if not resp.is_success:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    data = resp.json()
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    return {"content": content}

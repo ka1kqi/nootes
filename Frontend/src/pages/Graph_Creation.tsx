@@ -11,9 +11,7 @@ import rawPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
-// TODO: proxy through VITE_API_URL once backend /api/prompt endpoint is live
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API as string
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api/prompt'
 
 const SYSTEM_PROMPT        = rawPrompt
 const SYSTEM_PROMPT_SIMPLE = rawSimplePrompt
@@ -580,9 +578,9 @@ export default function App() {
       prompt += `\n\nAdditional context: ${context}`
     }
 
-    const res = await fetch(OPENAI_URL, {
+    const res = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
@@ -593,7 +591,7 @@ export default function App() {
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
     const data = await res.json()
-    const content: string = data.choices?.[0]?.message?.content ?? ''
+    const content: string = data.content ?? ''
     const parsed = parseGraphResponse(content)
     if (!parsed) throw new Error('Could not parse expansion response')
     return parsed
@@ -623,9 +621,9 @@ export default function App() {
     context += `\n\nCurrent task:\nName: ${item.name}\nDescription: ${item.text}`
     context += `\n\nQuestion: ${question}`
 
-    const res = await fetch(OPENAI_URL, {
+    const res = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
@@ -636,7 +634,7 @@ export default function App() {
     })
     if (!res.ok) throw new Error(`API error ${res.status}`)
     const data = await res.json()
-    return data.choices?.[0]?.message?.content?.trim() ?? 'No response.'
+    return data.content?.trim() ?? 'No response.'
   }, [])
 
   const scrollToBottom = () => {
@@ -664,12 +662,9 @@ export default function App() {
     historyRef.current = [...historyRef.current, { role: 'user', content: text.trim() }]
 
     try {
-      const res = await fetch(OPENAI_URL, {
+      const res = await fetch(API_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'gpt-4o',
           messages: [
@@ -680,7 +675,7 @@ export default function App() {
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
       const data = await res.json()
-      const content: string = data.choices?.[0]?.message?.content ?? JSON.stringify(data, null, 2)
+      const content: string = data.content ?? JSON.stringify(data, null, 2)
       historyRef.current = [...historyRef.current, { role: 'assistant', content }]
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date() }])
     } catch (err) {
