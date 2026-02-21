@@ -3,8 +3,11 @@ import logoImg from '../assets/logo.png'
 
 const navLinks = [
   { path: '/repos', label: 'Repos' },
+  { path: '/my-repos', label: 'My Repos' },
   { path: '/editor', label: 'Editor' },
   { path: '/diff', label: 'Diff' },
+  { path: '/chat', label: 'Chat' },
+  { path: '/store', label: 'Store' },
 ]
 
 export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' | 'dark'; breadcrumbs?: { label: string; href?: string }[] }) {
