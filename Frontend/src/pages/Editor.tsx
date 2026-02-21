@@ -1,7 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Navbar } from '../components/Navbar'
-import { KaTeX } from '../components/KaTeX'
-import { CodeBlock } from '../components/CodeBlock'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
 import { useDocument, type BlockType } from '../hooks/useDocument'
 
@@ -13,111 +11,6 @@ import { useDocument, type BlockType } from '../hooks/useDocument'
 /*   - softer borders & shadows, generous whitespace                  */
 /*   - floating content cards, section labels, handwritten accents    */
 /* ------------------------------------------------------------------ */
-
-function FlowDiagram() {
-  return (
-    <div className="my-8 bg-parchment border border-forest/10 squircle-xl p-8 shadow-[0_2px_24px_-8px_rgba(38,70,53,0.06)]">
-      <div className="flex items-center gap-2 mb-5">
-        <div className="w-2.5 h-2.5 rounded-full bg-sage" />
-        <span className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">Flowchart: Binary Search Decision Tree</span>
-      </div>
-      <svg viewBox="0 0 600 320" className="w-full max-w-xl mx-auto" fill="none">
-        <rect x="220" y="10" width="160" height="44" rx="22" fill="#264635" />
-        <text x="300" y="37" textAnchor="middle" fill="#E9E4D4" fontSize="13" fontFamily="DM Sans">{"arr[mid] == target?"}</text>
-        <line x1="260" y1="54" x2="160" y2="100" stroke="#A3B18A" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="190" y="78" fill="#A3B18A" fontSize="11" fontFamily="JetBrains Mono">No</text>
-        <line x1="340" y1="54" x2="440" y2="100" stroke="#264635" strokeWidth="1.5" />
-        <text x="400" y="78" fill="#264635" fontSize="11" fontFamily="JetBrains Mono">Yes</text>
-        <rect x="370" y="100" width="140" height="40" rx="20" fill="#A3B18A" />
-        <text x="440" y="125" textAnchor="middle" fill="#1A3228" fontSize="12" fontFamily="DM Sans">return mid</text>
-        <rect x="70" y="100" width="180" height="44" rx="22" fill="#264635" />
-        <text x="160" y="127" textAnchor="middle" fill="#E9E4D4" fontSize="13" fontFamily="DM Sans">{"arr[mid] < target?"}</text>
-        <line x1="115" y1="144" x2="80" y2="195" stroke="#A3B18A" strokeWidth="1.5" strokeDasharray="4 2" />
-        <text x="75" y="172" fill="#A3B18A" fontSize="11" fontFamily="JetBrains Mono">No</text>
-        <line x1="205" y1="144" x2="260" y2="195" stroke="#264635" strokeWidth="1.5" />
-        <text x="245" y="172" fill="#264635" fontSize="11" fontFamily="JetBrains Mono">Yes</text>
-        <rect x="195" y="195" width="140" height="40" rx="20" fill="#E9E4D4" stroke="#264635" strokeWidth="1.5" />
-        <text x="265" y="219" textAnchor="middle" fill="#264635" fontSize="11" fontFamily="JetBrains Mono">low = mid + 1</text>
-        <rect x="10" y="195" width="140" height="40" rx="20" fill="#E9E4D4" stroke="#264635" strokeWidth="1.5" />
-        <text x="80" y="219" textAnchor="middle" fill="#264635" fontSize="11" fontFamily="JetBrains Mono">high = mid - 1</text>
-        <rect x="200" y="280" width="200" height="28" rx="14" fill="#A3B18A" fillOpacity="0.2" stroke="#A3B18A" strokeWidth="1" />
-        <text x="300" y="298" textAnchor="middle" fill="#264635" fontSize="11" fontFamily="JetBrains Mono">{"repeat until low > high"}</text>
-      </svg>
-    </div>
-  )
-}
-
-function ChemEquation({ equation, label }: { equation: string; label?: string }) {
-  return (
-    <div className="my-4 bg-parchment border border-forest/10 squircle px-6 py-4 flex items-center gap-4 shadow-[0_1px_12px_-4px_rgba(38,70,53,0.04)]">
-      <div className="w-8 h-8 rounded-full bg-sienna/10 flex items-center justify-center shrink-0">
-        <svg className="w-4 h-4 text-sienna/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-        </svg>
-      </div>
-      <div>
-        {label && <span className="font-mono text-[9px] text-forest/30 tracking-[0.2em] uppercase block mb-1">{label}</span>}
-        <KaTeX math={equation} className="text-sm" />
-      </div>
-    </div>
-  )
-}
-
-function DataTable({ headers, rows, caption }: { headers: string[]; rows: string[][]; caption?: string }) {
-  return (
-    <div className="my-8 bg-parchment border border-forest/10 squircle-xl overflow-hidden shadow-[0_2px_24px_-8px_rgba(38,70,53,0.06)]">
-      {caption && (
-        <div className="px-6 py-3 border-b border-forest/[0.06]">
-          <span className="font-mono text-[10px] text-forest/40 tracking-wider">{caption}</span>
-        </div>
-      )}
-      <table className="w-full text-left">
-        <thead>
-          <tr className="bg-forest/[0.03]">
-            {headers.map((h, i) => (
-              <th key={i} className="px-5 py-3 font-[family-name:var(--font-body)] text-[10px] font-medium text-forest/50 tracking-[0.15em] uppercase border-b border-forest/[0.06]">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-forest/[0.04] last:border-0">
-              {row.map((cell, j) => (
-                <td key={j} className="px-5 py-2.5 font-mono text-sm text-forest/80">{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-const SAMPLE_CODE = `def binary_search(arr, target):
-    """Search for target in sorted array using binary search.
-
-    Time:  O(log n)
-    Space: O(1)
-    """
-    low, high = 0, len(arr) - 1
-
-    while low <= high:
-        mid = (low + high) // 2
-
-        if arr[mid] == target:
-            return mid
-        elif arr[mid] < target:
-            low = mid + 1
-        else:
-            high = mid - 1
-
-    return -1  # target not found`
-
-const SAMPLE_LATEX = `\\section{The Chain Rule}
-
-Let $f$ and $g$ be differentiable functions...
-
-$$\\frac{d}{dx}[f(g(x))] = f'(g(x)) \\cdot g'(x)$$`
 
 const collaborators = [
   { name: 'Aisha M.', color: '#264635', initials: 'AM' },
@@ -132,7 +25,25 @@ function TBtn({ children, onClick, title, wide = false }: { children: React.Reac
     <button
       title={title}
       onClick={onClick}
+      onMouseDown={e => e.preventDefault()}
       className={`h-8 flex items-center justify-center text-forest/45 hover:text-forest/75 hover:bg-forest/[0.05] squircle-sm transition-all shrink-0 ${wide ? 'px-2.5 gap-1.5' : 'w-8'}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function TTypeBtn({ active, onClick, title, children }: { active: boolean; onClick: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      onMouseDown={e => e.preventDefault()}
+      className={`h-8 px-2 flex items-center justify-center squircle-sm transition-all shrink-0 ${
+        active
+          ? 'bg-forest/[0.08] text-forest ring-1 ring-inset ring-forest/20'
+          : 'text-forest/40 hover:text-forest/70 hover:bg-forest/[0.04]'
+      }`}
     >
       {children}
     </button>
@@ -151,14 +62,65 @@ export default function Design1() {
   const editorRef = useRef<BlockEditorHandle>(null)
   const pendingInsertRef = useRef<BlockType | null>(null)
   const [currentBlockType, setCurrentBlockType] = useState<BlockType>('paragraph')
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
 
   // ── Document sync (Personal fork for demo user) ─────────────────────────
   const { doc, loading, saveStatus, updateBlocks, saveNow } = useDocument('cs-ua-310', 'demo')
 
+  // ── Master document (read-only) ─────────────────────────────────────────
+  const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
+  const [masterLoading, setMasterLoading] = useState(true)
+  useEffect(() => {
+    fetch('http://localhost:3001/api/repos/cs-ua-310/master')
+      .then(r => r.json())
+      .then(({ data }) => setMasterDoc(data))
+      .catch(() => {})
+      .finally(() => setMasterLoading(false))
+  }, [])
+
   // Save on unmount / tab switch
   useEffect(() => { return () => saveNow() }, [saveNow])
 
-  const handleTabChange = useCallback((tab: 'write' | 'preview') => setActiveTab(tab), [])
+  // ── TOC: derive headings from active document ───────────────────────────────
+  const headings = useMemo(() => {
+    const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
+    return blocks.filter(b => b.type === 'h1' || b.type === 'h2' || b.type === 'h3')
+  }, [activeTab, doc?.blocks, masterDoc?.blocks])
+
+  // Scroll tracking: highlight the heading currently in view
+  useEffect(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+    const handleScroll = () => {
+      const containerTop = scrollEl.getBoundingClientRect().top
+      let activeId: string | null = null
+      for (const h of [...headings].reverse()) {
+        const el = document.getElementById(`block-${h.id}`)
+        if (!el) continue
+        const top = el.getBoundingClientRect().top - containerTop
+        if (top <= 80) { activeId = h.id; break }
+      }
+      setActiveHeadingId(activeId ?? (headings[0]?.id ?? null))
+    }
+    scrollEl.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => scrollEl.removeEventListener('scroll', handleScroll)
+  }, [headings])
+
+  const scrollToHeading = useCallback((headingId: string) => {
+    const scrollEl = scrollRef.current
+    const el = document.getElementById(`block-${headingId}`)
+    if (!el || !scrollEl) return
+    const containerTop = scrollEl.getBoundingClientRect().top
+    const elTop = el.getBoundingClientRect().top - containerTop
+    scrollEl.scrollBy({ top: elTop - 24, behavior: 'smooth' })
+  }, [])
+
+  const tabCls = (tab: 'write' | 'preview') =>
+    `px-3 py-1 font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-all ${
+      activeTab === tab ? 'bg-forest text-parchment' : 'text-forest/40 hover:text-forest/70'
+    }`
 
   // ── Insert block via toolbar ──────────────────────────────────────────────
   // If the write tab is already active, insert immediately.
@@ -197,19 +159,24 @@ export default function Design1() {
         <main className="flex-1 flex flex-col min-w-0">
           {/* Toolbar */}
           <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center gap-1 shrink-0">
-            {/* Format dropdown — reflects and changes the focused block's type */}
-            <select
-              value={currentBlockType}
-              onChange={e => editorRef.current?.setCurrentType(e.target.value as BlockType)}
-              className="h-8 bg-transparent font-[family-name:var(--font-body)] text-[11px] text-forest/55 border border-forest/15 squircle-sm px-2 pr-6 focus:outline-none focus:border-forest/30 cursor-pointer shrink-0"
-              title="Format current paragraph"
-            >
-              <option value="paragraph">Paragraph</option>
-              <option value="h1">Heading 1</option>
-              <option value="h2">Heading 2</option>
-              <option value="h3">Heading 3</option>
-              <option value="quote">Quote</option>
-            </select>
+            {/* Text type buttons — reflects and changes the focused block's type */}
+            <div className="flex items-center gap-0.5">
+              <TTypeBtn active={currentBlockType === 'paragraph'} onClick={() => editorRef.current?.setCurrentType('paragraph')} title="Paragraph">
+                <span className="font-[family-name:var(--font-body)] text-[13px] leading-none">¶</span>
+              </TTypeBtn>
+              <TTypeBtn active={currentBlockType === 'h1'} onClick={() => editorRef.current?.setCurrentType('h1')} title="Heading 1">
+                <span className="font-[family-name:var(--font-body)] text-[11px] font-bold leading-none tracking-tight">H<span className="text-[8px] align-sub">1</span></span>
+              </TTypeBtn>
+              <TTypeBtn active={currentBlockType === 'h2'} onClick={() => editorRef.current?.setCurrentType('h2')} title="Heading 2">
+                <span className="font-[family-name:var(--font-body)] text-[11px] font-semibold leading-none tracking-tight">H<span className="text-[8px] align-sub">2</span></span>
+              </TTypeBtn>
+              <TTypeBtn active={currentBlockType === 'h3'} onClick={() => editorRef.current?.setCurrentType('h3')} title="Heading 3">
+                <span className="font-[family-name:var(--font-body)] text-[11px] font-medium leading-none tracking-tight">H<span className="text-[8px] align-sub">3</span></span>
+              </TTypeBtn>
+              <TTypeBtn active={currentBlockType === 'quote'} onClick={() => editorRef.current?.setCurrentType('quote')} title="Quote">
+                <span className="font-[family-name:var(--font-body)] text-[15px] leading-none">"</span>
+              </TTypeBtn>
+            </div>
             <TDivider />
             {/* Rich / special blocks — icon chip + label */}
             <TBtn wide onClick={() => insertBlock('latex')} title="LaTeX equation (Σ)">
@@ -260,15 +227,17 @@ export default function Design1() {
           </div>
 
           {/* Canvas — generous whitespace */}
-          <div className="flex-1 overflow-y-auto">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
             <div className="max-w-3xl mx-auto py-10 px-10">
               {activeTab === 'preview' ? (
                 <div>
-                  {/* Title — breathing header */}
-                  <div className="mb-16">
-                    <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">CS-UA 310 / PROF. SIEGEL / SPRING 2026</span>
+                  {/* Master document header */}
+                  <div className="mb-12">
+                    <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
+                      {masterDoc ? `${masterDoc.course} / ${masterDoc.professor} / ${masterDoc.semester} — MASTER` : 'Loading…'}
+                    </span>
                     <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                      Intro to<br />Algorithms
+                      {masterDoc?.title ?? 'Master Notes'}
                     </h1>
 
                     {/* Decorative wave */}
@@ -277,7 +246,7 @@ export default function Design1() {
                     </svg>
 
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">v3.2.1</span>
+                      <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">{masterDoc?.version ?? '…'}</span>
                       <span className="font-mono text-[10px] text-forest/30">47 contributors</span>
                       <span className="text-forest/10">|</span>
                       <span className="font-mono text-[10px] text-forest/30">Last merged 2h ago</span>
@@ -290,122 +259,23 @@ export default function Design1() {
                     </div>
                   </div>
 
-                  {/* Content — clean floating sections */}
-                  <div className="font-[family-name:var(--font-body)] text-forest">
-
-                    {/* Section: Chain Rule */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">DIFFERENTIATION</span>
-                      <h2 className="font-[family-name:var(--font-display)] text-4xl text-forest mb-6 leading-tight">The Chain Rule</h2>
-                      <p className="leading-relaxed mb-6 text-[15px] text-forest/70">
-                        Let <KaTeX math="f" /> and <KaTeX math="g" /> be differentiable functions. Then the composite function <KaTeX math="f \circ g" /> is differentiable, and
-                      </p>
-                      <div className="bg-parchment border border-forest/10 p-8 squircle-xl shadow-[0_2px_24px_-8px_rgba(38,70,53,0.06)]">
-                        <KaTeX math="\frac{d}{dx}\bigl[f\bigl(g(x)\bigr)\bigr] = f'\bigl(g(x)\bigr) \cdot g'(x)" display />
-                      </div>
+                  {/* Read-only BlockEditor rendering actual master .md file */}
+                  {masterLoading ? (
+                    <div className="flex flex-col gap-5 animate-pulse">
+                      <div className="h-8 bg-forest/[0.05] squircle-xl w-2/3" />
+                      <div className="h-4 bg-forest/[0.04] squircle-xl w-full" />
+                      <div className="h-4 bg-forest/[0.04] squircle-xl w-5/6" />
+                      <div className="h-24 bg-parchment border border-forest/[0.06] squircle-xl w-full" />
                     </div>
-
-                    {/* Section: Example */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">WORKED EXAMPLE</span>
-                      <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-4">Applying the Rule</h3>
-                      <p className="leading-relaxed mb-4 text-[15px] text-forest/70">Find <KaTeX math="\frac{d}{dx}\bigl[\sin(x^2)\bigr]" />.</p>
-                      <p className="leading-relaxed mb-6 text-[15px] text-forest/70">Let <KaTeX math="f(u) = \sin(u)" /> and <KaTeX math="g(x) = x^2" />. Then:</p>
-                      <div className="bg-sage/[0.06] border border-sage/15 p-8 squircle-xl">
-                        <KaTeX math="\frac{d}{dx}\bigl[\sin(x^2)\bigr] = \cos(x^2) \cdot 2x" display />
-                        <p className="font-[family-name:var(--font-display)] text-lg text-sage/50 mt-3 text-center">
-                          outer derivative times inner derivative
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Section: Leibniz Rule */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">GENERALIZATION</span>
-                      <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-4">General Leibniz Rule</h3>
-                      <p className="leading-relaxed mb-6 text-[15px] text-forest/70">For the <KaTeX math="n" />-th derivative of a product:</p>
-                      <div className="bg-parchment border border-forest/10 p-8 squircle-xl shadow-[0_2px_24px_-8px_rgba(38,70,53,0.06)]">
-                        <KaTeX math="(fg)^{(n)} = \sum_{k=0}^{n} \binom{n}{k} f^{(k)} \, g^{(n-k)}" display />
-                      </div>
-
-                      <p className="leading-relaxed mt-8 mb-6 text-[15px] text-forest/70">The Jacobian matrix of partial derivatives:</p>
-                      <div className="bg-parchment border border-forest/10 p-8 squircle-xl shadow-[0_2px_24px_-8px_rgba(38,70,53,0.06)]">
-                        <KaTeX math="\mathbf{J} = \begin{bmatrix} \dfrac{\partial f_1}{\partial x_1} & \cdots & \dfrac{\partial f_1}{\partial x_n} \\[1em] \vdots & \ddots & \vdots \\[1em] \dfrac{\partial f_m}{\partial x_1} & \cdots & \dfrac{\partial f_m}{\partial x_n} \end{bmatrix}" display />
-                      </div>
-                    </div>
-
-                    {/* Decorative divider */}
-                    <div className="flex items-center justify-center py-4 gap-3 mb-12">
-                      <div className="w-1.5 h-1.5 rounded-full bg-forest/10" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-sage/20" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-forest/10" />
-                    </div>
-
-                    {/* Section: Code */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">IMPLEMENTATION</span>
-                      <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-3">Binary Search</h3>
-                      <p className="text-[15px] text-forest/60 leading-relaxed mb-6">
-                        A classic binary search in Python demonstrating <KaTeX math="O(\log n)" /> time complexity.
-                      </p>
-                      <CodeBlock code={SAMPLE_CODE} language="python" filename="binary_search.py" />
-                    </div>
-
-                    {/* Section: Diagram */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">VISUAL</span>
-                      <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-3">Decision Flow</h3>
-                      <p className="text-[15px] text-forest/60 leading-relaxed mb-4">The binary search algorithm follows this decision tree on each iteration:</p>
-                      <FlowDiagram />
-                    </div>
-
-                    {/* Section: Complexity */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-3">ANALYSIS</span>
-                      <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-3">Complexity Comparison</h3>
-                      <DataTable
-                        caption="Table 1. Comparison of search algorithms"
-                        headers={['Algorithm', 'Best', 'Average', 'Worst', 'Space']}
-                        rows={[
-                          ['Linear Search', 'O(1)', 'O(n)', 'O(n)', 'O(1)'],
-                          ['Binary Search', 'O(1)', 'O(log n)', 'O(log n)', 'O(1)'],
-                          ['Hash Table', 'O(1)', 'O(1)', 'O(n)', 'O(n)'],
-                          ['BST Search', 'O(1)', 'O(log n)', 'O(n)', 'O(n)'],
-                        ]}
-                      />
-                    </div>
-
-                    {/* Decorative divider */}
-                    <div className="flex items-center justify-center py-4 gap-3 mb-12">
-                      <div className="w-1.5 h-1.5 rounded-full bg-forest/10" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-sage/20" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-forest/10" />
-                    </div>
-
-                    {/* Section: Chemistry */}
-                    <div className="mb-16">
-                      <span className="font-mono text-[9px] text-sienna/40 tracking-[0.3em] uppercase block mb-3">CROSS-DOMAIN</span>
-                      <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest mb-3">Chemistry</h3>
-                      <p className="text-[15px] text-forest/60 leading-relaxed mb-6">Nootes supports domain-specific notation. Here are chemical equilibria rendered inline:</p>
-                      <ChemEquation label="Haber Process" equation="\text{N}_2 + 3\text{H}_2 \rightleftharpoons 2\text{NH}_3 \quad (\Delta H = -92.4 \;\text{kJ/mol})" />
-                      <ChemEquation label="Water Electrolysis" equation="2\text{H}_2\text{O}(\ell) \rightarrow 2\text{H}_2(g) + \text{O}_2(g)" />
-                    </div>
-
-                    {/* Comment — softer card */}
-                    <div className="bg-sage/[0.04] border border-sage/15 p-6 squircle-xl">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-7 h-7 rounded-full bg-sage flex items-center justify-center text-[9px] text-parchment font-medium shadow-sm">JT</div>
-                        <div>
-                          <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Jake T.</span>
-                          <span className="font-mono text-[10px] text-forest/25 ml-2">3h ago</span>
-                        </div>
-                        <span className="font-mono text-[9px] px-2 py-0.5 bg-sage/[0.08] text-sage/50 squircle-sm ml-auto">212 aura</span>
-                      </div>
-                      <p className="font-[family-name:var(--font-display)] text-xl text-forest/50 leading-relaxed">
-                        Should we add the iterative vs recursive comparison here? The table helps but a side-by-side code block would be great.
-                      </p>
-                    </div>
-                  </div>
+                  ) : masterDoc ? (
+                    <BlockEditor
+                      blocks={masterDoc.blocks}
+                      onChange={() => {}}
+                      readOnly
+                    />
+                  ) : (
+                    <p className="font-mono text-[13px] text-forest/30 text-center py-16">Could not load master document.</p>
+                  )}
                 </div>
               ) : (
                 /* ── Personal / editable view ────────────────────────────────── */
@@ -506,19 +376,15 @@ export default function Design1() {
         <aside className="w-56 border-l border-forest/[0.08] bg-cream p-5 shrink-0 hidden lg:block">
           <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-5">Contents</h4>
           <nav className="flex flex-col gap-1">
-            {[
-              { label: 'The Chain Rule', level: 0, active: true },
-              { label: 'Applying the Rule', level: 1, active: false },
-              { label: 'General Leibniz Rule', level: 1, active: false },
-              { label: 'Binary Search', level: 1, active: false },
-              { label: 'Decision Flow', level: 1, active: false },
-              { label: 'Complexity Comparison', level: 1, active: false },
-              { label: 'Chemistry', level: 1, active: false },
-              { label: 'Product Rule', level: 0, active: false },
-              { label: 'Quotient Rule', level: 0, active: false },
-            ].map((item, i) => (
-              <button key={i} className={`text-left font-[family-name:var(--font-body)] text-xs transition-all squircle-sm px-2.5 py-1.5 ${item.level === 1 ? 'pl-6' : ''} ${item.active ? 'text-forest font-medium bg-forest/[0.04]' : 'text-forest/35 hover:text-forest/60 hover:bg-forest/[0.02]'}`}>
-                {item.label}
+            {headings.length === 0 ? (
+              <span className="font-mono text-[10px] text-forest/20 italic">No headings yet</span>
+            ) : headings.map(h => (
+              <button
+                key={h.id}
+                onClick={() => scrollToHeading(h.id)}
+                className={`text-left font-[family-name:var(--font-body)] text-xs transition-all squircle-sm px-2.5 py-1.5 ${h.type !== 'h1' ? 'pl-6' : ''} ${activeHeadingId === h.id ? 'text-forest font-medium bg-forest/[0.04]' : 'text-forest/35 hover:text-forest/60 hover:bg-forest/[0.02]'}`}
+              >
+                {h.content || <span className="opacity-40 italic">Untitled</span>}
               </button>
             ))}
           </nav>
