@@ -14,6 +14,7 @@ export type BlockType =
   | 'callout'
   | 'divider'
   | 'table'
+  | 'diagram'
 
 export type Block = {
   id: string
@@ -49,6 +50,7 @@ export function newBlock(type: BlockType): Block {
       : type === 'callout' ? { calloutType: 'info' }
       : type === 'chemistry' ? { caption: '' }
       : type === 'table' ? { caption: '' }
+      : type === 'diagram' ? { caption: '' }
       : undefined,
   }
 }
@@ -67,6 +69,10 @@ export function useDocument(repoId: string, userId: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const docRef = useRef<Document | null>(null)
 
+  // Undo history: stack of block snapshots, pointer at current position
+  const historyRef = useRef<Block[][]>([])
+  const historyIndexRef = useRef<number>(-1)
+
   // Fetch on mount
   useEffect(() => {
     setLoading(true)
@@ -75,6 +81,9 @@ export function useDocument(repoId: string, userId: string) {
       .then(({ data }) => {
         setDoc(data)
         docRef.current = data
+        // Seed history with the loaded state
+        historyRef.current = [data.blocks]
+        historyIndexRef.current = 0
       })
       .catch(() => {
         // Offline fallback — empty doc
@@ -88,6 +97,8 @@ export function useDocument(repoId: string, userId: string) {
         }
         setDoc(fallback)
         docRef.current = fallback
+        historyRef.current = [fallback.blocks]
+        historyIndexRef.current = 0
       })
       .finally(() => setLoading(false))
   }, [repoId, userId])
@@ -115,6 +126,36 @@ export function useDocument(repoId: string, userId: string) {
   // Debounced update called by editor
   const updateBlocks = useCallback((blocks: Block[]) => {
     setDoc(prev => prev ? { ...prev, blocks } : prev)
+    // Push to history, discarding any redo states, cap at 500 entries
+    const truncated = historyRef.current.slice(0, historyIndexRef.current + 1)
+    historyRef.current = [...truncated, blocks].slice(-500)
+    historyIndexRef.current = historyRef.current.length - 1
+    pendingRef.current = blocks
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      if (pendingRef.current) persist(pendingRef.current)
+    }, DEBOUNCE_MS)
+  }, [persist])
+
+  // Step back one history entry
+  const undo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return
+    historyIndexRef.current -= 1
+    const blocks = historyRef.current[historyIndexRef.current]
+    setDoc(prev => prev ? { ...prev, blocks } : prev)
+    pendingRef.current = blocks
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      if (pendingRef.current) persist(pendingRef.current)
+    }, DEBOUNCE_MS)
+  }, [persist])
+
+  // Step forward one history entry
+  const redo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return
+    historyIndexRef.current += 1
+    const blocks = historyRef.current[historyIndexRef.current]
+    setDoc(prev => prev ? { ...prev, blocks } : prev)
     pendingRef.current = blocks
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
@@ -131,5 +172,5 @@ export function useDocument(repoId: string, userId: string) {
     }
   }, [persist])
 
-  return { doc, loading, saveStatus, updateBlocks, saveNow }
+  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo }
 }

@@ -74,3 +74,19 @@ Hash Table,O(1),O(1),O(n),O(n)
 :::chemistry caption="Haber Process"
 \text{N}_2 + 3\text{H}_2 \rightleftharpoons 2\text{NH}_3 \quad (\Delta H = -92.4\;\text{kJ/mol})
 :::
+
+## Algorithm Diagrams
+
+:::diagram caption="Binary Search Flow"
+flowchart TD
+    A([Start]) --> B[Set low = 0, high = n-1]
+    B --> C{low <= high?}
+    C -- No --> D([Return -1])
+    C -- Yes --> E["mid = ⌊(low + high) / 2⌋"]
+    E --> F{"arr[mid] == target?"}
+    F -- Yes --> G([Return mid])
+    F -- Less --> H[low = mid + 1]
+    F -- Greater --> I[high = mid - 1]
+    H --> C
+    I --> C
+:::

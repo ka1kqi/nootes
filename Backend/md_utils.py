@@ -57,6 +57,10 @@ def blocks_to_markdown(blocks: list[dict]) -> str:
             caption = meta.get("caption", "")
             cap_attr = f' caption="{caption}"' if caption else ""
             parts.append(f":::chemistry{cap_attr}\n{content}\n:::\n")
+        elif btype == "diagram":
+            caption = meta.get("caption", "")
+            cap_attr = f' caption="{caption}"' if caption else ""
+            parts.append(f":::diagram{cap_attr}\n{content}\n:::\n")
         elif btype == "table":
             caption = meta.get("caption", "")
             cap_attr = f' caption="{caption}"' if caption else ""
@@ -151,7 +155,7 @@ def markdown_to_blocks(md: str) -> list[dict]:
             continue
 
         # ── Directive fences :::type meta ───────────────────────────────
-        directive_match = re.match(r"^:::(chemistry|table|callout)\s*(.*)$", line)
+        directive_match = re.match(r"^:::(chemistry|table|callout|diagram)\s*(.*)$", line)
         if directive_match:
             dtype = directive_match.group(1)
             meta_str = directive_match.group(2).strip()
@@ -192,6 +196,17 @@ def markdown_to_blocks(md: str) -> list[dict]:
                     "type": "callout",
                     "content": body,
                     "meta": {"calloutType": callout_type},
+                })
+            elif dtype == "diagram":
+                caption = _parse_caption(meta_str)
+                meta_dict = {}
+                if caption:
+                    meta_dict["caption"] = caption
+                blocks.append({
+                    "id": _new_id(),
+                    "type": "diagram",
+                    "content": body,
+                    "meta": meta_dict,
                 })
             continue
 

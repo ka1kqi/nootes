@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { KaTeX } from './KaTeX'
 import { CodeBlock } from './CodeBlock'
+import { Mermaid } from './Mermaid'
 import { newBlock } from '../hooks/useDocument'
 import type { Block, BlockType } from '../hooks/useDocument'
 
@@ -21,7 +22,7 @@ export type BlockEditorHandle = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEXT_TYPES: BlockType[] = ['paragraph', 'h1', 'h2', 'h3', 'quote']
-const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout']
+const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout', 'diagram']
 
 const TYPE_LABEL: Record<string, string> = {
   paragraph: 'Paragraph',
@@ -35,6 +36,7 @@ const TYPE_LABEL: Record<string, string> = {
   table: 'Table (CSV)',
   callout: 'Callout',
   divider: 'Divider',
+  diagram: 'Diagram',
 }
 
 const CALLOUT_VARIANTS = ['info', 'tip', 'warning', 'important'] as const
@@ -126,6 +128,18 @@ export function BlockPreview({ block }: { block: Block }) {
       </div>
     )
   }
+  if (block.type === 'diagram') {
+    const caption = block.meta?.caption as string | undefined
+    return (
+      <div className="my-2 bg-parchment border border-forest/10 squircle-xl px-6 py-4 overflow-x-auto">
+        {caption && <p className="font-mono text-[10px] text-forest/35 mb-2 tracking-wider">{caption}</p>}
+        {block.content.trim()
+          ? <Mermaid chart={block.content} />
+          : <div className="h-10 flex items-center justify-center font-mono text-xs text-forest/25">Empty diagram</div>
+        }
+      </div>
+    )
+  }
   if (block.type === 'divider') {
     return <hr className="my-2 border-0 border-t border-forest/[0.08]" />
   }
@@ -205,12 +219,19 @@ function TextBlock({
     sel.addRange(range)
   }, [])
 
-  // Sync DOM when block changes externally (type change, undo, merge) — skip while editing
+  // Sync DOM when block content changes externally (type change, undo, merge).
+  // We rely on the content equality check rather than activeElement: if the user
+  // just typed the character, el.textContent already matches block.content and
+  // no DOM write occurs (cursor is preserved). On undo, they differ and we sync.
   useEffect(() => {
     const el = divRef.current
-    if (!el || document.activeElement === el) return
-    if ((el.textContent ?? '') !== block.content) el.textContent = block.content
-  }, [block.content, block.type])
+    if (!el) return
+    if ((el.textContent ?? '') !== block.content) {
+      const pos = document.activeElement === el ? getCursorPos() : null
+      el.textContent = block.content
+      if (pos !== null) setCursorPos(Math.min(pos, block.content.length))
+    }
+  }, [block.content, block.type, getCursorPos, setCursorPos])
 
   // Focus and position cursor
   useEffect(() => {
@@ -439,9 +460,10 @@ function RichBlock({
     : block.type === 'code' ? 'Source code'
     : block.type === 'chemistry' ? 'KaTeX chem · e.g. \\text{H}_2\\text{O}'
     : block.type === 'table' ? 'CSV · first row = headers'
+    : block.type === 'diagram' ? 'Mermaid · e.g. graph TD; A-->B'
     : 'Callout text'
 
-  const sourceRows = block.type === 'code' ? 6 : block.type === 'table' ? 4 : 3
+  const sourceRows = block.type === 'code' ? 6 : block.type === 'table' ? 4 : block.type === 'diagram' ? 5 : 3
 
   const ringRadius = block.type === 'code' ? 'squircle' : 'squircle-xl'
 
@@ -521,7 +543,7 @@ function RichBlock({
               {CALLOUT_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           )}
-          {(block.type === 'chemistry' || block.type === 'table') && (
+          {(block.type === 'chemistry' || block.type === 'table' || block.type === 'diagram') && (
             <input
               type="text"
               placeholder="Caption (optional)"
@@ -602,22 +624,18 @@ function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
       }}
     >
       <hr className={`border-0 border-t transition-colors ${selected ? 'border-sage/50' : 'border-forest/[0.1] group-hover:border-forest/20'}`} />
-      {selected && (
-        <>
-          <button
-            className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-5 bg-cream border border-forest/15 squircle-sm flex items-center justify-center font-mono text-[10px] text-forest/40 hover:text-sienna transition-all"
-            onClick={e => { e.stopPropagation(); onDelete() }}
-          >
-            ✕
-          </button>
-          {/* Keyboard hint */}
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-forest/80 text-parchment/80 px-2.5 py-0.5 squircle-sm font-mono text-[9px] backdrop-blur-sm shadow-sm z-10 whitespace-nowrap">
-            <span>⌫ delete</span>
-            <span className="text-parchment/30">·</span>
-            <span>↑↓ navigate</span>
-          </div>
-        </>
-      )}
+      <button
+        className={`absolute right-0 top-1/2 -translate-y-1/2 h-5 w-5 bg-cream border border-forest/15 squircle-sm flex items-center justify-center font-mono text-[10px] text-forest/40 hover:text-sienna transition-all ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        onClick={e => { e.stopPropagation(); onDelete() }}
+      >
+        ✕
+      </button>
+      {/* Hint — visible on hover or when selected */}
+      <div className={`absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-forest/80 text-parchment/80 px-2.5 py-0.5 squircle-sm font-mono text-[9px] backdrop-blur-sm shadow-sm z-10 whitespace-nowrap transition-opacity duration-150 ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        <span>⌫ delete</span>
+        <span className="text-parchment/30">·</span>
+        <span>↑↓ navigate</span>
+      </div>
     </div>
   )
 }
@@ -810,14 +828,6 @@ export const BlockEditor = forwardRef<
     }
   }, [blocks, focusBlock, onChange])
 
-  if (readOnly) {
-    return (
-      <div>
-        {blocks.map(b => <BlockPreview key={b.id} block={b} />)}
-      </div>
-    )
-  }
-
   const insertAt = useCallback((idx: number) => {
     const nb = newBlock('paragraph')
     const next = [...blocks.slice(0, idx), nb, ...blocks.slice(idx)]
@@ -956,6 +966,14 @@ export const BlockEditor = forwardRef<
       }
     })
   }, [blocks, onChange, focusBlock])
+
+  if (readOnly) {
+    return (
+      <div>
+        {blocks.map(b => <BlockPreview key={b.id} block={b} />)}
+      </div>
+    )
+  }
 
   return (
     <div

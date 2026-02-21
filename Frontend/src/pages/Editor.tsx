@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
 import { useDocument, type BlockType } from '../hooks/useDocument'
@@ -59,6 +60,7 @@ function TDivider() {
 export default function Design1() {
   // ── State ────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write')
+  const [tabSwitched, setTabSwitched] = useState(false)
   const editorRef = useRef<BlockEditorHandle>(null)
   const pendingInsertRef = useRef<BlockType | null>(null)
   const [currentBlockType, setCurrentBlockType] = useState<BlockType>('paragraph')
@@ -66,7 +68,7 @@ export default function Design1() {
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
 
   // ── Document sync (Personal fork for demo user) ─────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow } = useDocument('cs-ua-310', 'demo')
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument('cs-ua-310', 'demo')
 
   // ── Master document (read-only) ─────────────────────────────────────────
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
@@ -81,6 +83,19 @@ export default function Design1() {
 
   // Save on unmount / tab switch
   useEffect(() => { return () => saveNow() }, [saveNow])
+
+  // Undo on Ctrl+Z / Cmd+Z (personal tab only)
+  // Use capture phase so we intercept before the browser's native contenteditable undo.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || activeTab !== 'write') return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [undo, redo, activeTab])
 
   // ── TOC: derive headings from active document ───────────────────────────────
   const headings = useMemo(() => {
@@ -130,6 +145,7 @@ export default function Design1() {
     if (activeTab !== 'write') {
       pendingInsertRef.current = type
       setActiveTab('write')
+      setTabSwitched(true)
     } else {
       editorRef.current?.insertBlock(type)
     }
@@ -145,7 +161,7 @@ export default function Design1() {
   }, [activeTab])
 
   return (
-    <div className="h-screen overflow-hidden bg-cream flex flex-col stagger">
+    <div className="h-screen overflow-hidden bg-cream flex flex-col">
       <Navbar variant="light" />
 
       <div className="flex flex-1 min-h-0">
@@ -153,9 +169,11 @@ export default function Design1() {
         {/* Main editor */}
         <main className="flex-1 flex flex-col min-w-0">
           {/* Toolbar */}
-          <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center gap-1 shrink-0">
+          <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center shrink-0 gap-0">
+            {/* Insert buttons — clips if viewport too narrow; right side is always visible */}
+            <div className="flex-1 min-w-0 overflow-hidden flex items-center gap-1">
             {/* Text type buttons — reflects and changes the focused block's type */}
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-0.5 shrink-0">
               <TTypeBtn active={currentBlockType === 'paragraph'} onClick={() => editorRef.current?.setCurrentType('paragraph')} title="Paragraph">
                 <span className="font-[family-name:var(--font-body)] text-[13px] leading-none">¶</span>
               </TTypeBtn>
@@ -204,140 +222,174 @@ export default function Design1() {
               <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[11px] text-forest/50">&#x2014;</span>
               <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Rule</span>
             </TBtn>
-
-            <div className="flex-1" />
-
-            {/* Save status */}
-            {activeTab === 'write' && (
-              <span className="font-[family-name:var(--font-body)] text-[10px] text-forest/35 mr-3 select-none">
-                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error saving' : ''}
+            <TBtn wide onClick={() => insertBlock('diagram')} title="Mermaid diagram">
+              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
               </span>
-            )}
+              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Diagram</span>
+            </TBtn>
+            </div>{/* end scrollable left */}
 
-            {/* Master / Personal tab switcher */}
-            <div className="flex border border-forest/15 squircle-sm overflow-hidden shrink-0">
-              <button onClick={() => setActiveTab('preview')} className={tabCls('preview')}>Master</button>
-              <button onClick={() => setActiveTab('write')} className={tabCls('write')}>Personal</button>
+            {/* Right side — always pinned, never pushed by insert buttons */}
+            <div className="shrink-0 flex items-center gap-2 pl-2">
+              {/* Save status — always rendered to hold space, invisible on master tab */}
+              <span
+                className="font-[family-name:var(--font-body)] text-[10px] text-forest/35 select-none shrink-0 w-0 whitespace-nowrap overflow-hidden text-right"
+                style={{ visibility: activeTab === 'write' ? 'visible' : 'hidden' }}
+              >
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : ''}
+              </span>
+
+              {/* Diff page link */}
+              <Link
+                to="/diff"
+                className="flex items-center gap-1.5 h-7 px-3 border border-forest/15 squircle-sm font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase text-forest/40 hover:text-forest/70 hover:border-forest/25 transition-all shrink-0"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4M4 17h12m0 0l-4-4m4 4l-4 4" />
+                </svg>
+                Diff
+              </Link>
+
+              {/* Master / Personal tab switcher — sliding indicator */}
+              <div className="relative flex h-7 border border-forest/15 squircle-sm overflow-hidden shrink-0">
+                {/* Sliding background pill */}
+                <span
+                  className="absolute inset-y-0 w-1/2 bg-forest transition-transform duration-200 ease-in-out"
+                  style={{ transform: activeTab === 'write' ? 'translateX(100%)' : 'translateX(0%)' }}
+                />
+                <button
+                  onClick={() => { setActiveTab('preview'); setTabSwitched(true) }}
+                  className="relative z-10 w-19 flex items-center justify-center font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-colors duration-200"
+                  style={{ color: activeTab === 'preview' ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
+                >Master</button>
+                <button
+                  onClick={() => { setActiveTab('write'); setTabSwitched(true) }}
+                  className="relative z-10 w-19 flex items-center justify-center font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-colors duration-200"
+                  style={{ color: activeTab === 'write' ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
+                >Personal</button>
+              </div>
             </div>
           </div>
 
           {/* Canvas — generous whitespace */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div ref={scrollRef} className="flex-1 overflow-y-scroll">
             <div className="max-w-3xl mx-auto py-10 px-10">
-              {activeTab === 'preview' ? (
-                <div>
-                  {/* Master document header */}
-                  <div className="mb-12">
-                    <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
-                      {masterDoc ? `${masterDoc.course} / ${masterDoc.professor} / ${masterDoc.semester} — MASTER` : 'Loading…'}
-                    </span>
-                    <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                      {masterDoc?.title ?? 'Master Notes'}
-                    </h1>
 
-                    {/* Decorative wave */}
-                    <svg className="w-32 mb-6" viewBox="0 0 200 20" fill="none">
-                      <path d="M0 10 C 16 2, 32 18, 48 10 C 64 2, 80 18, 96 10 C 112 2, 128 18, 144 10 C 160 2, 176 18, 200 10" stroke="#A3B18A" strokeWidth="1" opacity="0.3" strokeLinecap="round" />
-                    </svg>
+              {/* ── Master panel — always mounted, hidden when inactive ── */}
+              <div className={tabSwitched ? 'animate-tab-enter' : ''} style={{ display: activeTab === 'preview' ? 'block' : 'none' }}>
+                {/* Master document header */}
+                <div className="mb-12">
+                  <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
+                    {masterDoc ? `${masterDoc.course} / ${masterDoc.professor} / ${masterDoc.semester} — MASTER` : 'Loading…'}
+                  </span>
+                  <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
+                    {masterDoc?.title ?? 'Master Notes'}
+                  </h1>
 
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">{masterDoc?.version ?? '…'}</span>
-                      <span className="font-mono text-[10px] text-forest/30">47 contributors</span>
-                      <span className="text-forest/10">|</span>
-                      <span className="font-mono text-[10px] text-forest/30">Last merged 2h ago</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-4">
-                      {collaborators.map(c => (
-                        <div key={c.initials} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium text-parchment border-2 border-cream shadow-sm" style={{ backgroundColor: c.color }} title={c.name}>{c.initials}</div>
-                      ))}
-                      <span className="font-mono text-[10px] text-sage/60 ml-1">3 online</span>
-                    </div>
+                  {/* Decorative wave */}
+                  <svg className="w-32 mb-6" viewBox="0 0 200 20" fill="none">
+                    <path d="M0 10 C 16 2, 32 18, 48 10 C 64 2, 80 18, 96 10 C 112 2, 128 18, 144 10 C 160 2, 176 18, 200 10" stroke="#A3B18A" strokeWidth="1" opacity="0.3" strokeLinecap="round" />
+                  </svg>
+
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">{masterDoc?.version ?? '…'}</span>
+                    <span className="font-mono text-[10px] text-forest/30">47 contributors</span>
+                    <span className="text-forest/10">|</span>
+                    <span className="font-mono text-[10px] text-forest/30">Last merged 2h ago</span>
                   </div>
-
-                  {/* Read-only BlockEditor rendering actual master .md file */}
-                  {masterLoading ? (
-                    <div className="flex flex-col gap-5 animate-pulse">
-                      <div className="h-8 bg-forest/[0.05] squircle-xl w-2/3" />
-                      <div className="h-4 bg-forest/[0.04] squircle-xl w-full" />
-                      <div className="h-4 bg-forest/[0.04] squircle-xl w-5/6" />
-                      <div className="h-24 bg-parchment border border-forest/[0.06] squircle-xl w-full" />
-                    </div>
-                  ) : masterDoc ? (
-                    <BlockEditor
-                      blocks={masterDoc.blocks}
-                      onChange={() => {}}
-                      readOnly
-                    />
-                  ) : (
-                    <p className="font-mono text-[13px] text-forest/30 text-center py-16">Could not load master document.</p>
-                  )}
-                </div>
-              ) : (
-                /* ── Personal / editable view ────────────────────────────────── */
-                <div>
-                  {/* Document header */}
-                  <div className="mb-12">
-                    <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
-                      {doc ? `${doc.course} / ${doc.professor} / ${doc.semester} — PERSONAL` : 'Loading…'}
-                    </span>
-                    <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                      {doc?.title ?? 'My Notes'}
-                    </h1>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
-                        {doc?.version ?? '…'}
-                      </span>
-                      <span className="font-mono text-[10px] text-forest/30">Personal fork</span>
-                      <span className="text-forest/10">|</span>
-                      <span className={`font-mono text-[10px] transition-colors ${
-                        saveStatus === 'saved'   ? 'text-sage/50'   :
-                        saveStatus === 'saving'  ? 'text-amber-400' :
-                        saveStatus === 'unsaved' ? 'text-amber-500' :
-                                                   'text-sienna/50'
-                      }`}>
-                        {saveStatus === 'saved'   && '✓ Saved'}
-                        {saveStatus === 'saving'  && '⏳ Saving…'}
-                        {saveStatus === 'unsaved' && '● Unsaved'}
-                        {saveStatus === 'offline' && '⚡ Offline'}
-                      </span>
-                      {/* Submit for merge */}
-                      <button
-                        className="ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors"
-                        onClick={() => {
-                          saveNow()
-                          alert('Merge request submitted! The semantic merge engine will process your fork in the next merge cycle.')
-                        }}
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                        Submit for Merge
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-2 mt-4">
+                    {collaborators.map(c => (
+                      <div key={c.initials} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium text-parchment border-2 border-cream shadow-sm" style={{ backgroundColor: c.color }} title={c.name}>{c.initials}</div>
+                    ))}
+                    <span className="font-mono text-[10px] text-sage/60 ml-1">3 online</span>
                   </div>
-
-                  {/* ── Block editor ─────────────────────────────────────────── */}
-                  {loading ? (
-                    <div className="flex flex-col gap-5 animate-pulse">
-                      <div className="h-8 bg-forest/[0.05] squircle-xl w-2/3" />
-                      <div className="h-4 bg-forest/[0.04] squircle-xl w-full" />
-                      <div className="h-4 bg-forest/[0.04] squircle-xl w-5/6" />
-                      <div className="h-24 bg-parchment border border-forest/[0.06] squircle-xl w-full" />
-                      <div className="h-4 bg-forest/[0.04] squircle-xl w-3/4" />
-                    </div>
-                  ) : doc ? (
-                    <BlockEditor
-                      ref={editorRef}
-                      blocks={doc.blocks}
-                      onChange={updateBlocks}
-                      onFocusChange={type => setCurrentBlockType(type ?? 'paragraph')}
-                    />
-                  ) : (
-                    <div className="text-center py-16">
-                      <p className="font-mono text-[13px] text-forest/30">Could not load document.</p>
-                      <p className="font-mono text-[11px] text-forest/20 mt-2">Make sure the backend is running on port 3001.</p>
-                    </div>
-                  )}
                 </div>
-              )}
+
+                {/* Read-only BlockEditor rendering actual master .md file */}
+                {masterLoading ? (
+                  <div className="flex flex-col gap-5 animate-pulse">
+                    <div className="h-8 bg-forest/[0.05] squircle-xl w-2/3" />
+                    <div className="h-4 bg-forest/[0.04] squircle-xl w-full" />
+                    <div className="h-4 bg-forest/[0.04] squircle-xl w-5/6" />
+                    <div className="h-24 bg-parchment border border-forest/[0.06] squircle-xl w-full" />
+                  </div>
+                ) : masterDoc ? (
+                  <BlockEditor
+                    blocks={masterDoc.blocks}
+                    onChange={() => {}}
+                    readOnly
+                  />
+                ) : (
+                  <p className="font-mono text-[13px] text-forest/30 text-center py-16">Could not load master document.</p>
+                )}
+              </div>
+
+              {/* ── Personal panel — always mounted, hidden when inactive ── */}
+              <div className={tabSwitched ? 'animate-tab-enter' : ''} style={{ display: activeTab === 'write' ? 'block' : 'none' }}>
+                {/* Document header */}
+                <div className="mb-12">
+                  <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
+                    {doc ? `${doc.course} / ${doc.professor} / ${doc.semester} — PERSONAL` : 'Loading…'}
+                  </span>
+                  <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
+                    {doc?.title ?? 'My Notes'}
+                  </h1>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
+                      {doc?.version ?? '…'}
+                    </span>
+                    <span className="font-mono text-[10px] text-forest/30">Personal fork</span>
+                    <span className="text-forest/10">|</span>
+                    <span className={`font-mono text-[10px] transition-colors ${
+                      saveStatus === 'saved'   ? 'text-sage/50'   :
+                      saveStatus === 'saving'  ? 'text-amber-400' :
+                      saveStatus === 'unsaved' ? 'text-amber-500' :
+                                                 'text-sienna/50'
+                    }`}>
+                      {saveStatus === 'saved'   && '✓ Saved'}
+                      {saveStatus === 'saving'  && '⏅ Saving…'}
+                      {saveStatus === 'unsaved' && '● Unsaved'}
+                      {saveStatus === 'offline' && '⚡ Offline'}
+                    </span>
+                    {/* Submit for merge */}
+                    <button
+                      className="ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors"
+                      onClick={() => {
+                        saveNow()
+                        alert('Merge request submitted! The semantic merge engine will process your fork in the next merge cycle.')
+                      }}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      Submit for Merge
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Block editor ─────────────────────────────────────────── */}
+                {loading ? (
+                  <div className="flex flex-col gap-5 animate-pulse">
+                    <div className="h-8 bg-forest/[0.05] squircle-xl w-2/3" />
+                    <div className="h-4 bg-forest/[0.04] squircle-xl w-full" />
+                    <div className="h-4 bg-forest/[0.04] squircle-xl w-5/6" />
+                    <div className="h-24 bg-parchment border border-forest/[0.06] squircle-xl w-full" />
+                    <div className="h-4 bg-forest/[0.04] squircle-xl w-3/4" />
+                  </div>
+                ) : doc ? (
+                  <BlockEditor
+                    ref={editorRef}
+                    blocks={doc.blocks}
+                    onChange={updateBlocks}
+                    onFocusChange={type => setCurrentBlockType(type ?? 'paragraph')}
+                  />
+                ) : (
+                  <div className="text-center py-16">
+                    <p className="font-mono text-[13px] text-forest/30">Could not load document.</p>
+                    <p className="font-mono text-[11px] text-forest/20 mt-2">Make sure the backend is running on port 3001.</p>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
 

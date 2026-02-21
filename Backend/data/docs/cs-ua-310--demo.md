@@ -9,10 +9,10 @@ semester: "Spring 2026"
 version: "3.2.1+personal"
 tags: ["algorithms", "personal"]
 createdAt: "2026-02-21T03:15:24.424Z"
-updatedAt: "2026-02-21T09:34:55.068751+00:00"
+updatedAt: "2026-02-21T11:08:44.089330+00:00"
 ---
 
-# Intro to Algorithms — My Notes
+# Intro to Algorithm
 
 This document showcases every block type Nootes supports — from plain text and headings to rendered LaTeX, live code, chemistry equations, tables, and callout boxes.
 
@@ -22,15 +22,15 @@ This document showcases every block type Nootes supports — from plain text and
 
 ## The Chain Rule
 
-The chain rule is all about composites — "outside-inside." Apply the outer derivative first, then multiply by the inner derivative.
+The chain rule is all about composites — "outside-inside." Apply the outer derivative first, then multiply by the inner derivative. adfa
 
 $$
 \frac{d}{dx}\bigl[f(g(x))\bigr] = f'(g(x)) \cdot g'(x)
 $$
 
-### Example: Differentiating a Composite
+### Example: Differentiating a Composite score
 
-Differentiate sin(x²): outer is sin, inner is x².
+derivative of smth here idk what XD
 
 $$
 \frac{d}{dx}\bigl[\sin(x^2)\bigr] = \cos(x^2) \cdot 2x
@@ -50,7 +50,7 @@ Key insight: we get cos(x²) — the outer derivative evaluated AT the inner fun
 
 ## Binary Search
 
-Binary search only works on sorted arrays. The invariant: target is always within [low, high] if it exists.
+Binary search only works on sorted arrays. The invariant: target is always within [low, high] if it exists. 
 
 $$
 T(n) = T\!\left(\frac{n}{2}\right) + O(1) \implies T(n) = O(\log n)
@@ -143,4 +143,18 @@ def goon():
 	hello
 ```
 
+## Algorithm Diagrams
 
+:::diagram caption="Binary Search Flow"
+flowchart TD
+    A([Start]) --> B[Set low = 0, high = n-1]
+    B --> C{low <= high?}
+    C -- No --> D([Return -1])
+    C -- Yes --> E["mid = ⌊(low + high) / 2⌋"]
+    E --> F{"arr[mid] == target?"}
+    F -- Yes --> G([Return mid])
+    F -- Less --> H[low = mid + 1]
+    F -- Greater --> I[high = mid - 1]
+    H --> C
+    I --> C
+:::
