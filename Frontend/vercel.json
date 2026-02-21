@@ -2,7 +2,16 @@
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
   "rewrites": [
+<<<<<<< HEAD
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
 
+=======
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+>>>>>>> e5eb3dd (add vercel.json)
