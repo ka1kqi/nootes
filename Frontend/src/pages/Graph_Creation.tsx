@@ -7,8 +7,8 @@ import rehypeKatex from 'rehype-katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import 'katex/dist/katex.min.css'
 import { motion, AnimatePresence } from 'framer-motion'
-import rawPrompt from '../../../gpt_prompt.txt?raw'
-import rawSimplePrompt from '../../../gpt_prompt_simple.txt?raw'
+import rawPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
+import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 // TODO: proxy through VITE_API_URL once backend /api/prompt endpoint is live

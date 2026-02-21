@@ -70,7 +70,7 @@ export function CodeBlock({
   const lineNumColor = theme === 'dark' ? 'text-sage/30' : 'text-forest/20'
 
   return (
-    <div className="my-6 squircle overflow-hidden">
+    <div className="my-2 squircle overflow-hidden">
       <div className={`flex items-center justify-between ${bgHeader} px-4 py-2.5`}>
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
@@ -80,7 +80,7 @@ export function CodeBlock({
           </div>
           <span className={`font-mono text-xs ${theme === 'dark' ? 'text-sage' : 'text-forest/60'}`}>{filename || language}</span>
         </div>
-        <button onClick={handleCopy} className="font-mono text-xs text-parchment/50 hover:text-parchment transition-colors">
+        <button onClick={e => { e.stopPropagation(); handleCopy() }} className="font-mono text-xs text-parchment/50 hover:text-parchment transition-colors">
           {copied ? 'copied!' : 'copy'}
         </button>
       </div>

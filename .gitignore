@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# github
+/.github
+
 # dependencies
 /node_modules
 /.pnp
@@ -45,6 +48,8 @@ CLAUDE.md
 
 # supabase
 supabase/
+
+Frontend/dist
 
 nootes
 notes

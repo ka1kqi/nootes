@@ -518,7 +518,7 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
         fitView
         fitViewOptions={{ padding: 0.18 }}
         style={{ background: 'transparent' }}
-        minZoom={0.08}
+        minZoom={0.5}
         maxZoom={2.5}
       >
         <Background variant={BackgroundVariant.Dots} gap={28} size={1.2} color="rgba(38,70,53,0.1)" />
