@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
+import { blocksToMarkdown, markdownToBlocks } from '../lib/markdown'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,7 +57,6 @@ export function newBlock(type: BlockType): Block {
   }
 }
 
-const API = 'http://localhost:3001/api'
 const DEBOUNCE_MS = 1200
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -69,53 +70,105 @@ export function useDocument(repoId: string, userId: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const docRef = useRef<Document | null>(null)
 
-  // Undo history: stack of block snapshots, pointer at current position
+  // Undo history
   const historyRef = useRef<Block[][]>([])
   const historyIndexRef = useRef<number>(-1)
 
-  // Fetch on mount
+  // Fetch from Supabase on mount
   useEffect(() => {
+    if (!userId) return
+
+    let cancelled = false
     setLoading(true)
-    fetch(`${API}/repos/${repoId}/personal/${userId}`)
-      .then(r => r.json())
-      .then(({ data }) => {
-        setDoc(data)
-        docRef.current = data
-        // Seed history with the loaded state
-        historyRef.current = [data.blocks]
+
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('documents')
+          .select('*')
+          .eq('repo_id', repoId)
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (cancelled) return
+        if (error) throw error
+
+        let loaded: Document
+        if (data) {
+          const blocks = data.content ? markdownToBlocks(data.content) : [newBlock('paragraph')]
+          loaded = {
+            id: data.id,
+            repoId: data.repo_id,
+            userId: data.user_id,
+            title: data.title || 'My Notes',
+            version: data.version,
+            tags: data.tags,
+            blocks,
+            updatedAt: data.updated_at,
+          }
+        } else {
+          // First time — create an in-memory empty doc; it will be upserted on first save
+          loaded = {
+            id: crypto.randomUUID(),
+            repoId,
+            userId,
+            title: 'My Notes',
+            version: '1.0.0',
+            tags: [],
+            blocks: [newBlock('paragraph')],
+            updatedAt: new Date().toISOString(),
+          }
+        }
+
+        setDoc(loaded)
+        docRef.current = loaded
+        historyRef.current = [loaded.blocks]
         historyIndexRef.current = 0
-      })
-      .catch(() => {
-        // Offline fallback — empty doc
+      } catch {
+        if (cancelled) return
+        // Offline / network fallback
         const fallback: Document = {
           id: crypto.randomUUID(),
           repoId,
           userId,
           title: 'My Notes (offline)',
-          blocks: [{ id: crypto.randomUUID(), type: 'paragraph', content: '' }],
+          blocks: [newBlock('paragraph')],
           updatedAt: new Date().toISOString(),
         }
         setDoc(fallback)
         docRef.current = fallback
         historyRef.current = [fallback.blocks]
         historyIndexRef.current = 0
-      })
-      .finally(() => setLoading(false))
+        setSaveStatus('offline')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [repoId, userId])
 
-  // Persist blocks to backend
+  // Persist to Supabase
   const persist = useCallback(async (blocks: Block[]) => {
-    if (!docRef.current) return
+    if (!docRef.current || !userId) return
     setSaveStatus('saving')
     try {
-      const res = await fetch(`${API}/repos/${repoId}/personal/${userId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocks }),
-      })
-      if (!res.ok) throw new Error('Save failed')
-      const { data } = await res.json()
-      docRef.current = data
+      const markdown = blocksToMarkdown(blocks)
+      const { error } = await supabase
+        .from('documents')
+        .upsert(
+          {
+            repo_id: repoId,
+            user_id: userId,
+            title: docRef.current.title || 'My Notes',
+            content: markdown,
+            version: docRef.current.version ?? '1.0.0',
+            tags: docRef.current.tags ?? [],
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'repo_id,user_id' },
+        )
+      if (error) throw error
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 1500)
     } catch {
@@ -126,7 +179,6 @@ export function useDocument(repoId: string, userId: string) {
   // Debounced update called by editor
   const updateBlocks = useCallback((blocks: Block[]) => {
     setDoc(prev => prev ? { ...prev, blocks } : prev)
-    // Push to history, discarding any redo states, cap at 500 entries
     const truncated = historyRef.current.slice(0, historyIndexRef.current + 1)
     historyRef.current = [...truncated, blocks].slice(-500)
     historyIndexRef.current = historyRef.current.length - 1
@@ -137,7 +189,7 @@ export function useDocument(repoId: string, userId: string) {
     }, DEBOUNCE_MS)
   }, [persist])
 
-  // Step back one history entry
+  // Undo
   const undo = useCallback(() => {
     if (historyIndexRef.current <= 0) return
     historyIndexRef.current -= 1
@@ -150,7 +202,7 @@ export function useDocument(repoId: string, userId: string) {
     }, DEBOUNCE_MS)
   }, [persist])
 
-  // Step forward one history entry
+  // Redo
   const redo = useCallback(() => {
     if (historyIndexRef.current >= historyRef.current.length - 1) return
     historyIndexRef.current += 1

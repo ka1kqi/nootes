@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
 import { useDocument, type BlockType } from '../hooks/useDocument'
+import { useAuth } from '../hooks/useAuth'
 
 /* ------------------------------------------------------------------ */
 /* Design 1 — "The Zen Canvas" (refined)                              */
@@ -67,8 +68,11 @@ export default function Design1() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
 
-  // ── Document sync (Personal fork for demo user) ─────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument('cs-ua-310', 'demo')
+  // ── Auth ────────────────────────────────────────────────────────────────
+  const { user } = useAuth()
+
+  // ── Document sync (Personal fork) ───────────────────────────────────────
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument('cs-ua-310', user?.id ?? '')
 
   // ── Master document (read-only) ─────────────────────────────────────────
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)

@@ -93,6 +93,18 @@ export interface Repository {
   updated_at: string
 }
 
+export interface SupabaseDocument {
+  id: string
+  repo_id: string
+  user_id: string
+  title: string
+  content: string     // raw markdown text
+  version: string
+  tags: string[]
+  created_at: string
+  updated_at: string
+}
+
 export interface RepositoryContributor {
   repo_id: string
   user_id: string
