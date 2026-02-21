@@ -9,7 +9,7 @@ export function blocksToMarkdown(blocks: Block[]): string {
         case 'h1':        return `# ${b.content}`
         case 'h2':        return `## ${b.content}`
         case 'h3':        return `### ${b.content}`
-        case 'paragraph': return b.content
+        case 'paragraph': return b.content || '<!-- empty -->'
         case 'quote':     return `> ${b.content}`
         case 'divider':   return `---`
         case 'latex':     return `$$\n${b.content}\n$$`
@@ -57,6 +57,16 @@ export function markdownToBlocks(md: string): Block[] {
 
   while (i < lines.length) {
     const line = lines[i]
+
+    // ── Empty paragraph marker ─────────────────────────────────────────────────
+    if (line.trim() === '<!-- empty -->') {
+      flushPara()
+      const b = newBlock('paragraph')
+      b.content = ''
+      blocks.push(b)
+      i++
+      continue
+    }
 
     // ── Fenced code block ──────────────────────────────────────────────────────
     if (line.startsWith('```')) {

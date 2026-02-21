@@ -57,18 +57,26 @@ function getGreeting(firstName: string): string {
 
 const quickActions = [
   {
+<<<<<<< HEAD
+=======
+    label: 'New Noot',
+>>>>>>> c26c2f9 (updates)
     desc: 'Open the editor',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
       </svg>
     ),
-    to: '/editor',
+    to: '/editor/scratch',
     accent: 'bg-forest text-parchment',
   },
   {
     label: 'Browse Nootbooks',
+<<<<<<< HEAD
     desc: 'Find class nootes',
+=======
+    desc: 'Find class noots',
+>>>>>>> c26c2f9 (updates)
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -79,7 +87,11 @@ const quickActions = [
   },
   {
     label: 'My Nootbooks',
+<<<<<<< HEAD
     desc: 'Manage your nootes',
+=======
+    desc: 'Manage your noots',
+>>>>>>> c26c2f9 (updates)
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 3L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
@@ -90,7 +102,11 @@ const quickActions = [
   },
   {
     label: 'AI Chat',
+<<<<<<< HEAD
     desc: 'Ask about your nootes',
+=======
+    desc: 'Ask about your noots',
+>>>>>>> c26c2f9 (updates)
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
@@ -242,14 +258,18 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-0.5">FEATURED</span>
+<<<<<<< HEAD
                     <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Top Noote Today</h2>
+=======
+                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Top Noot Today</h2>
+>>>>>>> c26c2f9 (updates)
                   </div>
                   <Link to="/repos" className="font-mono text-[10px] text-forest/30 hover:text-forest transition-colors">
                     browse all →
                   </Link>
                 </div>
                 <Link
-                  to="/editor"
+                  to="/editor/scratch"
                   className="group block bg-parchment border border-forest/10 squircle-xl p-7 hover:shadow-[0_6px_32px_-8px_rgba(38,70,53,0.1)] hover:border-forest/20 transition-all"
                 >
                   <div className="flex items-start justify-between mb-4">
@@ -309,7 +329,11 @@ export default function Home() {
                       <div className="flex items-center gap-5 shrink-0">
                         <div className="text-center hidden sm:block">
                           <span className="font-[family-name:var(--font-display)] text-lg text-forest/70 block">{repo.notes}</span>
+<<<<<<< HEAD
                           <span className="font-mono text-[9px] text-forest/25 uppercase">nootes</span>
+=======
+                          <span className="font-mono text-[9px] text-forest/25 uppercase">noots</span>
+>>>>>>> c26c2f9 (updates)
                         </div>
                         <div className="text-center hidden sm:block">
                           <span className="font-[family-name:var(--font-display)] text-lg text-forest/70 block">{repo.contributors}</span>

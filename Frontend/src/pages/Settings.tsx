@@ -22,13 +22,11 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full border-2 transition-all cursor-pointer ${
-        checked ? 'bg-sage border-sage' : 'bg-transparent border-forest/20'
-      }`}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full border-2 transition-all cursor-pointer ${checked ? 'bg-sage border-sage' : 'bg-transparent border-forest/20'
+        }`}
     >
-      <span className={`inline-block h-3 w-3 rounded-full transition-transform ${
-        checked ? 'translate-x-4 bg-parchment' : 'translate-x-0.5 bg-forest/25'
-      }`} />
+      <span className={`inline-block h-3 w-3 rounded-full transition-transform ${checked ? 'translate-x-4 bg-parchment' : 'translate-x-0.5 bg-forest/25'
+        }`} />
     </button>
   )
 }
@@ -104,13 +102,12 @@ export default function Settings() {
                 <button
                   key={s.id}
                   onClick={() => setActiveSection(s.id)}
-                  className={`flex items-center gap-3 px-3 py-2.5 squircle-sm text-left transition-all cursor-pointer ${
-                    activeSection === s.id
+                  className={`flex items-center gap-3 px-3 py-2.5 squircle-sm text-left transition-all cursor-pointer ${activeSection === s.id
                       ? 'bg-forest text-parchment'
                       : s.id === 'danger'
-                      ? 'text-rust/60 hover:bg-rust/[0.06] hover:text-rust'
-                      : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05]'
-                  }`}
+                        ? 'text-rust/60 hover:bg-rust/[0.06] hover:text-rust'
+                        : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05]'
+                    }`}
                 >
                   <span className="text-[11px] opacity-70">{s.icon}</span>
                   <span className="font-[family-name:var(--font-body)] text-xs font-medium">{s.label}</span>
@@ -200,11 +197,10 @@ export default function Settings() {
                         <button
                           key={t}
                           onClick={() => setTheme(t)}
-                          className={`font-mono text-[10px] px-4 py-2 squircle-sm border transition-all capitalize cursor-pointer ${
-                            theme === t
+                          className={`font-mono text-[10px] px-4 py-2 squircle-sm border transition-all capitalize cursor-pointer ${theme === t
                               ? 'bg-forest text-parchment border-forest'
                               : 'border-forest/15 text-forest/40 hover:border-forest/30 hover:text-forest'
-                          }`}
+                            }`}
                         >
                           {t}
                         </button>
@@ -218,11 +214,10 @@ export default function Settings() {
                         <button
                           key={val}
                           onClick={() => setFontScale(val)}
-                          className={`font-mono text-[10px] px-4 py-2 squircle-sm border transition-all cursor-pointer ${
-                            fontScale === val
+                          className={`font-mono text-[10px] px-4 py-2 squircle-sm border transition-all cursor-pointer ${fontScale === val
                               ? 'bg-forest text-parchment border-forest'
                               : 'border-forest/15 text-forest/40 hover:border-forest/30 hover:text-forest'
-                          }`}
+                            }`}
                         >
                           {label}
                         </button>
@@ -241,16 +236,16 @@ export default function Settings() {
               {/* Notifications */}
               {activeSection === 'notifications' && (
                 <SectionCard title="Notifications">
-                  <SettingRow label="Merge activity" description="When someone merges into your nootes">
+                  <SettingRow label="Merge activity" description="When someone merges into your noots">
                     <Toggle checked={notifyMerges} onChange={setNotifyMerges} />
                   </SettingRow>
-                  <SettingRow label="Comments" description="When someone comments on your nootes">
+                  <SettingRow label="Comments" description="When someone comments on your noots">
                     <Toggle checked={notifyComments} onChange={setNotifyComments} />
                   </SettingRow>
                   <SettingRow label="Aura milestones" description="Celebrate aura point milestones">
                     <Toggle checked={notifyAura} onChange={setNotifyAura} />
                   </SettingRow>
-                  <SettingRow label="Weekly digest" description="Summary of your noote activity">
+                  <SettingRow label="Weekly digest" description="Summary of your noot activity">
                     <Toggle checked={notifyDigest} onChange={setNotifyDigest} />
                   </SettingRow>
                   <SettingRow label="Email notifications" description="Send notifications to your university email">
@@ -268,7 +263,7 @@ export default function Settings() {
                   <SettingRow label="Activity visible" description="Show your contribution graph publicly">
                     <Toggle checked={activityVisible} onChange={setActivityVisible} />
                   </SettingRow>
-                  <SettingRow label="Public repos by default" description="New nootbooks are public unless changed">
+                  <SettingRow label="Public nootbooks by default" description="New nootbooks are public unless changed">
                     <Toggle checked={reposPublicDefault} onChange={setReposPublicDefault} />
                   </SettingRow>
                   <SettingRow label="Show aura score" description="Display your aura points on your profile">
@@ -285,7 +280,7 @@ export default function Settings() {
                     {[
                       {
                         label: 'Export all data',
-                        description: 'Download a copy of all your nootes, nootbooks, and account data.',
+                        description: 'Download a copy of all your noots, nootbooks, and account data.',
                         action: 'Export',
                         style: 'border border-forest/15 text-forest/50 hover:border-forest/30 hover:text-forest',
                       },

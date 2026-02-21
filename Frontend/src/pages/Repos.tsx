@@ -161,7 +161,7 @@ export default function Repos() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">BROWSE</span>
           <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Nootbooks</h1>
           <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/50 max-w-lg">
-            Explore class nootes across universities. Fork, contribute, and build the best study resources together.
+            Explore class notes across universities. Fork, contribute, and build the best study resources together.
           </p>
 
           {/* Search + filter bar */}
@@ -180,11 +180,10 @@ export default function Repos() {
               {universities.map(u => (
                 <button
                   key={u}
-                  className={`font-mono text-[11px] px-3 py-2 squircle-sm transition-all ${
-                    u === 'All'
-                      ? 'bg-forest text-parchment'
-                      : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05] border border-forest/10'
-                  }`}
+                  className={`font-mono text-[11px] px-3 py-2 squircle-sm transition-all ${u === 'All'
+                    ? 'bg-forest text-parchment'
+                    : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05] border border-forest/10'
+                    }`}
                 >
                   {u}
                 </button>
@@ -199,7 +198,8 @@ export default function Repos() {
             {repos.map(repo => (
               <Link
                 key={repo.id}
-                to="/editor"
+                to={`/editor/${repo.id}`}
+                state={{ name: repo.name, code: repo.code, university: repo.university, dept: repo.dept, description: repo.description }}
                 className="group bg-parchment border border-forest/10 squircle-xl p-6 hover:shadow-[0_4px_32px_-8px_rgba(38,70,53,0.1)] transition-all hover:border-forest/20"
               >
                 {/* Header row */}
@@ -238,7 +238,7 @@ export default function Repos() {
                   </div>
                   <div className="flex items-center gap-1 text-forest/30">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-                    <span className="font-mono text-[10px]">{repo.notes} nootes</span>
+                    <span className="font-mono text-[10px]">{repo.notes} noots</span>
                   </div>
                   <div className="flex items-center gap-1 text-forest/30">
                     <BranchIcon />

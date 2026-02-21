@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -25,7 +25,8 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/" element={<Landing />} />
           <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/editor" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
+          <Route path="/editor" element={<Navigate to="/repos" replace />} />
+          <Route path="/editor/:repoId" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
           <Route path="/repos" element={<Repos />} />
           <Route path="/my-repos" element={<ProtectedRoute><MyRepos /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

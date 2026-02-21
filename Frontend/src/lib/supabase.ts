@@ -98,7 +98,7 @@ export interface SupabaseDocument {
   repo_id: string
   user_id: string
   title: string
-  content: string     // raw markdown text
+  // content is stored in Supabase Storage bucket "documents", path: {userId}/{repoId}.md
   version: string
   tags: string[]
   created_at: string

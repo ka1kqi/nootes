@@ -73,13 +73,17 @@ create table if not exists documents (
   repo_id      text        not null references repositories(id) on delete cascade,
   user_id      uuid        references auth.users(id) on delete cascade,
   title        text        not null default '',
-  content      text        not null default '',
+  -- content is stored as a .md file in Supabase Storage bucket "documents"
+  -- path: {userId}/{repoId}.md
   version      text        not null default '1.0.0',
   tags         text[]      not null default '{}',
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (repo_id, user_id)
 );
+
+-- Migration: run this in the Supabase SQL editor if upgrading from the old schema
+-- ALTER TABLE documents DROP COLUMN IF EXISTS content;
 
 create table if not exists document_versions (
   id              uuid        primary key default gen_random_uuid(),
@@ -183,3 +187,153 @@ alter publication supabase_realtime add table channels;
 alter publication supabase_realtime add table messages;
 alter publication supabase_realtime add table reactions;
 alter publication supabase_realtime add table channel_members;
+
+-- Allow authenticated users to read/write only their own folder
+CREATE POLICY "Users manage own docs"
+ON storage.objects FOR ALL TO authenticated
+USING  (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text)
+WITH CHECK (bucket_id = 'documents' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================
+-- Row Level Security (RLS)
+-- Enable RLS on every table and grant appropriate access.
+-- Run the entire block in the Supabase SQL editor.
+-- ============================================================
+
+-- profiles ------------------------------------------------
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Any signed-in user can read any profile (needed for contributor cards, chat avatars, etc.)
+CREATE POLICY "profiles: authenticated users can read all"
+  ON profiles FOR SELECT TO authenticated USING (true);
+
+-- Users can only create / update their own profile row
+CREATE POLICY "profiles: users insert own"
+  ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid());
+
+CREATE POLICY "profiles: users update own"
+  ON profiles FOR UPDATE TO authenticated
+  USING (id = auth.uid()) WITH CHECK (id = auth.uid());
+
+-- channels ------------------------------------------------
+ALTER TABLE channels ENABLE ROW LEVEL SECURITY;
+
+-- All signed-in users can read channels (needed for chat sidebar)
+CREATE POLICY "channels: authenticated users can read all"
+  ON channels FOR SELECT TO authenticated USING (true);
+
+-- Any signed-in user can create a channel
+CREATE POLICY "channels: authenticated users can insert"
+  ON channels FOR INSERT TO authenticated WITH CHECK (true);
+
+-- Only the creator can edit / delete their channel
+CREATE POLICY "channels: creators can update"
+  ON channels FOR UPDATE TO authenticated USING (created_by = auth.uid());
+
+CREATE POLICY "channels: creators can delete"
+  ON channels FOR DELETE TO authenticated USING (created_by = auth.uid());
+
+-- channel_members -----------------------------------------
+ALTER TABLE channel_members ENABLE ROW LEVEL SECURITY;
+
+-- Any signed-in user can see who is in a channel
+CREATE POLICY "channel_members: authenticated users can read all"
+  ON channel_members FOR SELECT TO authenticated USING (true);
+
+-- Users can only join / leave for themselves
+CREATE POLICY "channel_members: users manage own membership"
+  ON channel_members FOR ALL TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- messages ------------------------------------------------
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+-- Any signed-in user can read messages in any channel
+CREATE POLICY "messages: authenticated users can read all"
+  ON messages FOR SELECT TO authenticated USING (true);
+
+-- Users can only post / edit / delete their own messages
+CREATE POLICY "messages: users insert own"
+  ON messages FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "messages: users update own"
+  ON messages FOR UPDATE TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "messages: users delete own"
+  ON messages FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- reactions -----------------------------------------------
+ALTER TABLE reactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "reactions: authenticated users can read all"
+  ON reactions FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "reactions: users insert own"
+  ON reactions FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "reactions: users delete own"
+  ON reactions FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- repositories --------------------------------------------
+ALTER TABLE repositories ENABLE ROW LEVEL SECURITY;
+
+-- All signed-in users can read all repositories
+-- (class repos are public by default; keeping SELECT open simplifies contributor JOINs)
+CREATE POLICY "repositories: authenticated users can read all"
+  ON repositories FOR SELECT TO authenticated USING (true);
+
+-- Any signed-in user can create a repository
+CREATE POLICY "repositories: authenticated users can insert"
+  ON repositories FOR INSERT TO authenticated WITH CHECK (created_by = auth.uid());
+
+-- Only the creator can update / delete a repository
+CREATE POLICY "repositories: owners can update"
+  ON repositories FOR UPDATE TO authenticated
+  USING (created_by = auth.uid()) WITH CHECK (created_by = auth.uid());
+
+CREATE POLICY "repositories: owners can delete"
+  ON repositories FOR DELETE TO authenticated USING (created_by = auth.uid());
+
+-- documents -----------------------------------------------
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access their own document metadata rows
+CREATE POLICY "documents: users manage own"
+  ON documents FOR ALL TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- document_versions ---------------------------------------
+ALTER TABLE document_versions ENABLE ROW LEVEL SECURITY;
+
+-- Any signed-in user can read version history
+CREATE POLICY "document_versions: authenticated users can read all"
+  ON document_versions FOR SELECT TO authenticated USING (true);
+
+-- Any signed-in user can snapshot a version (merge workflow)
+CREATE POLICY "document_versions: authenticated users can insert"
+  ON document_versions FOR INSERT TO authenticated WITH CHECK (true);
+
+-- repository_contributors ---------------------------------
+ALTER TABLE repository_contributors ENABLE ROW LEVEL SECURITY;
+
+-- Any signed-in user can see contributors (needed for stats, cards, Repos page)
+CREATE POLICY "repository_contributors: authenticated users can read all"
+  ON repository_contributors FOR SELECT TO authenticated USING (true);
+
+-- Users can only insert / update / delete their own contributor row
+CREATE POLICY "repository_contributors: users manage own"
+  ON repository_contributors FOR ALL TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- merge_requests ------------------------------------------
+ALTER TABLE merge_requests ENABLE ROW LEVEL SECURITY;
+
+-- Any signed-in user can read merge requests (to review diffs)
+CREATE POLICY "merge_requests: authenticated users can read all"
+  ON merge_requests FOR SELECT TO authenticated USING (true);
+
+-- Users can only create / edit / delete their own merge requests
+CREATE POLICY "merge_requests: users manage own"
+  ON merge_requests FOR ALL TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());

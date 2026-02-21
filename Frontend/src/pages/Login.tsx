@@ -167,7 +167,11 @@ export default function Login() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">WELCOME BACK</span>
           <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest mb-2 leading-tight">Sign in</h1>
           <p className="font-[family-name:var(--font-body)] text-sm text-forest/45 mb-10">
+<<<<<<< HEAD
             Pick up where you left off — your nootes are waiting.
+=======
+            Pick up where you left off — your noots are waiting.
+>>>>>>> c26c2f9 (updates)
           </p>
 
           {/* Google Sign-In button */}

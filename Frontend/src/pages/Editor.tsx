@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
 import { useDocument, type BlockType } from '../hooks/useDocument'
@@ -41,11 +41,10 @@ function TTypeBtn({ active, onClick, title, children }: { active: boolean; onCli
       title={title}
       onClick={onClick}
       onMouseDown={e => e.preventDefault()}
-      className={`h-8 px-2 flex items-center justify-center squircle-sm transition-all shrink-0 ${
-        active
+      className={`h-8 px-2 flex items-center justify-center squircle-sm transition-all shrink-0 ${active
           ? 'bg-forest/[0.08] text-forest ring-1 ring-inset ring-forest/20'
           : 'text-forest/40 hover:text-forest/70 hover:bg-forest/[0.04]'
-      }`}
+        }`}
     >
       {children}
     </button>
@@ -68,24 +67,27 @@ export default function Design1() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
 
-  // ── Auth ────────────────────────────────────────────────────────────────
+  // ── Auth + routing ───────────────────────────────────────────────────────
   const { user } = useAuth()
+  const { repoId = '' } = useParams<{ repoId: string }>()
+  const location = useLocation()
+  const repoMeta = location.state as { name?: string; code?: string; university?: string; dept?: string; description?: string } | null
 
-  // ── Document sync (Personal fork) ───────────────────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument('cs-ua-310', user?.id ?? '')
+  // ── Document sync (Personal fork for this repo) ──────────────────────────
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument(repoId, user?.id ?? '')
 
   // ── Master document (read-only) ─────────────────────────────────────────
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
   const [masterLoading, setMasterLoading] = useState(true)
   useEffect(() => {
-    fetch('http://localhost:3001/api/repos/cs-ua-310/master')
+    fetch(`http://localhost:3001/api/repos/${repoId}/master`)
       .then(r => r.json())
       .then(({ data }) => setMasterDoc(data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setMasterLoading(false))
   }, [])
 
-  // Save on unmount / tab switch
+  // Flush any pending save on SPA navigation (tab-hide is handled inside useDocument)
   useEffect(() => { return () => saveNow() }, [saveNow])
 
   // Undo on Ctrl+Z / Cmd+Z (personal tab only)
@@ -136,11 +138,6 @@ export default function Design1() {
     scrollEl.scrollBy({ top: elTop - 24, behavior: 'smooth' })
   }, [])
 
-  const tabCls = (tab: 'write' | 'preview') =>
-    `px-3 py-1 font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-all ${
-      activeTab === tab ? 'bg-forest text-parchment' : 'text-forest/40 hover:text-forest/70'
-    }`
-
   // ── Insert block via toolbar ──────────────────────────────────────────────
   // If the write tab is already active, insert immediately.
   // If we're on the master preview tab, stash the type and switch tabs —
@@ -176,62 +173,62 @@ export default function Design1() {
           <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center shrink-0 gap-0">
             {/* Insert buttons — clips if viewport too narrow; right side is always visible */}
             <div className="flex-1 min-w-0 overflow-hidden flex items-center gap-1">
-            {/* Text type buttons — reflects and changes the focused block's type */}
-            <div className="flex items-center gap-0.5 shrink-0">
-              <TTypeBtn active={currentBlockType === 'paragraph'} onClick={() => editorRef.current?.setCurrentType('paragraph')} title="Paragraph">
-                <span className="font-[family-name:var(--font-body)] text-[13px] leading-none">¶</span>
-              </TTypeBtn>
-              <TTypeBtn active={currentBlockType === 'h1'} onClick={() => editorRef.current?.setCurrentType('h1')} title="Heading 1">
-                <span className="font-[family-name:var(--font-body)] text-[11px] font-bold leading-none tracking-tight">H<span className="text-[8px] align-sub">1</span></span>
-              </TTypeBtn>
-              <TTypeBtn active={currentBlockType === 'h2'} onClick={() => editorRef.current?.setCurrentType('h2')} title="Heading 2">
-                <span className="font-[family-name:var(--font-body)] text-[11px] font-semibold leading-none tracking-tight">H<span className="text-[8px] align-sub">2</span></span>
-              </TTypeBtn>
-              <TTypeBtn active={currentBlockType === 'h3'} onClick={() => editorRef.current?.setCurrentType('h3')} title="Heading 3">
-                <span className="font-[family-name:var(--font-body)] text-[11px] font-medium leading-none tracking-tight">H<span className="text-[8px] align-sub">3</span></span>
-              </TTypeBtn>
-              <TTypeBtn active={currentBlockType === 'quote'} onClick={() => editorRef.current?.setCurrentType('quote')} title="Quote">
-                <span className="font-[family-name:var(--font-body)] text-[15px] leading-none">"</span>
-              </TTypeBtn>
-            </div>
-            <TDivider />
-            {/* Rich / special blocks — icon chip + label */}
-            <TBtn wide onClick={() => insertBlock('latex')} title="LaTeX equation (Σ)">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[9px] text-forest/50">Σ</span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">LaTeX</span>
-            </TBtn>
-            <TBtn wide onClick={() => insertBlock('code')} title="Code block">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
-              </span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Code</span>
-            </TBtn>
-            <TBtn wide onClick={() => insertBlock('chemistry')} title="Chemical equation">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[9px] text-forest/50">⚗</span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Chem</span>
-            </TBtn>
-            <TBtn wide onClick={() => insertBlock('table')} title="Table (CSV)">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" /></svg>
-              </span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Table</span>
-            </TBtn>
-            <TBtn wide onClick={() => insertBlock('callout')} title="Callout box">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
-              </span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Callout</span>
-            </TBtn>
-            <TBtn wide onClick={() => insertBlock('divider')} title="Horizontal divider">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[11px] text-forest/50">&#x2014;</span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Rule</span>
-            </TBtn>
-            <TBtn wide onClick={() => insertBlock('diagram')} title="Mermaid diagram">
-              <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
-              </span>
-              <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Diagram</span>
-            </TBtn>
+              {/* Text type buttons — reflects and changes the focused block's type */}
+              <div className="flex items-center gap-0.5 shrink-0">
+                <TTypeBtn active={currentBlockType === 'paragraph'} onClick={() => editorRef.current?.setCurrentType('paragraph')} title="Paragraph">
+                  <span className="font-[family-name:var(--font-body)] text-[13px] leading-none">¶</span>
+                </TTypeBtn>
+                <TTypeBtn active={currentBlockType === 'h1'} onClick={() => editorRef.current?.setCurrentType('h1')} title="Heading 1">
+                  <span className="font-[family-name:var(--font-body)] text-[11px] font-bold leading-none tracking-tight">H<span className="text-[8px] align-sub">1</span></span>
+                </TTypeBtn>
+                <TTypeBtn active={currentBlockType === 'h2'} onClick={() => editorRef.current?.setCurrentType('h2')} title="Heading 2">
+                  <span className="font-[family-name:var(--font-body)] text-[11px] font-semibold leading-none tracking-tight">H<span className="text-[8px] align-sub">2</span></span>
+                </TTypeBtn>
+                <TTypeBtn active={currentBlockType === 'h3'} onClick={() => editorRef.current?.setCurrentType('h3')} title="Heading 3">
+                  <span className="font-[family-name:var(--font-body)] text-[11px] font-medium leading-none tracking-tight">H<span className="text-[8px] align-sub">3</span></span>
+                </TTypeBtn>
+                <TTypeBtn active={currentBlockType === 'quote'} onClick={() => editorRef.current?.setCurrentType('quote')} title="Quote">
+                  <span className="font-[family-name:var(--font-body)] text-[15px] leading-none">"</span>
+                </TTypeBtn>
+              </div>
+              <TDivider />
+              {/* Rich / special blocks — icon chip + label */}
+              <TBtn wide onClick={() => insertBlock('latex')} title="LaTeX equation (Σ)">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[9px] text-forest/50">Σ</span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">LaTeX</span>
+              </TBtn>
+              <TBtn wide onClick={() => insertBlock('code')} title="Code block">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
+                </span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Code</span>
+              </TBtn>
+              <TBtn wide onClick={() => insertBlock('chemistry')} title="Chemical equation">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[9px] text-forest/50">⚗</span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Chem</span>
+              </TBtn>
+              <TBtn wide onClick={() => insertBlock('table')} title="Table (CSV)">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" /></svg>
+                </span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Table</span>
+              </TBtn>
+              <TBtn wide onClick={() => insertBlock('callout')} title="Callout box">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+                </span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Callout</span>
+              </TBtn>
+              <TBtn wide onClick={() => insertBlock('divider')} title="Horizontal divider">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[11px] text-forest/50">&#x2014;</span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Rule</span>
+              </TBtn>
+              <TBtn wide onClick={() => insertBlock('diagram')} title="Mermaid diagram">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+                </span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Diagram</span>
+              </TBtn>
             </div>{/* end scrollable left */}
 
             {/* Right side — always pinned, never pushed by insert buttons */}
@@ -285,7 +282,7 @@ export default function Design1() {
                 {/* Master document header */}
                 <div className="mb-12">
                   <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
-                    {masterDoc ? `${masterDoc.course} / ${masterDoc.professor} / ${masterDoc.semester} — MASTER` : 'Loading…'}
+                    {repoMeta ? `${repoMeta.code} · ${repoMeta.university} — MASTER` : repoId.toUpperCase()}
                   </span>
                   <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
                     {masterDoc?.title ?? 'Master Nootes'}
@@ -321,7 +318,7 @@ export default function Design1() {
                 ) : masterDoc ? (
                   <BlockEditor
                     blocks={masterDoc.blocks}
-                    onChange={() => {}}
+                    onChange={() => { }}
                     readOnly
                   />
                 ) : (
@@ -334,10 +331,10 @@ export default function Design1() {
                 {/* Document header */}
                 <div className="mb-12">
                   <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
-                    {doc ? `${doc.course} / ${doc.professor} / ${doc.semester} — PERSONAL` : 'Loading…'}
+                    {repoId === 'scratch' ? 'PERSONAL SCRATCH PAD' : repoMeta ? `${repoMeta.code} · ${repoMeta.university} — PERSONAL` : repoId.toUpperCase()}
                   </span>
                   <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                    {doc?.title ?? 'My Nootes'}
+                    {doc?.title ?? 'My Noots'}
                   </h1>
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
@@ -345,20 +342,19 @@ export default function Design1() {
                     </span>
                     <span className="font-mono text-[10px] text-forest/30">Personal fork</span>
                     <span className="text-forest/10">|</span>
-                    <span className={`font-mono text-[10px] transition-colors ${
-                      saveStatus === 'saved'   ? 'text-sage/50'   :
-                      saveStatus === 'saving'  ? 'text-amber-400' :
-                      saveStatus === 'unsaved' ? 'text-amber-500' :
-                                                 'text-sienna/50'
-                    }`}>
-                      {saveStatus === 'saved'   && '✓ Saved'}
-                      {saveStatus === 'saving'  && '⏅ Saving…'}
+                    <span className={`font-mono text-[10px] transition-colors ${saveStatus === 'saved' ? 'text-sage/50' :
+                        saveStatus === 'saving' ? 'text-amber-400' :
+                          saveStatus === 'unsaved' ? 'text-amber-500' :
+                            'text-sienna/50'
+                      }`}>
+                      {saveStatus === 'saved' && '✓ Saved'}
+                      {saveStatus === 'saving' && '⏅ Saving…'}
                       {saveStatus === 'unsaved' && '● Unsaved'}
                       {saveStatus === 'offline' && '⚡ Offline'}
                     </span>
-                    {/* Submit for merge */}
+                    {/* Submit for merge — hidden on scratch pad */}
                     <button
-                      className="ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors"
+                      className={`ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors ${repoId === 'scratch' ? 'hidden' : ''}`}
                       onClick={() => {
                         saveNow()
                         alert('Merge request submitted! The semantic merge engine will process your fork in the next merge cycle.')
@@ -406,14 +402,13 @@ export default function Design1() {
             </div>
             <div className="flex items-center gap-4">
               {activeTab === 'write' && (
-                <span className={`font-mono text-[10px] transition-colors ${
-                  saveStatus === 'saved'   ? 'text-sage/60'   :
-                  saveStatus === 'saving'  ? 'text-amber-400' :
-                  saveStatus === 'unsaved' ? 'text-amber-500' :
-                                            'text-sienna/50'
-                }`}>
-                  {saveStatus === 'saved'   && '✓ Saved'}
-                  {saveStatus === 'saving'  && 'Saving…'}
+                <span className={`font-mono text-[10px] transition-colors ${saveStatus === 'saved' ? 'text-sage/60' :
+                    saveStatus === 'saving' ? 'text-amber-400' :
+                      saveStatus === 'unsaved' ? 'text-amber-500' :
+                        'text-sienna/50'
+                  }`}>
+                  {saveStatus === 'saved' && '✓ Saved'}
+                  {saveStatus === 'saving' && 'Saving…'}
                   {saveStatus === 'unsaved' && 'Unsaved changes'}
                   {saveStatus === 'offline' && 'Backend offline'}
                 </span>

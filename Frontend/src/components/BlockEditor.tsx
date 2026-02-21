@@ -755,12 +755,14 @@ export const BlockEditor = forwardRef<
       return
     }
 
-    // Cursor at start: insert blank line before, keep focus on current
+    // Cursor at start: insert blank line before, move focus to the new blank line
+    // (was: keep focus on current block — caused repeated Enter presses to stack
+    // empty blocks above without the cursor appearing to move)
     if (cursor === 0) {
       const nb = newBlock('paragraph')
       const next = [...blocks.slice(0, idx), nb, ...blocks.slice(idx)]
       onChange(next)
-      setTimeout(() => focusBlock(block.id, 'start'), 0)
+      setTimeout(() => focusBlock(nb.id, 'end'), 0)
       return
     }
 

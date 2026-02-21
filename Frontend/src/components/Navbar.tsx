@@ -5,7 +5,11 @@ import logoImg from '../assets/logo.png'
 const navLinks = [
   { path: '/repos', label: 'Nootbooks' },
   { path: '/my-repos', label: 'My Nootbooks' },
+<<<<<<< HEAD
   { path: '/editor', label: 'Editor' },
+=======
+  { path: '/editor/scratch', label: 'Editor' },
+>>>>>>> c26c2f9 (updates)
   { path: '/diff', label: 'Diff' },
   { path: '/chat', label: 'Chat' },
   { path: '/graph', label: 'Graph' },
@@ -27,7 +31,7 @@ export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' |
   const defaultBreadcrumbs = [
     { label: 'NYU' },
     { label: 'CS' },
-    { label: 'Intro to Algorithms', href: '/editor' },
+    { label: 'Intro to Algorithms', href: '/editor/nyu-cs-algo' },
   ]
   const crumbs = breadcrumbs || defaultBreadcrumbs
 
@@ -77,7 +81,7 @@ export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' |
               key={link.path}
               to={link.path}
               className={`font-[family-name:var(--font-body)] text-xs px-3 py-1.5 squircle-sm transition-all ${
-                location.pathname === link.path
+                (location.pathname === link.path || (link.path === '/editor/scratch' && location.pathname.startsWith('/editor/')))
                   ? isDark ? 'bg-sage/20 text-parchment' : 'bg-forest text-parchment'
                   : isDark ? 'text-sage/40 hover:text-sage hover:bg-sage/10' : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05]'
               }`}

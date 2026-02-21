@@ -109,5 +109,48 @@ export function useMyRepos() {
     [user, fetchRepos],
   )
 
-  return { repos, loading, error, createRepo, refetch: fetchRepos }
+  const deleteRepo = useCallback(
+    async (repoId: string): Promise<{ error: string | null }> => {
+      if (!user) return { error: 'Not authenticated' }
+
+      const repo = repos.find(r => r.id === repoId)
+      if (!repo) return { error: 'Nootbook not found' }
+
+      // Optimistically remove from UI
+      setRepos(prev => prev.filter(r => r.id !== repoId))
+
+      try {
+        if (repo.role === 'owner') {
+          // Delete the repo row — cascades to contributors, documents, etc.
+          const { error: repoErr } = await supabase
+            .from('repositories')
+            .delete()
+            .eq('id', repoId)
+          if (repoErr) throw repoErr
+        } else {
+          // Just remove myself as a contributor/forker
+          const { error: contribErr } = await supabase
+            .from('repository_contributors')
+            .delete()
+            .eq('repo_id', repoId)
+            .eq('user_id', user.id)
+          if (contribErr) throw contribErr
+        }
+
+        // Best-effort: remove the user's .md file from Storage
+        await supabase.storage
+          .from('documents')
+          .remove([`${user.id}/${repoId}.md`])
+
+        return { error: null }
+      } catch (e: unknown) {
+        // Revert optimistic update on failure
+        await fetchRepos()
+        return { error: e instanceof Error ? e.message : 'Failed to delete' }
+      }
+    },
+    [user, repos, fetchRepos],
+  )
+
+  return { repos, loading, error, createRepo, deleteRepo, refetch: fetchRepos }
 }
