@@ -113,3 +113,68 @@ create table if not exists merge_requests (
   created_at   timestamptz not null default now(),
   resolved_at  timestamptz
 );
+
+-- ============================================================
+-- Nootes — Seed Data
+-- Run this in the Supabase SQL editor after applying the schema.
+-- Creates default channels so the chat isn't empty on first load.
+-- ============================================================
+
+-- Upsert default channels (idempotent — safe to re-run)
+INSERT INTO public.channels (id, name, type, repo_id, description, created_by, member_count)
+VALUES
+  (
+    '00000000-0000-0000-0000-000000000001',
+    'General',
+    'school',
+    NULL,
+    'General discussion for all Nootes users.',
+    NULL,
+    0
+  ),
+  (
+    '00000000-0000-0000-0000-000000000002',
+    'Computer Science',
+    'major',
+    NULL,
+    'Algorithms, systems, theory, and everything CS.',
+    NULL,
+    0
+  ),
+  (
+    '00000000-0000-0000-0000-000000000003',
+    'Mathematics',
+    'major',
+    NULL,
+    'Analysis, linear algebra, topology, and proofs.',
+    NULL,
+    0
+  ),
+  (
+    '00000000-0000-0000-0000-000000000004',
+    'Intro to Algorithms',
+    'repo',
+    NULL,
+    'CS-UA 310 — Binary search, graph algorithms, dynamic programming.',
+    NULL,
+    0
+  ),
+  (
+    '00000000-0000-0000-0000-000000000005',
+    'Linear Algebra',
+    'repo',
+    NULL,
+    'MATH-UA 140 — Vector spaces, eigenvalues, SVD, matrix decompositions.',
+    NULL,
+    0
+  ),
+  (
+    '00000000-0000-0000-0000-000000000006',
+    'DSA Interview Prep',
+    'repo',
+    NULL,
+    'Collaborative prep nootes for coding interviews.',
+    NULL,
+    0
+  )
+ON CONFLICT (id) DO NOTHING;
