@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "@supabase/supabase-js": "^2.97.0",
-    "cohere-ai": "^7.20.0",
-    "dotenv": "^17.3.1",
-    "supabase": "^2.76.12"
-  }
-}
