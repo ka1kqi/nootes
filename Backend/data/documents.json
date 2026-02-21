@@ -1,0 +1,396 @@
+{
+  "documents": {
+    "cs-ua-310::master": {
+      "id": "8c90199f-0217-4e32-a598-afe442a8b918",
+      "repoId": "cs-ua-310",
+      "userId": "master",
+      "title": "Intro to Algorithms",
+      "course": "CS-UA 310",
+      "professor": "Prof. Siegel",
+      "semester": "Spring 2026",
+      "version": "3.2.1",
+      "contributorCount": 47,
+      "tags": [
+        "algorithms",
+        "exam-relevant",
+        "midterm",
+        "derivatives"
+      ],
+      "createdAt": "2026-02-21T03:15:24.424Z",
+      "updatedAt": "2026-02-21T03:15:24.424Z",
+      "blocks": [
+        {
+          "id": "c8f42aa1-b955-4892-b93b-897a09454e1f",
+          "type": "h1",
+          "content": "Intro to Algorithms"
+        },
+        {
+          "id": "8af85f3c-7c2f-42fd-af73-51db60011ee1",
+          "type": "paragraph",
+          "content": "This master document is maintained by the community. Fork it to your personal workspace, add your own notes, and contribute back through the merge pipeline."
+        },
+        {
+          "id": "9fe8df36-942e-43e0-9c04-f607a775018c",
+          "type": "h2",
+          "content": "The Chain Rule"
+        },
+        {
+          "id": "e2168c8c-b00f-45b5-9388-a5cd5d076a13",
+          "type": "paragraph",
+          "content": "Let $f$ and $g$ be differentiable functions. Then the composite function $f \\circ g$ is differentiable, and"
+        },
+        {
+          "id": "0583ff9a-a689-43f2-b123-14796a6f55da",
+          "type": "latex",
+          "content": "\\frac{d}{dx}\\bigl[f\\bigl(g(x)\\bigr)\\bigr] = f'\\bigl(g(x)\\bigr) \\cdot g'(x)"
+        },
+        {
+          "id": "dfe955c0-7236-4ce0-8a27-3d18a1cc0d70",
+          "type": "h3",
+          "content": "Worked Example"
+        },
+        {
+          "id": "f3222abb-8b3b-42c8-b24d-123221489cb7",
+          "type": "paragraph",
+          "content": "Find $\\frac{d}{dx}[\\sin(x^2)]$. Let $f(u) = \\sin(u)$ and $g(x) = x^2$. Then:"
+        },
+        {
+          "id": "07b474e9-8936-4f88-8321-c6f4fa857228",
+          "type": "latex",
+          "content": "\\frac{d}{dx}\\bigl[\\sin(x^2)\\bigr] = \\cos(x^2) \\cdot 2x"
+        },
+        {
+          "id": "790156fd-a96b-4b82-a6a9-d1019d643590",
+          "type": "h2",
+          "content": "Binary Search"
+        },
+        {
+          "id": "4cefd1bc-2fc3-4c47-8e4d-a1a306c6f3fd",
+          "type": "paragraph",
+          "content": "A classic $O(\\log n)$ search algorithm on a sorted array. Repeatedly halves the search interval."
+        },
+        {
+          "id": "ada2ca85-36c0-48cd-86e9-f81dde3bb036",
+          "type": "code",
+          "content": "def binary_search(arr, target):\n    \"\"\"Search for target in sorted array.\n\n    Time:  O(log n)\n    Space: O(1)\n    \"\"\"\n    low, high = 0, len(arr) - 1\n\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            low = mid + 1\n        else:\n            high = mid - 1\n\n    return -1  # not found",
+          "meta": {
+            "language": "python",
+            "filename": "binary_search.py"
+          }
+        },
+        {
+          "id": "a8ab4c31-1ea6-461d-8991-603f5bdf0882",
+          "type": "h3",
+          "content": "Complexity Comparison"
+        },
+        {
+          "id": "ee7c7435-e338-40aa-99d5-5017276a5547",
+          "type": "table",
+          "content": "Algorithm,Best,Average,Worst,Space\nLinear Search,O(1),O(n),O(n),O(1)\nBinary Search,O(1),O(log n),O(log n),O(1)\nHash Table,O(1),O(1),O(n),O(n)",
+          "meta": {
+            "caption": "Table 1. Search algorithm complexities"
+          }
+        },
+        {
+          "id": "6f24fd66-8bb8-42ed-ad26-1b69fcaeff01",
+          "type": "divider",
+          "content": ""
+        },
+        {
+          "id": "5d8f49e1-f362-47c3-a09c-7867310d0d94",
+          "type": "h2",
+          "content": "Chemistry Cross-Domain"
+        },
+        {
+          "id": "21203fa3-5cf8-4fc5-8059-fb79b90ef83d",
+          "type": "chemistry",
+          "content": "\\text{N}_2 + 3\\text{H}_2 \\rightleftharpoons 2\\text{NH}_3 \\quad (\\Delta H = -92.4\\;\\text{kJ/mol})",
+          "meta": {
+            "caption": "Haber Process"
+          }
+        }
+      ]
+    },
+    "cs-ua-310::demo": {
+      "id": "ee37f10a-ca1f-4351-ad6a-89d2f24311b8",
+      "repoId": "cs-ua-310",
+      "userId": "demo",
+      "title": "Intro to Algorithms — My Notes",
+      "course": "CS-UA 310",
+      "professor": "Prof. Siegel",
+      "semester": "Spring 2026",
+      "blocks": [
+        {
+          "id": "2b3a83ad-b086-4e50-81e6-cb2e9920376c",
+          "type": "h1",
+          "content": "Intro to Algorithms — My Notes"
+        },
+        {
+          "id": "15771a8e-7a48-44dc-8cd4-882bdde0efe2",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "e00be9ef-0942-42f1-a24b-a07c05f90838",
+          "type": "paragraph",
+          "content": "what the helly"
+        },
+        {
+          "id": "faca8fc7-e6af-4a7d-9313-1498536906c0",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "96a4a250-c76b-4f94-bd66-57919c4e6c4d",
+          "type": "h2",
+          "content": "The Chain Rule"
+        },
+        {
+          "id": "c4e30290-1348-46c4-8e4d-52bb68ca3104",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "49668e94-21ec-4c3a-a5a4-04acf922c377",
+          "type": "paragraph",
+          "content": "what the helly"
+        },
+        {
+          "id": "42669e9d-5779-4218-8bf4-4a17249e1fb6",
+          "type": "paragraph",
+          "content": "hi there "
+        },
+        {
+          "id": "172e5974-5486-4dc5-811f-b16d6162f3cf",
+          "type": "latex",
+          "content": "\\frac{a}{b}",
+          "meta": {}
+        },
+        {
+          "id": "13e0f573-a8c5-4022-be74-625ac0736a82",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "2a28a26f-6199-4abb-82f3-5e22ce038c64",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "f1a71a6f-1c38-467d-aa7a-412053c24eaa",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "a65890f9-d0f3-4a82-8c35-7413d7d367aa",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "30028ba7-e6f4-4cfe-b96a-e8969d1d4036",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "a897b674-0168-4a15-b214-1d03f2dd0d3f",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "077eabdd-9eb6-41ec-94e1-6456b66094c1",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "6d4c1c5b-3679-46de-a296-717ad611b2f9",
+          "type": "paragraph",
+          "content": "The chain rule is all about composites — \"outside-inside.\" Apply the outer derivative first, then multiply by the inner derivative."
+        },
+        {
+          "id": "63be2c7c-4c9b-41ef-86e4-aaff807e25ef",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "8303330b-852e-498e-a028-580382eabc6c",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "6eb17399-bb01-4bf8-8922-1006f6a27eb1",
+          "type": "latex",
+          "content": ""
+        },
+        {
+          "id": "a62936da-bfc2-4bce-836c-670b55603ba5",
+          "type": "code",
+          "content": "",
+          "meta": {
+            "language": "python",
+            "filename": ""
+          }
+        },
+        {
+          "id": "322af637-2311-402f-84fb-8e226c39c806",
+          "type": "code",
+          "content": "def goon(penis):\n    return penis + 1",
+          "meta": {
+            "language": "python",
+            "filename": "penar"
+          }
+        },
+        {
+          "id": "f25d7a4b-3667-44fb-a6c6-8d9c824efaed",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "d6122ce2-6e0d-4ac5-af70-89f40299086e",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "f06c6648-ee57-4614-958c-6b2d7e73686c",
+          "type": "h3",
+          "content": "My Example Walkthrough"
+        },
+        {
+          "id": "ddfb6ec0-71c8-40e9-9904-a17e73111209",
+          "type": "paragraph",
+          "content": "Differentiate $\\sin(x^2)$: outer is $\\sin$, inner is $x^2$."
+        },
+        {
+          "id": "de3fbf4d-6c4f-49c9-87b7-fa9874169b62",
+          "type": "latex",
+          "content": "\\frac{d}{dx}\\bigl[\\sin(x^2)\\bigr] = \\cos(x^2) \\cdot 2x",
+          "meta": {}
+        },
+        {
+          "id": "b8537906-1cbe-45f3-80dd-f04b3e4b3448",
+          "type": "callout",
+          "content": "Key insight: we get cos(x²) — outer deriv evaluated AT the inner function — times 2x — the inner deriv. This pattern repeats for every chain rule problem.",
+          "meta": {
+            "calloutType": "tip"
+          }
+        },
+        {
+          "id": "be9edf6c-fd41-4223-b9c6-a64e0e6f7646",
+          "type": "h2",
+          "content": "Binary Search Notes hello there"
+        },
+        {
+          "id": "c0181e68-7eab-4626-8332-0ebb1f2d8ebd",
+          "type": "paragraph",
+          "content": "Binary search only works on **sorted** arrays. The invariant is: target is always in [low, high] if it exists. "
+        },
+        {
+          "id": "caccb7dd-3774-4574-b899-dbe7e4de3521",
+          "type": "latex",
+          "content": "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
+          "meta": {}
+        },
+        {
+          "id": "9ceeea43-5dfe-4c0b-ad68-da7cf3d9b1d8",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "fdbac612-6282-4290-b028-4d31cc29c2e7",
+          "type": "latex",
+          "content": "",
+          "meta": {}
+        },
+        {
+          "id": "f640c092-4aca-441e-a503-0378c300c6b7",
+          "type": "table",
+          "content": "",
+          "meta": {
+            "caption": ""
+          }
+        },
+        {
+          "id": "fb030cbb-f66f-4e83-a194-7fc7fbc1f87c",
+          "type": "paragraph",
+          "content": ""
+        }
+      ],
+      "version": "3.2.1+personal",
+      "tags": [
+        "algorithms",
+        "personal"
+      ],
+      "createdAt": "2026-02-21T03:15:24.424Z",
+      "updatedAt": "2026-02-21T06:15:00.368Z"
+    },
+    "math-ua-140::master": {
+      "id": "95e0526c-56b5-4e36-b2cf-8f97e606ecea",
+      "repoId": "math-ua-140",
+      "userId": "master",
+      "title": "Linear Algebra",
+      "course": "MATH-UA 140",
+      "professor": "Prof. Kovalenko",
+      "semester": "Spring 2026",
+      "version": "2.1.0",
+      "contributorCount": 31,
+      "tags": [
+        "linear-algebra",
+        "matrices",
+        "eigenvalues"
+      ],
+      "createdAt": "2026-02-21T03:15:24.424Z",
+      "updatedAt": "2026-02-21T03:15:24.424Z",
+      "blocks": [
+        {
+          "id": "58d76b5d-f828-4ee6-aa87-ffa406115292",
+          "type": "h1",
+          "content": "Linear Algebra"
+        },
+        {
+          "id": "61aaf7ac-8423-41e0-8f92-031ede62e05c",
+          "type": "paragraph",
+          "content": "Linear algebra is the branch of mathematics that studies vector spaces and linear mappings between them."
+        },
+        {
+          "id": "b90dbee8-ab90-43f3-8272-48e4be81c8f8",
+          "type": "h2",
+          "content": "Matrix Multiplication"
+        },
+        {
+          "id": "c9897507-3015-4596-a2b5-171c3332d664",
+          "type": "paragraph",
+          "content": "For matrices $A \\in \\mathbb{R}^{m \\times k}$ and $B \\in \\mathbb{R}^{k \\times n}$, the product $C = AB \\in \\mathbb{R}^{m \\times n}$ is:"
+        },
+        {
+          "id": "205bc56f-db25-439e-b26a-ae6d3ad7907f",
+          "type": "latex",
+          "content": "C_{ij} = \\sum_{r=1}^{k} A_{ir} B_{rj}"
+        },
+        {
+          "id": "b3f3c40f-0bfa-4f96-bfb7-5267f8a72585",
+          "type": "h2",
+          "content": "Eigenvalues & Eigenvectors"
+        },
+        {
+          "id": "273d8f1e-062c-4181-80c8-94d96c2365ed",
+          "type": "paragraph",
+          "content": "A scalar $\\lambda$ is an eigenvalue of matrix $A$ if there exists a nonzero vector $\\mathbf{v}$ (the eigenvector) such that:"
+        },
+        {
+          "id": "19b8fff3-1a2f-4a46-808f-b91c010f452f",
+          "type": "latex",
+          "content": "A\\mathbf{v} = \\lambda \\mathbf{v}"
+        },
+        {
+          "id": "87b041e2-fc50-47cc-85e3-0cce54ad9c2f",
+          "type": "paragraph",
+          "content": "Eigenvalues are found by solving the characteristic equation:"
+        },
+        {
+          "id": "8d51bf93-dc8b-4db1-8e65-588d6dfc5484",
+          "type": "latex",
+          "content": "\\det(A - \\lambda I) = 0"
+        }
+      ]
+    }
+  }
+}

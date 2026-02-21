@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -28,8 +28,8 @@ export interface TaskItem {
   depends_on?: string[]
 }
 
-export type ExpandFn = (item: TaskItem, context: string) => Promise<{ items: TaskItem[]; summary: string }>
-export type QueryFn  = (item: TaskItem, question: string) => Promise<string>
+export type ExpandFn = (item: TaskItem, context: string, ancestors: TaskItem[]) => Promise<{ items: TaskItem[]; summary: string }>
+export type QueryFn  = (item: TaskItem, question: string, ancestors: TaskItem[]) => Promise<string>
 type CircleNodeData = {
   label: string
   text: string
@@ -37,6 +37,7 @@ type CircleNodeData = {
   total: number
   isRoot: boolean
   isExpanded?: boolean
+  ancestors?: TaskItem[]
 }
 type CircleNodeType = Node<CircleNodeData, 'circle'>
 
@@ -70,7 +71,7 @@ const HS = {
 // ─── CIRCLE NODE ─────────────────────────────────────────────────────────────
 const CircleNode = ({ data, selected }: NodeProps<CircleNodeType>) => {
   const acc = '#A3B18A'
-  const bg  = selected ? '#264635' : '#F5F0E8'
+  const bg  = selected ? '#264635' : '#E9E4D4'
 
   return (
     <>
@@ -177,7 +178,8 @@ function buildCircularLayout(items: TaskItem[]) {
     order.push(cur)
     for (const c of childrenOf[cur]) { if (--inDeg[c] === 0) queue.push(c) }
   }
-  items.forEach((_, i) => { if (!order.includes(i)) order.push(i) })
+  const orderedSet = new Set(order)
+  items.forEach((_, i) => { if (!orderedSet.has(i)) order.push(i) })
 
   const MIN_ARC = Math.max(NW, NH) + 30
   const RADIUS  = Math.max((n * MIN_ARC) / (2 * Math.PI), 240)
@@ -196,7 +198,7 @@ function buildCircularLayout(items: TaskItem[]) {
     id: `n${idx}`,
     type: 'circle' as const,
     position: { x: pos[idx].x - NW / 2, y: pos[idx].y - NH / 2 },
-    data: { label: item.name, text: item.text, index: idx, total: n, isRoot: roots.includes(idx) },
+    data: { label: item.name, text: item.text, index: idx, total: n, isRoot: roots.includes(idx), ancestors: [] },
   }))
 
   const rfEdges: Edge[] = [...edgeSet].map(s => {
@@ -257,7 +259,8 @@ function getExpansionCircularPositions(
     }
   }
   // Append any cycle members not yet visited
-  items.forEach(it => { if (!order.includes(it.name)) order.push(it.name) })
+  const orderedSet = new Set(order)
+  items.forEach(it => { if (!orderedSet.has(it.name)) order.push(it.name) })
 
   const MIN_ARC = Math.max(NW, NH) + 30
   const RADIUS  = Math.max((n * MIN_ARC) / (2 * Math.PI), 240)
@@ -301,6 +304,8 @@ interface PanelState {
   // manual node creation
   newNodeName: string
   newNodeText: string
+  // ancestor chain (from root down to this node's parent)
+  ancestors: TaskItem[]
 }
 
 // ─── GRAPH VIEW ──────────────────────────────────────────────────────────────
@@ -310,12 +315,17 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
 
   const { nodes: initNodes, edges: initEdges } = useMemo(
     () => buildCircularLayout(items),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items.length]
+    [items]
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
+
+  // Sync ReactFlow state when items reference changes (e.g. new graph with same length)
+  useEffect(() => {
+    setNodes(initNodes)
+    setEdges(initEdges)
+  }, [initNodes, initEdges, setNodes, setEdges])
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     const d = node.data as CircleNodeData
@@ -337,6 +347,7 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
             queryError: null,
             newNodeName: '',
             newNodeText: '',
+            ancestors: (d.ancestors ?? []),
           }
     )
   }, [])
@@ -346,17 +357,14 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
     setPanel(p => p ? { ...p, loading: true, error: null } : null)
 
     try {
-      const { items: newItems, summary } = await onExpand(panel.item, panel.context)
+      const { items: newItems, summary } = await onExpand(panel.item, panel.context, panel.ancestors)
       const counter = expCounter.current++
 
       setNodes(nds => {
         const existingByLabel = new Map(nds.map(nd => [(nd.data as CircleNodeData).label, nd.id]))
         const existingNames = new Set(existingByLabel.keys())
-
-        // Positions for brand-new nodes, laid out in a circle around the parent
         const dagPositions = getExpansionCircularPositions(panel!.cx, panel!.cy, newItems, existingNames)
 
-        // Build name → final nodeId (existing or newly created)
         let brandNewIdx = 0
         const nameToId = new Map<string, string>()
         newItems.forEach(item => {
@@ -375,73 +383,58 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
             id,
             type: 'circle' as const,
             position: { x: pos.x - NW / 2, y: pos.y - NH / 2 },
-            data: { label: item.name, text: item.text, index: 0, total: brandNewItems.length, isRoot: false },
+            data: { label: item.name, text: item.text, index: 0, total: brandNewItems.length, isRoot: false, ancestors: [...(panel!.ancestors ?? []), { name: panel!.item.name, text: panel!.item.text }] },
           }
         })
 
-        setEdges(eds => {
-          const existingEdgeSet = new Set(eds.map(e => `${e.source}→${e.target}`))
-
-          // Track how many edges already leave each source so we can spread curvatures
-          const sourceOutCount = new Map<string, number>()
-          const getNextCurvature = (src: string) => {
-            const n = sourceOutCount.get(src) ?? 0
-            sourceOutCount.set(src, n + 1)
-            // Alternate sides: 0.25, -0.25, 0.5, -0.5, ...
-            const side = n % 2 === 0 ? 1 : -1
-            return side * (0.2 + Math.floor(n / 2) * 0.15)
+        // Compute edges here so we don't nest setState calls
+        const existingEdgeSet = new Set<string>()
+        const edgesToAdd: Edge[] = []
+        const sourceOutCount = new Map<string, number>()
+        const getNextCurvature = (src: string) => {
+          const n = sourceOutCount.get(src) ?? 0
+          sourceOutCount.set(src, n + 1)
+          const side = n % 2 === 0 ? 1 : -1
+          return side * (0.2 + Math.floor(n / 2) * 0.15)
+        }
+        const addEdge = (src: string, tgt: string, idx: number): Edge | null => {
+          const key = `${src}→${tgt}`
+          if (existingEdgeSet.has(key)) return null
+          existingEdgeSet.add(key)
+          return {
+            id: `exp-edge-${counter}-${idx}`,
+            source: src, target: tgt,
+            type: 'curved',
+            style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.6, strokeDasharray: '5 3' },
+            markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
+            data: { curvature: getNextCurvature(src) },
           }
-
-          const addEdge = (src: string, tgt: string, idx: number): Edge | null => {
-            if (existingEdgeSet.has(`${src}→${tgt}`)) return null
-            existingEdgeSet.add(`${src}→${tgt}`)
-            const curvature = getNextCurvature(src)
-            return {
-              id: `exp-edge-${counter}-${idx}`,
-              source: src, target: tgt,
-              type: 'curved',
-              style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.6, strokeDasharray: '5 3' },
-              markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
-              data: { curvature },
-            }
-          }
-
-          const edgesToAdd: Edge[] = []
-          let edgeIdx = 0
-
-          // Internal DAG edges from depends_on
-          const newNameSet = new Set(newItems.map(it => it.name))
-          newItems.forEach(item => {
-            if (!Array.isArray(item.depends_on)) return
-            item.depends_on.forEach(dep => {
-              // dep → item (dep is the upstream node)
-              const srcId = newNameSet.has(dep) ? nameToId.get(dep) : existingByLabel.get(dep)
-              const tgtId = nameToId.get(item.name)
-              if (srcId && tgtId) {
-                const e = addEdge(srcId, tgtId, edgeIdx++)
-                if (e) edgesToAdd.push(e)
-              }
-            })
+        }
+        let edgeIdx = 0
+        const newNameSet = new Set(newItems.map(it => it.name))
+        newItems.forEach(item => {
+          if (!Array.isArray(item.depends_on)) return
+          item.depends_on.forEach(dep => {
+            const srcId = newNameSet.has(dep) ? nameToId.get(dep) : existingByLabel.get(dep)
+            const tgtId = nameToId.get(item.name)
+            if (srcId && tgtId) { const e = addEdge(srcId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
           })
-
-          // Connect parent → roots of the sub-DAG (items with no incoming edge from within the set)
-          const hasInternalParent = new Set(
-            newItems.flatMap(it =>
-              (it.depends_on ?? []).filter(d => newNameSet.has(d)).map(() => it.name)
-            )
-          )
-          newItems.forEach(item => {
-            if (!hasInternalParent.has(item.name)) {
-              const tgtId = nameToId.get(item.name)
-              if (tgtId) {
-                const e = addEdge(panel!.nodeId, tgtId, edgeIdx++)
-                if (e) edgesToAdd.push(e)
-              }
-            }
-          })
-
-          return [...eds, ...edgesToAdd]
         })
+        const hasInternalParent = new Set(
+          newItems.flatMap(it => (it.depends_on ?? []).filter(d => newNameSet.has(d)).map(() => it.name))
+        )
+        newItems.forEach(item => {
+          if (!hasInternalParent.has(item.name)) {
+            const tgtId = nameToId.get(item.name)
+            if (tgtId) { const e = addEdge(panel!.nodeId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
+          }
+        })
+
+        // Apply edges outside this updater to avoid nested setState
+        setTimeout(() => setEdges(eds => {
+          const existingKeys = new Set(eds.map(e => `${e.source}→${e.target}`))
+          return [...eds, ...edgesToAdd.filter(e => !existingKeys.has(`${e.source}→${e.target}`))]
+        }), 0)
 
         return [
           ...nds.map(nd =>
@@ -465,7 +458,7 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
     if (!panel || panel.queryLoading || !panel.query.trim()) return
     setPanel(p => p ? { ...p, queryLoading: true, queryError: null, queryResult: null } : null)
     try {
-      const result = await onQuery(panel.item, panel.query)
+      const result = await onQuery(panel.item, panel.query, panel.ancestors)
       setPanel(p => p ? { ...p, queryLoading: false, queryResult: result, query: '' } : null)
     } catch (err) {
       setPanel(p => p
@@ -493,7 +486,7 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
       id,
       type: 'circle' as const,
       position: { x: nx, y: ny },
-      data: { label: name, text: text || name, index: 0, total: 1, isRoot: false },
+      data: { label: name, text: text || name, index: 0, total: 1, isRoot: false, ancestors: [...(panel!.ancestors ?? []), { name: panel!.item.name, text: panel!.item.text }] },
     }
 
     setNodes(nds => [...nds, newNode])
@@ -524,7 +517,6 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
         onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.18 }}
-        proOptions={{ hideAttribution: true }}
         style={{ background: 'transparent' }}
         minZoom={0.08}
         maxZoom={2.5}
@@ -567,7 +559,7 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
               }}>
                 subtask
               </span>
-              <button onClick={() => setPanel(null)} style={{
+              <button onClick={() => setPanel(null)} aria-label="Close panel" style={{
                 background: 'none', border: 'none', color: '#A3B18A',
                 cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px',
               }}>✕</button>

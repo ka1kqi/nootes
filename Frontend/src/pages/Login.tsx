@@ -1,7 +1,8 @@
-import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import logoImg from '../assets/logo.png'
 import { KaTeX } from '../components/KaTeX'
+import { useAuth } from '../hooks/useAuth'
 
 /* ------------------------------------------------------------------ */
 /* Login Page                                                          */
@@ -19,8 +20,43 @@ const floatingEquations = [
 ]
 
 export default function Login() {
+  const { user, signInWithGoogle, signInWithEmail, signUp } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/chat'
+
+  // Redirect authenticated users (handles post-OAuth callback)
+  useEffect(() => {
+    if (user) navigate(from, { replace: true })
+  }, [user, navigate, from])
+
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showEduPrompt, setShowEduPrompt] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authLoading, setAuthLoading] = useState(false)
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+
+  async function handleGoogleSignIn() {
+    setAuthError(null)
+    await signInWithGoogle()
+    // Redirect happens via OAuth callback
+  }
+
+  async function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email || !password) return
+    setAuthError(null)
+    setAuthLoading(true)
+    const fn = mode === 'signup' ? signUp : signInWithEmail
+    const { error } = await fn(email, password)
+    setAuthLoading(false)
+    if (error) {
+      setAuthError(error)
+    } else {
+      navigate(from, { replace: true })
+    }
+  }
 
   return (
     <main className="min-h-screen bg-cream flex relative overflow-hidden">
@@ -135,7 +171,10 @@ export default function Login() {
           </p>
 
           {/* Google Sign-In button */}
-          <button className="w-full flex items-center justify-center gap-3 bg-forest text-parchment px-6 py-3.5 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest-deep transition-all shadow-[0_2px_16px_-4px_rgba(38,70,53,0.3)] group">
+          <button
+            onClick={handleGoogleSignIn}
+            className="w-full flex items-center justify-center gap-3 bg-forest text-parchment px-6 py-3.5 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest-deep transition-all shadow-[0_2px_16px_-4px_rgba(38,70,53,0.3)] group"
+          >
             <svg className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" fill="none">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#E9E4D4" fillOpacity="0.9" />
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#A3B18A" />
@@ -153,7 +192,7 @@ export default function Login() {
           </div>
 
           {/* Email fallback */}
-          <div className="space-y-4">
+          <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
               <label className="font-mono text-[10px] text-forest/40 tracking-[0.15em] uppercase block mb-2">Email address</label>
               <input
@@ -174,10 +213,41 @@ export default function Login() {
               )}
             </div>
 
-            <button className="w-full bg-forest/[0.06] text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest/[0.1] transition-all border border-forest/10">
-              Continue with Email
-            </button>
-          </div>
+            <div>
+              <label className="font-mono text-[10px] text-forest/40 tracking-[0.15em] uppercase block mb-2">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-parchment border border-forest/10 squircle px-4 py-3 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
+              />
+            </div>
+
+            {authError && (
+              <p className="font-mono text-[10px] text-amber/80 flex items-center gap-1.5">
+                <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                {authError}
+              </p>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="flex-1 bg-forest/[0.06] text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest/[0.1] transition-all border border-forest/10 disabled:opacity-50"
+              >
+                {authLoading ? 'Loading…' : mode === 'signup' ? 'Create Account' : 'Continue with Email'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode(m => m === 'signin' ? 'signup' : 'signin')}
+                className="font-mono text-[10px] text-forest/30 hover:text-forest/50 transition-colors whitespace-nowrap"
+              >
+                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+              </button>
+            </div>
+          </form>
 
           {/* Fine print */}
           <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/25 text-center mt-8 leading-relaxed">

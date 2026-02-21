@@ -11,6 +11,7 @@ import rawPrompt from '../../../gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompt_simple.txt?raw'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
+// TODO: proxy through VITE_API_URL once backend /api/prompt endpoint is live
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API as string
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 
@@ -34,17 +35,17 @@ const botanicalTheme: Record<string, React.CSSProperties> = {
     background: 'transparent',
     lineHeight: '1.6',
   },
-  'token.comment': { color: '#A3B18A', fontStyle: 'italic' },
-  'token.keyword': { color: '#264635', fontWeight: '600' },
-  'token.string': { color: '#5C4A32' },
-  'token.number': { color: '#3D6B4F' },
-  'token.function': { color: '#1A1A18', fontWeight: '500' },
-  'token.operator': { color: '#264635' },
-  'token.punctuation': { color: '#7A8C7E' },
-  'token.class-name': { color: '#264635', fontWeight: '600' },
-  'token.builtin': { color: '#3D6B4F' },
-  'token.variable': { color: '#1A1A18' },
-  'token.parameter': { color: '#5C4A32' },
+  'comment': { color: '#A3B18A', fontStyle: 'italic' },
+  'keyword': { color: '#264635', fontWeight: '600' },
+  'string': { color: '#5C4A32' },
+  'number': { color: '#3D6B4F' },
+  'function': { color: '#1A1A18', fontWeight: '500' },
+  'operator': { color: '#264635' },
+  'punctuation': { color: '#7A8C7E' },
+  'class-name': { color: '#264635', fontWeight: '600' },
+  'builtin': { color: '#3D6B4F' },
+  'variable': { color: '#1A1A18' },
+  'parameter': { color: '#5C4A32' },
 }
 
 // ─── DOODLE DECORATIONS ─────────────────────────────────────────────────────
@@ -141,7 +142,7 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
           </svg>
         </div>
       )}
-      <div className={`max-w-[76%] ${isUser ? 'order-first' : ''}`}>
+      <div className="max-w-[76%]">
         {isUser ? (
           <div className="bg-[#264635] text-[#E9E4D4] px-5 py-3 border-2 border-[#264635] rounded-2xl">
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
@@ -159,13 +160,13 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
                 components={{
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
-                    const isInline = !match
+                    const isInline = !match && !String(children).includes('\n')
                     return isInline ? (
                       <code className="font-mono text-[0.82em] bg-[#264635]/8 border border-[#264635]/15 px-1.5 py-0.5 rounded-md" {...props}>
                         {children}
                       </code>
                     ) : (
-                      <CodeBlock language={match[1]}>
+                      <CodeBlock language={match?.[1] ?? ''}>
                         {String(children).replace(/\n$/, '')}
                       </CodeBlock>
                     )
@@ -176,12 +177,15 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
                   h3({ children }) { return <h3 className="font-gamja text-lg text-[#264635] mb-1">{children}</h3> },
                   ul({ children }) { return <ul className="list-none pl-4 mb-3 space-y-1">{children}</ul> },
                   ol({ children }) { return <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol> },
-                  li({ children }) { return (
-                    <li className="flex gap-2 items-start">
-                      <span className="text-[#A3B18A] mt-1 flex-shrink-0">◆</span>
-                      <span>{children}</span>
-                    </li>
-                  )},
+                  li({ children, node, ...props }) {
+                    const isOrdered = (node as any)?.parent?.tagName === 'ol'
+                    return (
+                      <li className="flex gap-2 items-start" {...props}>
+                        {!isOrdered && <span className="text-[#A3B18A] mt-1 flex-shrink-0">◆</span>}
+                        <span>{children}</span>
+                      </li>
+                    )
+                  },
                   blockquote({ children }) { return (
                     <blockquote className="border-l-4 border-[#A3B18A] pl-4 italic text-[#5C4A32] my-3 bg-[#264635]/4 py-2">{children}</blockquote>
                   )},
@@ -253,46 +257,10 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
 }
 
 // ─── EXPAND TASK ─────────────────────────────────────────────────────────────
-// Called when a user drills down into a node. Makes a fresh OpenAI call using
-// the same system prompt, asking it to break down a single task further.
-async function expandTask(item: TaskItem, context: string): Promise<{ items: TaskItem[]; summary: string }> {
-  const prompt = `Expand this task into subtasks:\n\nTask: ${item.name}\nDescription: ${item.text}${context ? `\n\nAdditional context: ${context}` : ''}`
-  const res = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: prompt },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
-  const data = await res.json()
-  const content: string = data.choices?.[0]?.message?.content ?? ''
-  const parsed = parseGraphResponse(content)
-  if (!parsed) throw new Error('Could not parse expansion response')
-  return parsed
-}
+// Defined inside App (see below) so it can close over historyRef.
 
-async function queryNode(item: TaskItem, question: string): Promise<string> {
-  const userMessage = `Task: ${item.name}\nDescription: ${item.text}\n\nQuestion: ${question}`
-  const res = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT_SIMPLE },
-        { role: 'user', content: userMessage },
-      ],
-    }),
-  })
-  if (!res.ok) throw new Error(`API error ${res.status}`)
-  const data = await res.json()
-  return data.choices?.[0]?.message?.content?.trim() ?? 'No response.'
-}
+// ─── QUERY NODE ──────────────────────────────────────────────────────────────
+// Defined inside App (see below) so it can close over historyRef.
 
 // ─── GRAPH MESSAGE ───────────────────────────────────────────────────────────
 export const GraphMessage = ({ msg, items, summary, onExpand, onQuery }: { msg: Message; items: TaskItem[]; summary: string; onExpand: ExpandFn; onQuery: QueryFn }) => (
@@ -554,9 +522,9 @@ function exportToPDF(messages: Message[]) {
   const win = window.open('', '_blank')
   if (!win) return
   win.document.write(html)
-  win.document.close()
-  // Wait for fonts to load before printing
+  // Assign onload before close() to avoid race condition where load fires synchronously
   win.onload = () => setTimeout(() => win.print(), 600)
+  win.document.close()
 }
 
 function escHtml(str: string): string {
@@ -565,6 +533,7 @@ function escHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 const EXAMPLES = [
   { label: 'Build a todo app', icon: '◈', prompt: 'Build a full-stack todo app with React frontend, Node.js API, and PostgreSQL database.' },
@@ -578,9 +547,97 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
+
+  // ── expandTask: closed over historyRef so it can include top-level prompt
+  //    and follow-up user prompts as context for the expansion call.
+  const expandTask = useCallback(async (
+    item: TaskItem,
+    context: string,
+    ancestors: TaskItem[],
+  ): Promise<{ items: TaskItem[]; summary: string }> => {
+    const allMessages = historyRef.current
+    const userMessages = allMessages.filter(m => m.role === 'user')
+    const topLevelPrompt = userMessages[0]?.content ?? ''
+    const followUpPrompts = userMessages.slice(1).map(m => m.content)
+
+    let prompt = `Top-level goal: ${topLevelPrompt}`
+
+    if (followUpPrompts.length > 0) {
+      prompt += `\n\nFollow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
+    }
+
+    if (ancestors.length > 0) {
+      prompt += `\n\nAncestor task chain (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
+    }
+
+    prompt += `\n\nExpand this task into subtasks:\nTask: ${item.name}\nDescription: ${item.text}`
+
+    if (context) {
+      prompt += `\n\nAdditional context: ${context}`
+    }
+
+    const res = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+    const data = await res.json()
+    const content: string = data.choices?.[0]?.message?.content ?? ''
+    const parsed = parseGraphResponse(content)
+    if (!parsed) throw new Error('Could not parse expansion response')
+    return parsed
+  }, [])
+
+  // ── queryNode: closed over historyRef so explanations have full graph context
+  const queryNode = useCallback(async (
+    item: TaskItem,
+    question: string,
+    ancestors: TaskItem[],
+  ): Promise<string> => {
+    const allMessages = historyRef.current
+    const userMessages = allMessages.filter(m => m.role === 'user')
+    const topLevelPrompt = userMessages[0]?.content ?? ''
+    const followUpPrompts = userMessages.slice(1).map(m => m.content)
+
+    let context = `Overall goal: ${topLevelPrompt}`
+
+    if (followUpPrompts.length > 0) {
+      context += `\n\nFollow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
+    }
+
+    if (ancestors.length > 0) {
+      context += `\n\nTask hierarchy (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
+    }
+
+    context += `\n\nCurrent task:\nName: ${item.name}\nDescription: ${item.text}`
+    context += `\n\nQuestion: ${question}`
+
+    const res = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT_SIMPLE },
+          { role: 'user', content: context },
+        ],
+      }),
+    })
+    if (!res.ok) throw new Error(`API error ${res.status}`)
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content?.trim() ?? 'No response.'
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -599,7 +656,7 @@ export default function App() {
 
   const sendPrompt = async (text: string) => {
     if (!text.trim() || loading) return
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text.trim(), timestamp: new Date() }
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: text.trim(), timestamp: new Date() }
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
@@ -625,11 +682,11 @@ export default function App() {
       const data = await res.json()
       const content: string = data.choices?.[0]?.message?.content ?? JSON.stringify(data, null, 2)
       historyRef.current = [...historyRef.current, { role: 'assistant', content }]
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content, timestamp: new Date() }])
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date() }])
     } catch (err) {
-      historyRef.current = historyRef.current.slice(0, -1)
+      // Keep user message in historyRef so UI and conversation context stay in sync
       setMessages(prev => [...prev, {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         role: 'error',
         content: `⚠ ${err instanceof Error ? err.message : 'Failed to reach API'}`,
         timestamp: new Date()
@@ -660,7 +717,7 @@ export default function App() {
   }, [messages])
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--cream)' }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: '#E9E4D4' }}>
       {/* ── Persistent paper grid — fixed so it never disappears on scroll ── */}
       <div className="fixed inset-0 pointer-events-none" style={{
         backgroundImage: `linear-gradient(rgba(38,70,53,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(38,70,53,0.04) 1px, transparent 1px)`,
@@ -796,6 +853,52 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* History toggle button */}
+              <button
+                onClick={() => setHistoryOpen(o => !o)}
+                className="absolute top-3 left-3 z-20 flex items-center gap-1.5 font-mono text-[10px] text-[#A3B18A] uppercase tracking-widest border border-[#A3B18A]/50 bg-[#E9E4D4]/90 backdrop-blur-sm rounded-lg px-2.5 py-1.5 hover:bg-[#264635] hover:text-[#E9E4D4] hover:border-[#264635] transition-all cursor-pointer"
+                aria-label="Toggle conversation history"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <rect x="1" y="1" width="8" height="2" rx="0.5" fill="currentColor"/>
+                  <rect x="1" y="4.5" width="5" height="2" rx="0.5" fill="currentColor"/>
+                  <rect x="1" y="8" width="7" height="1.5" rx="0.5" fill="currentColor"/>
+                </svg>
+                history ({messages.length})
+              </button>
+
+              {/* History drawer */}
+              <AnimatePresence>
+                {historyOpen && (
+                  <motion.div
+                    initial={{ x: -320, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -320, opacity: 0 }}
+                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute top-0 left-0 bottom-0 z-10 w-80 bg-[#E9E4D4]/96 backdrop-blur-sm border-r-2 border-[#264635] flex flex-col"
+                  >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#264635]/20 flex-shrink-0 bg-[#264635]">
+                      <span className="font-mono text-[10px] text-[#A3B18A] uppercase tracking-widest">conversation</span>
+                      <button onClick={() => setHistoryOpen(false)} aria-label="Close history" className="text-[#A3B18A] hover:text-[#E9E4D4] transition-colors cursor-pointer text-sm">✕</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {messages.map(msg => (
+                        <div key={msg.id} className={`text-xs rounded-xl px-3 py-2 ${
+                          msg.role === 'user' ? 'bg-[#264635] text-[#E9E4D4] ml-4' :
+                          msg.role === 'error' ? 'bg-[#F5F0E8] border border-[#5C4A32] text-[#5C4A32]' :
+                          'bg-[#F5F0E8] border border-[#A3B18A]/40 text-[#1A1A18] mr-4'
+                        }`}>
+                          <div className="font-mono text-[9px] opacity-60 mb-1 uppercase tracking-widest">
+                            {msg.role} · {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          <p className="leading-relaxed line-clamp-4">{msg.content.slice(0, 200)}{msg.content.length > 200 ? '…' : ''}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Summary bar — pinned above input */}
@@ -839,8 +942,8 @@ export default function App() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={loading}
+              maxLength={2000}
               placeholder={isEmpty ? "Describe your project or idea…" : "Ask a follow-up or drill deeper…"}
-              rows={1}
               className="flex-1 bg-transparent px-4 py-3.5 text-sm text-[#1A1A18] placeholder-[#A3B18A] resize-none outline-none leading-relaxed disabled:opacity-60"
               style={{ fontFamily: 'inherit', minHeight: 52, maxHeight: 200 }}
             />

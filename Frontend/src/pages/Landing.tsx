@@ -138,19 +138,10 @@ export default function Landing() {
           </p>
 
           {/* CTA */}
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
             <Link to="/editor" className="inline-flex items-center gap-2 bg-forest text-parchment px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest-deep transition-colors shadow-[0_2px_16px_-4px_rgba(38,70,53,0.3)]">
               Open the Editor
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
-            </Link>
-            <Link to="/graph" className="inline-flex items-center gap-2 bg-sage/20 border border-sage text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-sage/30 transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <circle cx="5" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-                <circle cx="19" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-                <circle cx="19" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-                <path strokeLinecap="round" d="M7.5 12h4M14 6.5l2.5 3.5M14 17.5l2.5-3.5" />
-              </svg>
-              AI Graph Planner
             </Link>
             <Link to="/repos" className="inline-flex items-center gap-2 border border-forest/20 text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest/[0.04] transition-colors">
               Browse Repos
