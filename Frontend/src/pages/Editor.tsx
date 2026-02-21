@@ -117,7 +117,10 @@ export default function Design1() {
     scrollEl.scrollBy({ top: elTop - 24, behavior: 'smooth' })
   }, [])
 
-  const handleTabChange = useCallback((tab: 'write' | 'preview') => setActiveTab(tab), [])
+  const tabCls = (tab: 'write' | 'preview') =>
+    `px-3 py-1 font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-all ${
+      activeTab === tab ? 'bg-forest text-parchment' : 'text-forest/40 hover:text-forest/70'
+    }`
 
   // ── Insert block via toolbar ──────────────────────────────────────────────
   // If the write tab is already active, insert immediately.

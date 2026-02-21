@@ -1,6 +1,12 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Navbar } from '../components/Navbar'
 import { KaTeX } from '../components/KaTeX'
+import { useChannels } from '../hooks/useChat'
+import { useMessages } from '../hooks/useChat'
+import { useSendMessage } from '../hooks/useChat'
+import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
+import type { Message, Reaction } from '../lib/supabase'
 
 /* ------------------------------------------------------------------ */
 /* Chat Page                                                           */
@@ -10,134 +16,52 @@ import { KaTeX } from '../components/KaTeX'
 
 type ChannelType = 'school' | 'major' | 'repo'
 
-interface Channel {
-  id: string
-  name: string
-  type: ChannelType
-  unread: number
-  lastMessage: string
-  lastTime: string
-  members: number
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
 }
 
-interface ChatMessage {
-  id: string
-  author: string
-  initials: string
-  color: string
-  aura: number
-  tier: 'seedling' | 'sprout' | 'sapling' | 'grove' | 'ancient-oak'
-  badges: string[]
-  content: string
-  time: string
-  reactions: { emoji: string; count: number }[]
-  thread?: { count: number; lastReply: string }
-  isLatex?: boolean
+function tierColor(tier: string): string {
+  const map: Record<string, string> = {
+    'seedling': 'bg-forest/20',
+    'sprout': 'bg-sage/30',
+    'sapling': 'bg-sage/50',
+    'grove': 'bg-forest/60',
+    'ancient-oak': 'bg-amber/50',
+  }
+  return map[tier] || map.seedling
 }
 
-const channels: Channel[] = [
-  { id: 'nyu-general', name: 'NYU General', type: 'school', unread: 3, lastMessage: 'Anyone have Prof. Chen\'s office hours?', lastTime: '2m', members: 1247 },
-  { id: 'nyu-cs', name: 'Computer Science', type: 'major', unread: 1, lastMessage: 'The midterm is next Thursday!', lastTime: '15m', members: 342 },
-  { id: 'nyu-math', name: 'Mathematics', type: 'major', unread: 0, lastMessage: 'Euler\'s identity proof in topology...', lastTime: '1h', members: 198 },
-  { id: 'cs-ua-310', name: 'Intro to Algorithms', type: 'repo', unread: 5, lastMessage: 'Can someone explain the master theorem?', lastTime: '5m', members: 47 },
-  { id: 'math-ua-140', name: 'Linear Algebra', type: 'repo', unread: 0, lastMessage: 'New eigenvalue examples added!', lastTime: '3h', members: 31 },
-  { id: 'chem-ua-226', name: 'Organic Chemistry', type: 'repo', unread: 2, lastMessage: 'SN2 mechanism diagrams look great', lastTime: '20m', members: 15 },
-  { id: 'nyu-physics', name: 'Physics', type: 'major', unread: 0, lastMessage: 'Quantum homework solutions posted', lastTime: '4h', members: 167 },
-  { id: 'study-dsa', name: 'DSA Interview Prep', type: 'repo', unread: 0, lastMessage: 'Linked list problems batch done', lastTime: '1d', members: 4 },
+const AVATAR_COLORS = [
+  '#264635', '#A3B18A', '#8B6E4E', '#5C7A6B', '#D4A843',
+  '#4A6741', '#8B4513', '#1a2f26',
 ]
+function colorForId(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
 
-const messages: ChatMessage[] = [
-  {
-    id: '1',
-    author: 'Jake Torres',
-    initials: 'JT',
-    color: '#264635',
-    aura: 892,
-    tier: 'grove',
-    badges: ['🎓', '⟐'],
-    content: 'Hey everyone — I just pushed a really clean explanation of the Master Theorem to the master doc. Can someone review before the next merge window?',
-    time: '4:23 PM',
-    reactions: [{ emoji: '👍', count: 4 }, { emoji: '✦', count: 2 }],
-    thread: { count: 3, lastReply: '4:45 PM' },
-  },
-  {
-    id: '2',
-    author: 'Priya Kapoor',
-    initials: 'PK',
-    color: '#A3B18A',
-    aura: 1240,
-    tier: 'ancient-oak',
-    badges: ['✦', '🏆'],
-    content: 'Nice work! Here\'s the recurrence relation for reference:',
-    time: '4:28 PM',
-    reactions: [],
-  },
-  {
-    id: '2b',
-    author: 'Priya Kapoor',
-    initials: 'PK',
-    color: '#A3B18A',
-    aura: 1240,
-    tier: 'ancient-oak',
-    badges: ['✦', '🏆'],
-    content: '$T(n) = aT\\left(\\frac{n}{b}\\right) + \\Theta(n^c)$, where the solution depends on $\\log_b a$ vs $c$.',
-    time: '4:28 PM',
-    reactions: [{ emoji: '🧠', count: 6 }],
-    isLatex: true,
-  },
-  {
-    id: '3',
-    author: 'Aisha Malik',
-    initials: 'AM',
-    color: '#8B6E4E',
-    aura: 1847,
-    tier: 'ancient-oak',
-    badges: ['✦', '⟐', '🎓'],
-    content: 'The three cases are:\n\nCase 1: If $\\log_b a > c$, then $T(n) = \\Theta(n^{\\log_b a})$\n\nCase 2: If $\\log_b a = c$, then $T(n) = \\Theta(n^c \\log n)$\n\nCase 3: If $\\log_b a < c$, then $T(n) = \\Theta(n^c)$',
-    time: '4:31 PM',
-    reactions: [{ emoji: '🔥', count: 8 }, { emoji: '👍', count: 3 }],
-    isLatex: true,
-    thread: { count: 7, lastReply: '5:02 PM' },
-  },
-  {
-    id: '4',
-    author: 'Marcus Chen',
-    initials: 'MC',
-    color: '#5C7A6B',
-    aura: 156,
-    tier: 'sprout',
-    badges: ['🎓'],
-    content: 'Wait so for merge sort, $a = 2$, $b = 2$, $c = 1$, and $\\log_2 2 = 1 = c$, so it\'s Case 2 and we get $\\Theta(n \\log n)$?',
-    time: '4:35 PM',
-    reactions: [{ emoji: '✅', count: 3 }],
-    isLatex: true,
-  },
-  {
-    id: '5',
-    author: 'Priya Kapoor',
-    initials: 'PK',
-    color: '#A3B18A',
-    aura: 1240,
-    tier: 'ancient-oak',
-    badges: ['✦', '🏆'],
-    content: 'Exactly right, Marcus! That\'s the classic example. Binary search is Case 2 as well but with $c = 0$: we get $T(n) = T(n/2) + \\Theta(1)$, and $\\log_2 1 = 0 = c$.',
-    time: '4:38 PM',
-    reactions: [{ emoji: '💡', count: 5 }],
-    isLatex: true,
-  },
-  {
-    id: '6',
-    author: 'Jake Torres',
-    initials: 'JT',
-    color: '#264635',
-    aura: 892,
-    tier: 'grove',
-    badges: ['🎓', '⟐'],
-    content: 'I added a comparison table to the notes showing all these cases with real algorithms. Should be in the next merge — check the diff page!',
-    time: '4:42 PM',
-    reactions: [{ emoji: '🙌', count: 4 }],
-  },
-]
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+function groupReactions(reactions: Reaction[]): { emoji: string; count: number }[] {
+  const map: Record<string, number> = {}
+  for (const r of reactions) {
+    map[r.emoji] = (map[r.emoji] ?? 0) + 1
+  }
+  return Object.entries(map).map(([emoji, count]) => ({ emoji, count }))
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function InlineLatexChat({ text }: { text: string }) {
   const parts = text.split(/(\$[^$]+\$)/g)
@@ -151,17 +75,6 @@ function InlineLatexChat({ text }: { text: string }) {
       })}
     </span>
   )
-}
-
-function tierColor(tier: string): string {
-  const map: Record<string, string> = {
-    'seedling': 'bg-forest/20',
-    'sprout': 'bg-sage/30',
-    'sapling': 'bg-sage/50',
-    'grove': 'bg-forest/60',
-    'ancient-oak': 'bg-amber/50',
-  }
-  return map[tier] || map.seedling
 }
 
 function ChannelIcon({ type }: { type: ChannelType }) {
@@ -182,12 +95,100 @@ function ChannelIcon({ type }: { type: ChannelType }) {
   )
 }
 
+// Inline reaction toggle button (keeps design, talks to Supabase)
+function ReactionButton({
+  emoji,
+  count,
+  messageId,
+  userId,
+}: {
+  emoji: string
+  count: number
+  messageId: string
+  userId: string | undefined
+}) {
+  const [localCount, setLocalCount] = useState(count)
+
+  const handleToggle = useCallback(async () => {
+    if (!userId) return
+    // Check if user already reacted
+    const { data: existing } = await supabase
+      .from('reactions')
+      .select('id')
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase.from('reactions').delete().eq('id', existing.id)
+      setLocalCount(c => Math.max(0, c - 1))
+    } else {
+      await supabase.from('reactions').insert({ message_id: messageId, user_id: userId, emoji })
+      setLocalCount(c => c + 1)
+    }
+  }, [messageId, userId, emoji])
+
+  if (localCount === 0) return null
+  return (
+    <button
+      onClick={handleToggle}
+      className="flex items-center gap-1 bg-forest/[0.04] hover:bg-forest/[0.08] border border-forest/[0.06] squircle-sm px-2 py-0.5 transition-colors"
+    >
+      <span className="text-xs">{emoji}</span>
+      <span className="font-mono text-[10px] text-forest/40">{localCount}</span>
+    </button>
+  )
+}
+
+// Thread reply count — reads from Supabase once
+function ThreadCount({ messageId }: { messageId: string }) {
+  const [count, setCount] = useState<number | null>(null)
+  const [lastReply, setLastReply] = useState<string>('')
+
+  useEffect(() => {
+    supabase
+      .from('messages')
+      .select('created_at')
+      .eq('thread_id', messageId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setCount(data?.length ?? 0)
+        if (data?.[0]) setLastReply(formatTime(data[0].created_at))
+      })
+  }, [messageId])
+
+  if (!count) return null
+  return (
+    <button className="flex items-center gap-2 mt-2 text-sage hover:text-forest transition-colors group/thread">
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.28 48.28 0 005.557-.885c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
+      <span className="font-mono text-[10px] group-hover/thread:underline">{count} replies</span>
+      {lastReply && <span className="font-mono text-[9px] text-forest/20">last at {lastReply}</span>}
+    </button>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function Chat() {
-  const [activeChannel, setActiveChannel] = useState('cs-ua-310')
+  const { user, profile } = useAuth()
+  const [activeChannel, setActiveChannel] = useState<string | null>(null)
   const [messageText, setMessageText] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  const { channels, loading: channelsLoading } = useChannels()
+  const { messages, loading: messagesLoading, bottomRef } = useMessages(activeChannel)
+  const { sendMessage, sending } = useSendMessage()
+
+  // Auto-select first channel once loaded
+  useEffect(() => {
+    if (!activeChannel && channels.length > 0) {
+      setActiveChannel(channels[0].id)
+    }
+  }, [channels, activeChannel])
+
+  // Scroll to bottom when channel changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeChannel])
@@ -198,6 +199,34 @@ export default function Chat() {
     school: channels.filter(c => c.type === 'school'),
     major: channels.filter(c => c.type === 'major'),
     repo: channels.filter(c => c.type === 'repo'),
+  }
+
+  async function handleSend() {
+    if (!activeChannel || !messageText.trim()) return
+    const isLatex = messageText.includes('$')
+    await sendMessage(activeChannel, messageText, isLatex)
+    setMessageText('')
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  // Map a Supabase Message to render-ready shape
+  function msgToView(msg: Message) {
+    const p = msg.profile
+    const displayName = p?.display_name ?? 'Student'
+    const initials = getInitials(displayName)
+    const color = colorForId(msg.user_id)
+    const aura = p?.aura ?? 0
+    const tier = p?.tier ?? 'seedling'
+    const badges = p?.badges ?? []
+    const reactions = groupReactions(msg.reactions ?? [])
+    const time = formatTime(msg.created_at)
+    return { displayName, initials, color, aura, tier, badges, reactions, time }
   }
 
   return (
@@ -230,35 +259,41 @@ export default function Chat() {
 
           {/* Channel list */}
           <div className="flex-1 overflow-y-auto py-2">
-            {!sidebarCollapsed ? (
+            {channelsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-4 h-4 border border-sage/30 border-t-sage rounded-full animate-spin" />
+              </div>
+            ) : !sidebarCollapsed ? (
               <>
                 {(['school', 'major', 'repo'] as const).map(type => (
-                  <div key={type} className="mb-4">
-                    <span className="font-mono text-[8px] text-forest/20 tracking-[0.3em] uppercase px-4 block mb-1.5">
-                      {type === 'school' ? 'SCHOOL' : type === 'major' ? 'DEPARTMENTS' : 'REPOSITORIES'}
-                    </span>
-                    {groupedChannels[type].map(channel => (
-                      <button
-                        key={channel.id}
-                        onClick={() => setActiveChannel(channel.id)}
-                        className={`w-full text-left px-4 py-2 flex items-center gap-2.5 transition-all ${
-                          activeChannel === channel.id
-                            ? 'bg-forest/[0.06] text-forest'
-                            : 'text-forest/40 hover:bg-forest/[0.03] hover:text-forest/70'
-                        }`}
-                      >
-                        <span className={`shrink-0 ${activeChannel === channel.id ? 'text-sage' : 'text-forest/25'}`}>
-                          <ChannelIcon type={channel.type} />
-                        </span>
-                        <span className="font-[family-name:var(--font-body)] text-xs truncate flex-1">{channel.name}</span>
-                        {channel.unread > 0 && (
-                          <span className="w-5 h-5 bg-sage text-parchment font-mono text-[9px] rounded-full flex items-center justify-center shrink-0">
-                            {channel.unread}
+                  groupedChannels[type].length > 0 && (
+                    <div key={type} className="mb-4">
+                      <span className="font-mono text-[8px] text-forest/20 tracking-[0.3em] uppercase px-4 block mb-1.5">
+                        {type === 'school' ? 'SCHOOL' : type === 'major' ? 'DEPARTMENTS' : 'NOOTBOOKS'}
+                      </span>
+                      {groupedChannels[type].map(channel => (
+                        <button
+                          key={channel.id}
+                          onClick={() => setActiveChannel(channel.id)}
+                          className={`w-full text-left px-4 py-2 flex items-center gap-2.5 transition-all ${
+                            activeChannel === channel.id
+                              ? 'bg-forest/[0.06] text-forest'
+                              : 'text-forest/40 hover:bg-forest/[0.03] hover:text-forest/70'
+                          }`}
+                        >
+                          <span className={`shrink-0 ${activeChannel === channel.id ? 'text-sage' : 'text-forest/25'}`}>
+                            <ChannelIcon type={channel.type as ChannelType} />
                           </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                          <span className="font-[family-name:var(--font-body)] text-xs truncate flex-1">{channel.name}</span>
+                          {channel.unread > 0 && (
+                            <span className="w-5 h-5 bg-sage text-parchment font-mono text-[9px] rounded-full flex items-center justify-center shrink-0">
+                              {channel.unread}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )
                 ))}
               </>
             ) : (
@@ -274,7 +309,7 @@ export default function Chat() {
                         : 'text-forest/25 hover:bg-forest/[0.04] hover:text-forest/50'
                     }`}
                   >
-                    <ChannelIcon type={channel.type} />
+                    <ChannelIcon type={channel.type as ChannelType} />
                     {channel.unread > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-sage rounded-full" />
                     )}
@@ -285,16 +320,19 @@ export default function Chat() {
           </div>
 
           {/* User status */}
-          {!sidebarCollapsed && (
+          {!sidebarCollapsed && profile && (
             <div className="px-4 py-3 border-t border-forest/[0.06]">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-forest flex items-center justify-center text-[10px] text-parchment font-medium relative">
-                  AM
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] text-parchment font-medium relative"
+                  style={{ backgroundColor: colorForId(user?.id ?? '') }}
+                >
+                  {getInitials(profile.display_name)}
                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-sage rounded-full border-2 border-cream" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="font-[family-name:var(--font-body)] text-xs text-forest/70 block truncate">Aisha Malik</span>
-                  <span className="font-mono text-[9px] text-sage/50">1,847 ✦</span>
+                  <span className="font-[family-name:var(--font-body)] text-xs text-forest/70 block truncate">{profile.display_name}</span>
+                  <span className="font-mono text-[9px] text-sage/50">{profile.aura.toLocaleString()} ✦</span>
                 </div>
               </div>
             </div>
@@ -307,11 +345,11 @@ export default function Chat() {
           <div className="border-b border-forest/[0.08] bg-cream px-6 py-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <span className="text-sage/50">
-                <ChannelIcon type={activeChannelData?.type || 'repo'} />
+                <ChannelIcon type={(activeChannelData?.type ?? 'repo') as ChannelType} />
               </span>
               <div>
-                <h2 className="font-[family-name:var(--font-display)] text-xl text-forest">{activeChannelData?.name}</h2>
-                <span className="font-mono text-[10px] text-forest/25">{activeChannelData?.members} members</span>
+                <h2 className="font-[family-name:var(--font-display)] text-xl text-forest">{activeChannelData?.name ?? '…'}</h2>
+                <span className="font-mono text-[10px] text-forest/25">{activeChannelData?.members ?? 0} members</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -336,39 +374,94 @@ export default function Chat() {
               <div className="flex-1 h-px bg-forest/[0.06]" />
             </div>
 
-            <div className="space-y-1">
-              {messages.map((msg, idx) => {
-                // Group consecutive messages from same author
-                const prevMsg = idx > 0 ? messages[idx - 1] : null
-                const isGrouped = prevMsg?.author === msg.author && prevMsg?.time === msg.time
+            {messagesLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-6 h-6 border-2 border-sage/30 border-t-sage rounded-full animate-spin" />
+                  <span className="font-mono text-[10px] text-forest/25 tracking-[0.2em] uppercase">Loading messages</span>
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="font-[family-name:var(--font-display)] text-2xl text-forest/20 mb-2">no messages yet</p>
+                <p className="font-[family-name:var(--font-body)] text-sm text-forest/30">Be the first to say something!</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {messages.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? messages[idx - 1] : null
+                  const isGrouped = prevMsg?.user_id === msg.user_id &&
+                    Math.abs(new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime()) < 5 * 60_000
+                  const { displayName, initials, color, aura, tier, badges, reactions, time } = msgToView(msg)
 
-                return (
-                  <div
-                    key={msg.id}
-                    className={`group hover:bg-forest/[0.02] rounded-lg px-3 py-1.5 transition-colors ${!isGrouped ? 'mt-3' : ''}`}
-                  >
-                    {!isGrouped ? (
-                      <div className="flex items-start gap-3">
-                        {/* Avatar */}
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] text-parchment font-medium shrink-0 mt-0.5" style={{ backgroundColor: msg.color }}>
-                          {msg.initials}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          {/* Author line */}
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="font-[family-name:var(--font-body)] text-sm text-forest font-medium">{msg.author}</span>
-                            {msg.badges.map((b, bi) => (
-                              <span key={bi} className="text-xs">{b}</span>
-                            ))}
-                            <span className={`w-2 h-2 rounded-full ${tierColor(msg.tier)}`} title={`${msg.tier} · ${msg.aura} aura`} />
-                            <span className="font-mono text-[9px] text-sage/40">{msg.aura} ✦</span>
-                            <span className="font-mono text-[10px] text-forest/20 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">{msg.time}</span>
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`group hover:bg-forest/[0.02] rounded-lg px-3 py-1.5 transition-colors ${!isGrouped ? 'mt-3' : ''}`}
+                    >
+                      {!isGrouped ? (
+                        <div className="flex items-start gap-3">
+                          {/* Avatar */}
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] text-parchment font-medium shrink-0 mt-0.5"
+                            style={{ backgroundColor: color }}
+                          >
+                            {initials}
                           </div>
 
-                          {/* Message content */}
+                          <div className="flex-1 min-w-0">
+                            {/* Author line */}
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="font-[family-name:var(--font-body)] text-sm text-forest font-medium">{displayName}</span>
+                              {badges.map((b, bi) => (
+                                <span key={bi} className="text-xs">{b}</span>
+                              ))}
+                              <span className={`w-2 h-2 rounded-full ${tierColor(tier)}`} title={`${tier} · ${aura} aura`} />
+                              <span className="font-mono text-[9px] text-sage/40">{aura} ✦</span>
+                              <span className="font-mono text-[10px] text-forest/20 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">{time}</span>
+                            </div>
+
+                            {/* Message content */}
+                            <div className="font-[family-name:var(--font-body)] text-[14px] text-forest/70 leading-relaxed whitespace-pre-wrap">
+                              {msg.is_latex ? (
+                                msg.content.split('\n').map((line, li) => (
+                                  <span key={li}>
+                                    {li > 0 && <br />}
+                                    <InlineLatexChat text={line} />
+                                  </span>
+                                ))
+                              ) : (
+                                msg.content
+                              )}
+                            </div>
+
+                            {/* Reactions */}
+                            {reactions.length > 0 && (
+                              <div className="flex items-center gap-1.5 mt-2">
+                                {reactions.map((r, ri) => (
+                                  <ReactionButton
+                                    key={ri}
+                                    emoji={r.emoji}
+                                    count={r.count}
+                                    messageId={msg.id}
+                                    userId={user?.id}
+                                  />
+                                ))}
+                                <button className="w-6 h-6 flex items-center justify-center text-forest/15 hover:text-forest/40 hover:bg-forest/[0.04] squircle-sm transition-all opacity-0 group-hover:opacity-100">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Thread indicator */}
+                            <ThreadCount messageId={msg.id} />
+                          </div>
+                        </div>
+                      ) : (
+                        /* Grouped message — no avatar */
+                        <div className="pl-12">
                           <div className="font-[family-name:var(--font-body)] text-[14px] text-forest/70 leading-relaxed whitespace-pre-wrap">
-                            {msg.isLatex ? (
+                            {msg.is_latex ? (
                               msg.content.split('\n').map((line, li) => (
                                 <span key={li}>
                                   {li > 0 && <br />}
@@ -379,70 +472,29 @@ export default function Chat() {
                               msg.content
                             )}
                           </div>
-
-                          {/* Reactions */}
-                          {msg.reactions.length > 0 && (
+                          {reactions.length > 0 && (
                             <div className="flex items-center gap-1.5 mt-2">
-                              {msg.reactions.map((r, ri) => (
-                                <button key={ri} className="flex items-center gap-1 bg-forest/[0.04] hover:bg-forest/[0.08] border border-forest/[0.06] squircle-sm px-2 py-0.5 transition-colors">
-                                  <span className="text-xs">{r.emoji}</span>
-                                  <span className="font-mono text-[10px] text-forest/40">{r.count}</span>
-                                </button>
+                              {reactions.map((r, ri) => (
+                                <ReactionButton
+                                  key={ri}
+                                  emoji={r.emoji}
+                                  count={r.count}
+                                  messageId={msg.id}
+                                  userId={user?.id}
+                                />
                               ))}
-                              <button className="w-6 h-6 flex items-center justify-center text-forest/15 hover:text-forest/40 hover:bg-forest/[0.04] squircle-sm transition-all opacity-0 group-hover:opacity-100">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                              </button>
                             </div>
                           )}
+                          <ThreadCount messageId={msg.id} />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
-                          {/* Thread indicator */}
-                          {msg.thread && (
-                            <button className="flex items-center gap-2 mt-2 text-sage hover:text-forest transition-colors group/thread">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.28 48.28 0 005.557-.885c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
-                              <span className="font-mono text-[10px] group-hover/thread:underline">{msg.thread.count} replies</span>
-                              <span className="font-mono text-[9px] text-forest/20">last at {msg.thread.lastReply}</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      /* Grouped message (same author, same time) — no avatar */
-                      <div className="pl-12">
-                        <div className="font-[family-name:var(--font-body)] text-[14px] text-forest/70 leading-relaxed whitespace-pre-wrap">
-                          {msg.isLatex ? (
-                            msg.content.split('\n').map((line, li) => (
-                              <span key={li}>
-                                {li > 0 && <br />}
-                                <InlineLatexChat text={line} />
-                              </span>
-                            ))
-                          ) : (
-                            msg.content
-                          )}
-                        </div>
-                        {msg.reactions.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-2">
-                            {msg.reactions.map((r, ri) => (
-                              <button key={ri} className="flex items-center gap-1 bg-forest/[0.04] hover:bg-forest/[0.08] border border-forest/[0.06] squircle-sm px-2 py-0.5 transition-colors">
-                                <span className="text-xs">{r.emoji}</span>
-                                <span className="font-mono text-[10px] text-forest/40">{r.count}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {msg.thread && (
-                          <button className="flex items-center gap-2 mt-2 text-sage hover:text-forest transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.28 48.28 0 005.557-.885c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
-                            <span className="font-mono text-[10px]">{msg.thread.count} replies</span>
-                            <span className="font-mono text-[9px] text-forest/20">last at {msg.thread.lastReply}</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <div ref={bottomRef} />
             <div ref={messagesEndRef} />
           </div>
 
@@ -465,16 +517,18 @@ export default function Chat() {
                   type="text"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  placeholder={`Message #${activeChannelData?.name || 'channel'}... (use $...$ for LaTeX)`}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Message #${activeChannelData?.name ?? 'channel'}… (use $…$ for LaTeX)`}
                   className="flex-1 bg-transparent font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none"
                 />
                 <button
+                  onClick={handleSend}
+                  disabled={!messageText.trim() || sending}
                   className={`w-8 h-8 flex items-center justify-center squircle-sm transition-all ${
-                    messageText.trim()
+                    messageText.trim() && !sending
                       ? 'bg-forest text-parchment hover:bg-forest-deep'
                       : 'text-forest/15'
                   }`}
-                  disabled={!messageText.trim()}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                 </button>

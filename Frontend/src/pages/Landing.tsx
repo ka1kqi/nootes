@@ -143,6 +143,10 @@ export default function Landing() {
               Open the Editor
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
             </Link>
+            <Link to="/graph" className="inline-flex items-center gap-2 bg-sage/20 border border-sage text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-sage/30 transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><circle cx="5" cy="12" r="2.5" /><circle cx="19" cy="5" r="2.5" /><circle cx="19" cy="19" r="2.5" /><path strokeLinecap="round" d="M7.5 12h4M14 6.5l3 4M14 17.5l3-4" /></svg>
+              AI Graph
+            </Link>
             <Link to="/repos" className="inline-flex items-center gap-2 border border-forest/20 text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest/[0.04] transition-colors">
               Browse Repos
             </Link>

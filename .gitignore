@@ -27,6 +27,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# bun
+bun.lockb
+.bun
+
 # local env files
 .env*.local
 .env
@@ -38,3 +42,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 __pycache__/
+
+#claude
+CLAUDE.md
+
+# supabase
+supabase/
+
+Frontend/dist
+
+nootes
+notes
+.github
