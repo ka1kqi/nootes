@@ -6,14 +6,14 @@ import { Navbar } from '../components/Navbar'
 /* Browse all classes / repos — cards with stats, search, filters     */
 /* ------------------------------------------------------------------ */
 
-const universities = ['All', 'NYU', 'MIT', 'Stanford', 'Berkeley', 'Columbia']
+const organizations = ['All', 'NYU', 'MIT', 'Stanford', 'Berkeley', 'Columbia']
 
 const repos = [
   {
     id: 'nyu-cs-algo',
     name: 'Intro to Algorithms',
-    university: 'NYU',
-    dept: 'CS',
+    org: 'NYU',
+    field: 'CS',
     code: 'CS-UA 310',
     contributors: 47,
     notes: 23,
@@ -27,8 +27,8 @@ const repos = [
   {
     id: 'nyu-math-linalg',
     name: 'Linear Algebra',
-    university: 'NYU',
-    dept: 'Math',
+    org: 'NYU',
+    field: 'Math',
     code: 'MATH-UA 140',
     contributors: 31,
     notes: 18,
@@ -42,8 +42,8 @@ const repos = [
   {
     id: 'mit-cs-ml',
     name: 'Machine Learning',
-    university: 'MIT',
-    dept: 'CS',
+    org: 'MIT',
+    field: 'CS',
     code: '6.036',
     contributors: 82,
     notes: 41,
@@ -57,8 +57,8 @@ const repos = [
   {
     id: 'stanford-phys',
     name: 'Quantum Mechanics',
-    university: 'Stanford',
-    dept: 'Physics',
+    org: 'Stanford',
+    field: 'Physics',
     code: 'PHYS 130',
     contributors: 19,
     notes: 14,
@@ -72,8 +72,8 @@ const repos = [
   {
     id: 'berkeley-math-analysis',
     name: 'Real Analysis',
-    university: 'Berkeley',
-    dept: 'Math',
+    org: 'Berkeley',
+    field: 'Math',
     code: 'MATH 104',
     contributors: 24,
     notes: 16,
@@ -87,8 +87,8 @@ const repos = [
   {
     id: 'columbia-cs-os',
     name: 'Operating Systems',
-    university: 'Columbia',
-    dept: 'CS',
+    org: 'Columbia',
+    field: 'CS',
     code: 'COMS 4118',
     contributors: 38,
     notes: 22,
@@ -102,8 +102,8 @@ const repos = [
   {
     id: 'nyu-chem-orgo',
     name: 'Organic Chemistry',
-    university: 'NYU',
-    dept: 'Chem',
+    org: 'NYU',
+    field: 'Chem',
     code: 'CHEM-UA 226',
     contributors: 15,
     notes: 12,
@@ -117,8 +117,8 @@ const repos = [
   {
     id: 'mit-econ',
     name: 'Microeconomics',
-    university: 'MIT',
-    dept: 'Econ',
+    org: 'MIT',
+    field: 'Econ',
     code: '14.01',
     contributors: 29,
     notes: 17,
@@ -161,7 +161,7 @@ export default function Repos() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">BROWSE</span>
           <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Nootbooks</h1>
           <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/50 max-w-lg">
-            Explore class notes across universities. Fork, contribute, and build the best study resources together.
+            Explore noots across organizations. Fork, contribute, and build the best study resources together.
           </p>
 
           {/* Search + filter bar */}
@@ -177,7 +177,7 @@ export default function Repos() {
               />
             </div>
             <div className="flex items-center gap-1.5">
-              {universities.map(u => (
+              {organizations.map(u => (
                 <button
                   key={u}
                   className={`font-mono text-[11px] px-3 py-2 squircle-sm transition-all ${u === 'All'
@@ -199,7 +199,7 @@ export default function Repos() {
               <Link
                 key={repo.id}
                 to={`/editor/${repo.id}`}
-                state={{ name: repo.name, code: repo.code, university: repo.university, dept: repo.dept, description: repo.description }}
+                state={{ name: repo.name, code: repo.code, org: repo.org, field: repo.field, description: repo.description }}
                 className="group bg-parchment border border-forest/10 squircle-xl p-6 hover:shadow-[0_4px_32px_-8px_rgba(38,70,53,0.1)] transition-all hover:border-forest/20"
               >
                 {/* Header row */}
@@ -207,7 +207,7 @@ export default function Repos() {
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: repo.color, opacity: 0.6 }} />
                     <span className="font-mono text-[10px] text-forest/35 tracking-wider">{repo.code}</span>
-                    <span className="font-mono text-[9px] text-sage/50 bg-sage/[0.08] px-1.5 py-0.5 squircle-sm">{repo.university}</span>
+                    <span className="font-mono text-[9px] text-sage/50 bg-sage/[0.08] px-1.5 py-0.5 squircle-sm">{repo.org}</span>
                   </div>
                   <div className="flex items-center gap-1 text-forest/25">
                     <StarIcon />

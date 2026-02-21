@@ -18,10 +18,10 @@ function CountUp({ value }: { value: string }) {
     const targetNum = parseInt(numMatch.join('')) || 0
     const numLength = numMatch[0]?.length || 1
     const isPercent = value.includes('%')
-    
+
     let current = 0
     const increment = Math.ceil(targetNum / 50)
-    
+
     const timer = setInterval(() => {
       current += increment
       if (current >= targetNum) {
@@ -38,7 +38,7 @@ function CountUp({ value }: { value: string }) {
   // Format the display value with commas
   const formatted = displayValue.toLocaleString()
   const suffix = value.includes('%') ? '%' : ''
-  
+
   return <span>{formatted}{suffix}</span>
 }
 
@@ -76,22 +76,13 @@ const features = [
         <path d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
       </svg>
     ),
-<<<<<<< HEAD
-    title: 'Organized Repos',
-    desc: 'Browse nootes by university, department, class, and topic — like GitHub.',
-=======
     title: 'Organized Nootbooks',
-    desc: 'Browse noots by university, department, class, and topic — like GitHub.',
->>>>>>> c26c2f9 (updates)
+    desc: 'Browse noots by organization, field, class, and topic — like GitHub.',
   },
 ]
 
 const stats = [
-<<<<<<< HEAD
-  { value: '12,847', label: 'Nootes shared' },
-=======
   { value: '12,847', label: 'Noots shared' },
->>>>>>> c26c2f9 (updates)
   { value: '3,214', label: 'Contributors' },
   { value: '487', label: 'Nootbooks' },
   { value: '98%', label: 'Merge success' },
@@ -222,13 +213,8 @@ export default function Landing() {
 
         <div className="flex items-center justify-center gap-4 flex-wrap">
           {[
-<<<<<<< HEAD
-            { step: '01', label: 'Create a repo for your class', link: '/repos' },
-            { step: '02', label: 'Write nootes in the editor', link: '/editor' },
-=======
             { step: '01', label: 'Create a nootbook for your class', link: '/repos' },
             { step: '02', label: 'Write noots in the editor', link: '/editor' },
->>>>>>> c26c2f9 (updates)
             { step: '03', label: 'Review diffs & merge', link: '/diff' },
             { step: '04', label: 'Build your profile', link: '/profile' },
           ].map((s, i) => (

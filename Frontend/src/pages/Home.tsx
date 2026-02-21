@@ -10,7 +10,7 @@ import { KaTeX } from '../components/KaTeX'
 const user = {
   name: 'Aisha Malik',
   initials: 'AM',
-  university: 'NYU',
+  organization: 'NYU',
   aura: 1847,
   streak: 23,
 }
@@ -46,21 +46,18 @@ const greetings = {
 function getGreeting(firstName: string): string {
   const hour = new Date().getHours()
   let pool: string[]
-  if (hour >= 5 && hour < 7)       pool = greetings.earlyMorning
+  if (hour >= 5 && hour < 7) pool = greetings.earlyMorning
   else if (hour >= 7 && hour < 12) pool = greetings.morning
   else if (hour >= 12 && hour < 18) pool = greetings.afternoon
   else if (hour >= 18 && hour < 22) pool = greetings.evening
-  else                              pool = greetings.night
+  else pool = greetings.night
   const pick = pool[Math.floor(Math.random() * pool.length)]
   return pick.replace('{name}', firstName)
 }
 
 const quickActions = [
   {
-<<<<<<< HEAD
-=======
     label: 'New Noot',
->>>>>>> c26c2f9 (updates)
     desc: 'Open the editor',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -72,11 +69,7 @@ const quickActions = [
   },
   {
     label: 'Browse Nootbooks',
-<<<<<<< HEAD
-    desc: 'Find class nootes',
-=======
     desc: 'Find class noots',
->>>>>>> c26c2f9 (updates)
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
@@ -87,11 +80,7 @@ const quickActions = [
   },
   {
     label: 'My Nootbooks',
-<<<<<<< HEAD
-    desc: 'Manage your nootes',
-=======
     desc: 'Manage your noots',
->>>>>>> c26c2f9 (updates)
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 3L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
@@ -102,11 +91,7 @@ const quickActions = [
   },
   {
     label: 'AI Chat',
-<<<<<<< HEAD
-    desc: 'Ask about your nootes',
-=======
     desc: 'Ask about your noots',
->>>>>>> c26c2f9 (updates)
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
@@ -120,8 +105,8 @@ const quickActions = [
 const trendingRepos = [
   {
     name: 'Intro to Algorithms',
-    university: 'NYU',
-    dept: 'CS · CS-UA 310',
+    org: 'NYU',
+    field: 'CS · CS-UA 310',
     notes: 23,
     contributors: 47,
     stars: 234,
@@ -130,8 +115,8 @@ const trendingRepos = [
   },
   {
     name: 'Linear Algebra',
-    university: 'NYU',
-    dept: 'Math · MATH-UA 140',
+    org: 'NYU',
+    field: 'Math · MATH-UA 140',
     notes: 18,
     contributors: 31,
     stars: 189,
@@ -140,8 +125,8 @@ const trendingRepos = [
   },
   {
     name: 'Machine Learning',
-    university: 'MIT',
-    dept: 'CS · 6.036',
+    org: 'MIT',
+    field: 'CS · 6.036',
     notes: 41,
     contributors: 82,
     stars: 312,
@@ -188,7 +173,7 @@ export default function Home() {
   const greeting = getGreeting(user.name.split(' ')[0])
   return (
     <div className="min-h-screen bg-cream flex flex-col">
-      <Navbar variant="light" breadcrumbs={[{ label: user.university }, { label: 'Home' }]} />
+      <Navbar variant="light" breadcrumbs={[{ label: user.organization }, { label: 'Home' }]} />
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-10 stagger">
@@ -219,8 +204,8 @@ export default function Home() {
                           style={{
                             backgroundColor:
                               level === 0 ? 'rgba(38,70,53,0.06)' :
-                              level === 1 ? 'rgba(163,177,138,0.3)' :
-                              level === 2 ? 'rgba(163,177,138,0.6)' : '#A3B18A',
+                                level === 1 ? 'rgba(163,177,138,0.3)' :
+                                  level === 2 ? 'rgba(163,177,138,0.6)' : '#A3B18A',
                           }}
                         />
                       )
@@ -258,11 +243,7 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="font-mono text-[9px] text-sage/50 tracking-[0.3em] uppercase block mb-0.5">FEATURED</span>
-<<<<<<< HEAD
-                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Top Noote Today</h2>
-=======
                     <h2 className="font-[family-name:var(--font-display)] text-2xl text-forest">Top Noot Today</h2>
->>>>>>> c26c2f9 (updates)
                   </div>
                   <Link to="/repos" className="font-mono text-[10px] text-forest/30 hover:text-forest transition-colors">
                     browse all →
@@ -318,22 +299,18 @@ export default function Home() {
                     >
                       {/* Color swatch */}
                       <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-parchment text-xs font-mono" style={{ backgroundColor: repo.color }}>
-                        {repo.university.slice(0, 1)}
+                        {repo.org.slice(0, 1)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="font-[family-name:var(--font-body)] text-sm text-forest/80 font-medium block truncate group-hover:text-forest transition-colors">
                           {repo.name}
                         </span>
-                        <span className="font-mono text-[10px] text-forest/30">{repo.university} · {repo.dept}</span>
+                        <span className="font-mono text-[10px] text-forest/30">{repo.org} · {repo.field}</span>
                       </div>
                       <div className="flex items-center gap-5 shrink-0">
                         <div className="text-center hidden sm:block">
                           <span className="font-[family-name:var(--font-display)] text-lg text-forest/70 block">{repo.notes}</span>
-<<<<<<< HEAD
-                          <span className="font-mono text-[9px] text-forest/25 uppercase">nootes</span>
-=======
                           <span className="font-mono text-[9px] text-forest/25 uppercase">noots</span>
->>>>>>> c26c2f9 (updates)
                         </div>
                         <div className="text-center hidden sm:block">
                           <span className="font-[family-name:var(--font-display)] text-lg text-forest/70 block">{repo.contributors}</span>

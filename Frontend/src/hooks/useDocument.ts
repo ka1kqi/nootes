@@ -64,7 +64,7 @@ const storagePath = (uid: string, rid: string) => `${uid}/${rid}.md`
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useDocument(repoId: string, userId: string) {
+export function useDocument(repoId: string, userId: string, repoTitle?: string) {
   const [doc, setDoc] = useState<Document | null>(null)
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -79,98 +79,130 @@ export function useDocument(repoId: string, userId: string) {
 
   const isScratch = repoId === 'scratch'
 
-  // Fetch on mount — localStorage for scratch, Supabase for real repos
+  // Fetch on mount — Supabase Storage for both scratch and real repos
+  // Scratch additionally falls back to localStorage when offline
   useEffect(() => {
     if (!userId) return
-
-    if (isScratch) {
-      const stored = localStorage.getItem(SCRATCH_KEY(userId))
-      const blocks = stored ? markdownToBlocks(stored) : [newBlock('paragraph')]
-      const loaded: Document = {
-        id: 'scratch',
-        repoId: 'scratch',
-        userId,
-        title: 'Quick Notes',
-        blocks,
-        updatedAt: new Date().toISOString(),
-      }
-      setDoc(loaded)
-      docRef.current = loaded
-      historyRef.current = [blocks]
-      historyIndexRef.current = 0
-      setLoading(false)
-      return
-    }
 
     let cancelled = false
     setLoading(true)
 
     ;(async () => {
       try {
-        // 1. Download the .md file from Storage (404 = first visit, not an error)
-        const { data: fileData, error: downloadErr } = await supabase.storage
-          .from(BUCKET)
-          .download(storagePath(userId, repoId))
+        if (isScratch) {
+          // Try Supabase Storage first so scratch syncs across devices
+          const { data: fileData, error: downloadErr } = await supabase.storage
+            .from(BUCKET)
+            .download(storagePath(userId, 'scratch'))
 
-        if (cancelled) return
+          if (cancelled) return
 
-        // Treat 404 / object-not-found as empty doc
-        if (downloadErr && !downloadErr.message.includes('Object not found') && !downloadErr.message.includes('404')) {
-          throw downloadErr
+          let markdown = ''
+          if (!downloadErr && fileData) {
+            markdown = await fileData.text()
+            // Keep localStorage in sync for instant offline reads
+            if (markdown) localStorage.setItem(SCRATCH_KEY(userId), markdown)
+          } else {
+            // File not found or network error — fall back to localStorage
+            markdown = localStorage.getItem(SCRATCH_KEY(userId)) ?? ''
+          }
+
+          const blocks = markdown ? markdownToBlocks(markdown) : [newBlock('paragraph')]
+          const loaded: Document = {
+            id: 'scratch',
+            repoId: 'scratch',
+            userId,
+            title: 'Quick Notes',
+            blocks,
+            updatedAt: new Date().toISOString(),
+          }
+          setDoc(loaded)
+          docRef.current = loaded
+          historyRef.current = [blocks]
+          historyIndexRef.current = 0
+        } else {
+          // 1. Download the .md file from Storage (404 = first visit, not an error)
+          const { data: fileData, error: downloadErr } = await supabase.storage
+            .from(BUCKET)
+            .download(storagePath(userId, repoId))
+
+          if (cancelled) return
+
+          // Treat 404 / object-not-found as empty doc
+          if (downloadErr && !downloadErr.message.includes('Object not found') && !downloadErr.message.includes('404')) {
+            throw downloadErr
+          }
+
+          const markdown = fileData ? await fileData.text() : ''
+          const blocks = markdown ? markdownToBlocks(markdown) : [newBlock('paragraph')]
+
+          // 2. Fetch metadata row (title, version, tags) — may not exist on first visit
+          const { data: meta, error: metaErr } = await supabase
+            .from('documents')
+            .select('id, title, version, tags, updated_at')
+            .eq('repo_id', repoId)
+            .eq('user_id', userId)
+            .maybeSingle()
+
+          if (cancelled) return
+          if (metaErr) throw metaErr
+
+          const loaded: Document = {
+            id: meta?.id ?? crypto.randomUUID(),
+            repoId,
+            userId,
+            title: meta?.title || repoTitle || 'My Notes',
+            version: meta?.version ?? '1.0.0',
+            tags: meta?.tags ?? [],
+            blocks,
+            updatedAt: meta?.updated_at ?? new Date().toISOString(),
+          }
+          setDoc(loaded)
+          docRef.current = loaded
+          historyRef.current = [loaded.blocks]
+          historyIndexRef.current = 0
         }
-
-        const markdown = fileData ? await fileData.text() : ''
-        const blocks = markdown ? markdownToBlocks(markdown) : [newBlock('paragraph')]
-
-        // 2. Fetch metadata row (title, version, tags) — may not exist on first visit
-        const { data: meta, error: metaErr } = await supabase
-          .from('documents')
-          .select('id, title, version, tags, updated_at')
-          .eq('repo_id', repoId)
-          .eq('user_id', userId)
-          .maybeSingle()
-
-        if (cancelled) return
-        if (metaErr) throw metaErr
-
-        const loaded: Document = {
-          id: meta?.id ?? crypto.randomUUID(),
-          repoId,
-          userId,
-          title: meta?.title || 'My Notes',
-          version: meta?.version ?? '1.0.0',
-          tags: meta?.tags ?? [],
-          blocks,
-          updatedAt: meta?.updated_at ?? new Date().toISOString(),
-        }
-
-        setDoc(loaded)
-        docRef.current = loaded
-        historyRef.current = [loaded.blocks]
-        historyIndexRef.current = 0
       } catch {
         if (cancelled) return
-        // Offline / network fallback
-        const fallback: Document = {
-          id: crypto.randomUUID(),
-          repoId,
-          userId,
-          title: 'My Notes (offline)',
-          blocks: [newBlock('paragraph')],
-          updatedAt: new Date().toISOString(),
+        if (isScratch) {
+          // Network failure for scratch — use localStorage as full fallback
+          const stored = localStorage.getItem(SCRATCH_KEY(userId))
+          const blocks = stored ? markdownToBlocks(stored) : [newBlock('paragraph')]
+          const fallback: Document = {
+            id: 'scratch',
+            repoId: 'scratch',
+            userId,
+            title: 'Quick Notes',
+            blocks,
+            updatedAt: new Date().toISOString(),
+          }
+          setDoc(fallback)
+          docRef.current = fallback
+          historyRef.current = [fallback.blocks]
+          historyIndexRef.current = 0
+        } else {
+          // Offline / network fallback for real repos
+          const fallback: Document = {
+            id: crypto.randomUUID(),
+            repoId,
+            userId,
+            title: repoTitle || 'My Notes',
+            blocks: [newBlock('paragraph')],
+            updatedAt: new Date().toISOString(),
+          }
+          setDoc(fallback)
+          docRef.current = fallback
+          historyRef.current = [fallback.blocks]
+          historyIndexRef.current = 0
+          setSaveStatus('offline')
         }
-        setDoc(fallback)
-        docRef.current = fallback
-        historyRef.current = [fallback.blocks]
-        historyIndexRef.current = 0
-        setSaveStatus('offline')
       } finally {
         if (!cancelled) setLoading(false)
       }
     })()
 
     return () => { cancelled = true }
-  }, [repoId, userId])
+  }, [repoId, userId, isScratch])
 
   // Persist — localStorage for scratch, Supabase for real repos
   const persist = useCallback(async (blocks: Block[]) => {
@@ -180,10 +212,25 @@ export function useDocument(repoId: string, userId: string) {
     if (isScratch) {
       try {
         const markdown = blocksToMarkdown(blocks)
+
+        // 1. Persist to localStorage immediately (instant, works offline)
         localStorage.setItem(SCRATCH_KEY(userId), markdown)
+
+        // 2. Upload to Supabase Storage for cross-device sync
+        const blob = new Blob([markdown], { type: 'text/markdown' })
+        const { error: uploadErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(storagePath(userId, 'scratch'), blob, {
+            contentType: 'text/markdown',
+            upsert: true,
+          })
+        // Don't throw on upload error — localStorage save already succeeded
+        if (uploadErr) console.warn('Scratch cloud sync failed:', uploadErr.message)
+
         setSaveStatus('saved')
         setTimeout(() => setSaveStatus('idle'), 1500)
       } catch {
+        // localStorage write failed (storage quota exceeded, etc.)
         setSaveStatus('error')
       }
       return
@@ -209,7 +256,7 @@ export function useDocument(repoId: string, userId: string) {
           {
             repo_id: repoId,
             user_id: userId,
-            title: docRef.current.title || 'My Notes',
+            title: docRef.current.title || repoTitle || 'My Notes',
             version: docRef.current.version ?? '1.0.0',
             tags: docRef.current.tags ?? [],
             updated_at: new Date().toISOString(),

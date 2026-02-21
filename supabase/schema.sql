@@ -56,8 +56,8 @@ create table if not exists repositories (
   course           text,
   professor        text,
   semester         text,
-  university       text,
-  department       text,
+  organization     text,
+  field            text,
   is_class         boolean     not null default true,
   is_public        boolean     not null default true,
   tags             text[]      not null default '{}',
@@ -84,6 +84,10 @@ create table if not exists documents (
 
 -- Migration: run this in the Supabase SQL editor if upgrading from the old schema
 -- ALTER TABLE documents DROP COLUMN IF EXISTS content;
+
+-- Migration: rename university/department columns (run if upgrading from prior schema)
+-- ALTER TABLE repositories RENAME COLUMN university TO organization;
+-- ALTER TABLE repositories RENAME COLUMN department TO field;
 
 create table if not exists document_versions (
   id              uuid        primary key default gen_random_uuid(),

@@ -1,15 +1,12 @@
 import { useState, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logoImg from '../assets/logo.png'
+import { useAuth } from '../hooks/useAuth'
 
 const navLinks = [
   { path: '/repos', label: 'Nootbooks' },
   { path: '/my-repos', label: 'My Nootbooks' },
-<<<<<<< HEAD
-  { path: '/editor', label: 'Editor' },
-=======
   { path: '/editor/scratch', label: 'Editor' },
->>>>>>> c26c2f9 (updates)
   { path: '/diff', label: 'Diff' },
   { path: '/chat', label: 'Chat' },
   { path: '/graph', label: 'Graph' },
@@ -24,6 +21,7 @@ const profileDropdownLinks = [
 export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' | 'dark'; breadcrumbs?: { label: string; href?: string }[] }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { signOut } = useAuth()
   const isDark = variant === 'dark'
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -80,11 +78,10 @@ export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' |
             <Link
               key={link.path}
               to={link.path}
-              className={`font-[family-name:var(--font-body)] text-xs px-3 py-1.5 squircle-sm transition-all ${
-                (location.pathname === link.path || (link.path === '/editor/scratch' && location.pathname.startsWith('/editor/')))
+              className={`font-[family-name:var(--font-body)] text-xs px-3 py-1.5 squircle-sm transition-all ${(location.pathname === link.path || (link.path === '/editor/scratch' && location.pathname.startsWith('/editor/')))
                   ? isDark ? 'bg-sage/20 text-parchment' : 'bg-forest text-parchment'
                   : isDark ? 'text-sage/40 hover:text-sage hover:bg-sage/10' : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05]'
-              }`}
+                }`}
             >
               {link.label}
             </Link>
@@ -94,11 +91,10 @@ export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' |
           {/* Profile button with hover dropdown */}
           <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
             <button
-                onClick={() => navigate('/profile')}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-medium border-2 transition-all cursor-pointer ${
-                  isProfileActive
-                    ? 'bg-sage text-forest border-sage ring-2 ring-sage/30'
-                    : isDark ? 'bg-sage text-forest border-forest hover:ring-2 hover:ring-sage/20' : 'bg-forest text-parchment border-cream hover:ring-2 hover:ring-forest/20'
+              onClick={() => navigate('/profile')}
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-medium border-2 transition-all cursor-pointer ${isProfileActive
+                  ? 'bg-sage text-forest border-sage ring-2 ring-sage/30'
+                  : isDark ? 'bg-sage text-forest border-forest hover:ring-2 hover:ring-sage/20' : 'bg-forest text-parchment border-cream hover:ring-2 hover:ring-forest/20'
                 }`}>
               AM
             </button>
@@ -110,23 +106,32 @@ export function Navbar({ variant = 'light', breadcrumbs }: { variant?: 'light' |
                 ${isDark ? 'bg-forest border-sage/15 shadow-[0_12px_40px_-8px_rgba(10,20,16,0.4)]' : 'bg-parchment border-forest/10 shadow-[0_12px_40px_-8px_rgba(26,47,38,0.14)]'}
                 ${dropdownOpen ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 -translate-y-2 scale-[0.94] pointer-events-none'}`}
             >
-              {profileDropdownLinks.map((link, i) => (
+              {profileDropdownLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
                   onClick={() => setDropdownOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-2.5 transition-colors duration-100 ${
-                    i < profileDropdownLinks.length - 1 ? `border-b ${isDark ? 'border-sage/10' : 'border-forest/[0.06]'}` : ''
-                  } ${
-                    location.pathname === link.path
+                  className={`flex items-center gap-3 px-4 py-2.5 transition-colors duration-100 border-b ${isDark ? 'border-sage/10' : 'border-forest/[0.06]'
+                    } ${location.pathname === link.path
                       ? isDark ? 'bg-sage/15 text-parchment' : 'bg-forest/[0.06] text-forest'
                       : isDark ? 'text-sage/60 hover:bg-sage/10 hover:text-sage' : 'text-forest/50 hover:bg-forest/[0.04] hover:text-forest'
-                  }`}
+                    }`}
                 >
                   <span className="text-[11px] opacity-50">{link.icon}</span>
                   <span className="font-[family-name:var(--font-body)] text-xs">{link.label}</span>
                 </Link>
               ))}
+              <button
+                onClick={async () => {
+                  setDropdownOpen(false)
+                  await signOut()
+                  navigate('/login')
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors duration-100 cursor-pointer ${isDark ? 'text-rust/60 hover:bg-rust/10 hover:text-rust' : 'text-rust/50 hover:bg-rust/[0.05] hover:text-rust'}`}
+              >
+                <span className="text-[11px] opacity-50">⎋</span>
+                <span className="font-[family-name:var(--font-body)] text-xs">Sign out</span>
+              </button>
             </div>
           </div>
         </div>

@@ -71,10 +71,10 @@ export default function Design1() {
   const { user } = useAuth()
   const { repoId = '' } = useParams<{ repoId: string }>()
   const location = useLocation()
-  const repoMeta = location.state as { name?: string; code?: string; university?: string; dept?: string; description?: string } | null
+  const repoMeta = location.state as { name?: string; code?: string; org?: string; field?: string; description?: string } | null
 
   // ── Document sync (Personal fork for this repo) ──────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument(repoId, user?.id ?? '')
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
 
   // ── Master document (read-only) ─────────────────────────────────────────
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
@@ -282,7 +282,7 @@ export default function Design1() {
                 {/* Master document header */}
                 <div className="mb-12">
                   <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
-                    {repoMeta ? `${repoMeta.code} · ${repoMeta.university} — MASTER` : repoId.toUpperCase()}
+                    {repoMeta ? `${repoMeta.code} · ${repoMeta.org} — MASTER` : repoId.toUpperCase()}
                   </span>
                   <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
                     {masterDoc?.title ?? 'Master Nootes'}
@@ -331,7 +331,7 @@ export default function Design1() {
                 {/* Document header */}
                 <div className="mb-12">
                   <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
-                    {repoId === 'scratch' ? 'PERSONAL SCRATCH PAD' : repoMeta ? `${repoMeta.code} · ${repoMeta.university} — PERSONAL` : repoId.toUpperCase()}
+                    {repoId === 'scratch' ? 'PERSONAL SCRATCH PAD' : repoMeta ? `${repoMeta.code} · ${repoMeta.org} — PERSONAL` : repoId.toUpperCase()}
                   </span>
                   <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
                     {doc?.title ?? 'My Noots'}

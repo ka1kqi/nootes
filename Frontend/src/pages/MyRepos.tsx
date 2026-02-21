@@ -12,7 +12,7 @@ import type { CreateRepoInput, RepoWithRole } from '../hooks/useMyRepos'
 type RepoStatus = 'active' | 'archived' | 'draft'
 type RepoRole = 'owner' | 'contributor' | 'forked'
 
-const DEPT_COLORS: Record<string, string> = {
+const FIELD_COLORS: Record<string, string> = {
   CS: '#264635',
   Math: '#A3B18A',
   Chem: '#5C7A6B',
@@ -21,7 +21,7 @@ const DEPT_COLORS: Record<string, string> = {
 }
 
 function colorForRepo(repo: RepoWithRole): string {
-  return DEPT_COLORS[repo.department || ''] ?? '#264635'
+  return FIELD_COLORS[repo.field || ''] ?? '#264635'
 }
 
 function timeAgo(dateStr: string): string {
@@ -75,8 +75,8 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
     course: '',
     professor: '',
     semester: '',
-    university: '',
-    department: '',
+    organization: '',
+    field: '',
     is_class: true,
     is_public: true,
     tags: [],
@@ -109,7 +109,7 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
     if (err) {
       setError(err)
     } else {
-      setForm({ title: '', description: '', course: '', professor: '', semester: '', university: '', department: '', is_class: true, is_public: true, tags: [] })
+      setForm({ title: '', description: '', course: '', professor: '', semester: '', organization: '', field: '', is_class: true, is_public: true, tags: [] })
       setTagInput('')
       onClose()
     }
@@ -168,11 +168,11 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
             />
           </div>
 
-          {/* Row: Course + University */}
+          {/* Row: Course + Organization */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="font-mono text-[10px] text-forest/40 tracking-[0.2em] uppercase block mb-1.5">
-                Course Code
+                Course / Topic Code
               </label>
               <input
                 type="text"
@@ -184,29 +184,29 @@ function NewRepoModal({ open, onClose, onCreate }: NewRepoModalProps) {
             </div>
             <div>
               <label className="font-mono text-[10px] text-forest/40 tracking-[0.2em] uppercase block mb-1.5">
-                University
+                Organization
               </label>
               <input
                 type="text"
-                value={form.university}
-                onChange={e => set('university', e.target.value)}
-                placeholder="NYU"
+                value={form.organization}
+                onChange={e => set('organization', e.target.value)}
+                placeholder="NYU, Acme Corp, Open Source…"
                 className="w-full bg-parchment border border-forest/10 squircle px-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
               />
             </div>
           </div>
 
-          {/* Row: Department + Semester */}
+          {/* Row: Field + Semester / Period */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="font-mono text-[10px] text-forest/40 tracking-[0.2em] uppercase block mb-1.5">
-                Department
+                Field
               </label>
               <input
                 type="text"
-                value={form.department}
-                onChange={e => set('department', e.target.value)}
-                placeholder="CS"
+                value={form.field}
+                onChange={e => set('field', e.target.value)}
+                placeholder="CS, Design, Biology…"
                 className="w-full bg-parchment border border-forest/10 squircle px-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
               />
             </div>
@@ -555,7 +555,7 @@ export default function MyRepos() {
                   <div key={repo.id} className="relative group">
                     <Link
                       to={`/editor/${repo.id}`}
-                      state={{ name: repo.title, code: repo.course, university: repo.university, dept: repo.department, description: repo.description }}
+                      state={{ name: repo.title, code: repo.course, org: repo.organization, field: repo.field, description: repo.description }}
                       className="bg-parchment border border-forest/10 squircle-xl p-5 hover:shadow-[0_4px_32px_-8px_rgba(38,70,53,0.1)] transition-all hover:border-forest/20 block"
                     >
                       <div className="flex items-start gap-5">
@@ -572,9 +572,9 @@ export default function MyRepos() {
                               <span className="font-mono text-[10px] text-forest/30 tracking-wider">{repo.course}</span>
                             )}
                             <RoleBadge role={repo.role} />
-                            {repo.university && (
+                            {repo.organization && (
                               <span className="font-mono text-[9px] text-forest/20 bg-forest/[0.04] px-1.5 py-0.5 squircle-sm">
-                                {repo.university}
+                                {repo.organization}
                               </span>
                             )}
                             {!repo.is_public && (

@@ -137,7 +137,7 @@ export default function Settings() {
                       {[
                         { label: 'Display name', value: displayName, onChange: setDisplayName },
                         { label: 'Handle', value: handle, onChange: setHandle },
-                        { label: 'University email', value: email, onChange: setEmail },
+                        { label: 'Work / school email', value: email, onChange: setEmail },
                       ].map(field => (
                         <div key={field.label}>
                           <label className="font-mono text-[10px] text-forest/30 tracking-wider uppercase block mb-1.5">{field.label}</label>
@@ -248,7 +248,7 @@ export default function Settings() {
                   <SettingRow label="Weekly digest" description="Summary of your noot activity">
                     <Toggle checked={notifyDigest} onChange={setNotifyDigest} />
                   </SettingRow>
-                  <SettingRow label="Email notifications" description="Send notifications to your university email">
+                  <SettingRow label="Email notifications" description="Send notifications to your registered email">
                     <Toggle checked={emailNotifications} onChange={setEmailNotifications} />
                   </SettingRow>
                 </SectionCard>

@@ -167,11 +167,7 @@ export default function Login() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">WELCOME BACK</span>
           <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest mb-2 leading-tight">Sign in</h1>
           <p className="font-[family-name:var(--font-body)] text-sm text-forest/45 mb-10">
-<<<<<<< HEAD
-            Pick up where you left off — your nootes are waiting.
-=======
             Pick up where you left off — your noots are waiting.
->>>>>>> c26c2f9 (updates)
           </p>
 
           {/* Google Sign-In button */}
@@ -206,7 +202,7 @@ export default function Login() {
                   setEmail(e.target.value)
                   setShowEduPrompt(e.target.value.length > 3 && !e.target.value.endsWith('.edu'))
                 }}
-                placeholder="you@university.edu"
+                placeholder="you@org.com"
                 className="w-full bg-parchment border border-forest/10 squircle px-4 py-3 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
               />
               {showEduPrompt && (
