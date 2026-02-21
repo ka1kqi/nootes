@@ -9,7 +9,7 @@ semester: "Spring 2026"
 version: "3.2.1+personal"
 tags: ["algorithms", "personal"]
 createdAt: "2026-02-21T03:15:24.424Z"
-updatedAt: "2026-02-21T11:08:44.089330+00:00"
+updatedAt: "2026-02-21T11:21:41.609021+00:00"
 ---
 
 # Intro to Algorithm
