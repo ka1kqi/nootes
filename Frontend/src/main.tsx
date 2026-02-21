@@ -5,6 +5,7 @@ import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import Landing from './pages/Landing.tsx'
+import Home from './pages/Home.tsx'
 import Login from './pages/Login.tsx'
 import Editor from './pages/Editor.tsx'
 import Repos from './pages/Repos.tsx'
@@ -14,6 +15,7 @@ import Diff from './pages/Diff.tsx'
 import Chat from './pages/Chat.tsx'
 import AuraStore from './pages/AuraStore.tsx'
 import Graph_Creation from './pages/Graph_Creation.tsx'
+import Settings from './pages/Settings.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -21,6 +23,7 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/home" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/editor" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
           <Route path="/repos" element={<Repos />} />
@@ -29,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/diff" element={<Diff />} />
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/store" element={<ProtectedRoute><AuraStore /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/graph" element={<Graph_Creation />} />
         </Routes>
       </AuthProvider>

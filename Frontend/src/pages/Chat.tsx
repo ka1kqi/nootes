@@ -230,7 +230,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-cream flex flex-col">
+    <div className="min-h-screen bg-cream flex flex-col animate-fade-up">
       <Navbar
         variant="light"
         breadcrumbs={[
