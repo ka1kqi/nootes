@@ -188,25 +188,58 @@ class PromptRequest(BaseModel):
     model: str = "gpt-4o"
 
 
+MODERATION_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "moderation_prompt.txt"
+
+def _load_moderation_prompt() -> str:
+    try:
+        return MODERATION_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "If the message is appropriate reply YES, otherwise reply NO."
+
+
+async def _openai_chat(api_key: str, messages: list[dict], model: str = "gpt-4o") -> str:
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            json={"model": model, "messages": messages},
+        )
+    resp.raise_for_status()
+    return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+
+
 @app.post("/api/prompt")
 async def proxy_prompt(body: PromptRequest):
     api_key = os.environ.get("OPENAI_API")
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API key not configured")
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            json={
-                "model": body.model,
-                "messages": [m.model_dump() for m in body.messages],
-            },
-        )
-    if not resp.is_success:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    data = resp.json()
-    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    try:
+        content = await _openai_chat(api_key, [m.model_dump() for m in body.messages], body.model)
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
     return {"content": content}
+
+
+class ModerateRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/moderate")
+async def moderate_message(body: ModerateRequest):
+    api_key = os.environ.get("OPENAI_API")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API key not configured")
+    system_prompt = _load_moderation_prompt()
+    try:
+        result = await _openai_chat(
+            api_key,
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": body.message},
+            ],
+            model="gpt-4o-mini",
+        )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+    allowed = result.strip().upper().startswith("YES")
+    return {"allowed": allowed}

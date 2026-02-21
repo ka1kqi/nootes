@@ -188,6 +188,25 @@ export function useMessages(channelId: string | null) {
 
 // ─── useSendMessage ───────────────────────────────────────────────────────────
 
+const MODERATE_URL = (import.meta.env.VITE_API_URL as string | undefined)
+  ? (import.meta.env.VITE_API_URL as string).replace('/api/prompt', '/api/moderate')
+  : 'http://localhost:3001/api/moderate'
+
+async function moderateMessage(content: string): Promise<'allowed' | 'blocked' | 'error'> {
+  try {
+    const res = await fetch(MODERATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: content }),
+    })
+    if (!res.ok) return 'error'
+    const data = await res.json()
+    return data.allowed ? 'allowed' : 'blocked'
+  } catch {
+    return 'error'
+  }
+}
+
 export function useSendMessage() {
   const { user } = useAuth()
   const [sending, setSending] = useState(false)
@@ -201,6 +220,19 @@ export function useSendMessage() {
     if (!user || !content.trim()) return { error: 'Not authenticated or empty message' }
 
     setSending(true)
+
+    const verdict = await moderateMessage(content.trim())
+
+    if (verdict === 'blocked') {
+      setSending(false)
+      return { error: 'Your message was flagged as inappropriate and was not sent.' }
+    }
+
+    if (verdict === 'error') {
+      setSending(false)
+      return { error: 'Message could not be sent — moderation check unavailable. Please try again.' }
+    }
+
     const { error } = await supabase.from('messages').insert({
       channel_id: channelId,
       user_id: user.id,

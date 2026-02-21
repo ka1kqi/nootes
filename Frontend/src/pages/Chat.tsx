@@ -174,6 +174,7 @@ export default function Chat() {
   const { user, profile } = useAuth()
   const [activeChannel, setActiveChannel] = useState<string | null>(null)
   const [messageText, setMessageText] = useState('')
+  const [sendWarning, setSendWarning] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -203,9 +204,14 @@ export default function Chat() {
 
   async function handleSend() {
     if (!activeChannel || !messageText.trim()) return
+    setSendWarning(null)
     const isLatex = messageText.includes('$')
-    await sendMessage(activeChannel, messageText, isLatex)
-    setMessageText('')
+    const { error } = await sendMessage(activeChannel, messageText, isLatex)
+    if (error) {
+      setSendWarning(error)
+    } else {
+      setMessageText('')
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -500,6 +506,16 @@ export default function Chat() {
 
           {/* Message input */}
           <div className="border-t border-forest/[0.08] bg-cream px-6 py-4">
+            {/* Warning banner */}
+            {sendWarning && (
+              <div className="flex items-center gap-2.5 mb-3 px-3 py-2 bg-sienna/[0.08] border border-sienna/20 squircle-sm">
+                <svg className="w-3.5 h-3.5 text-sienna/70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                <span className="font-[family-name:var(--font-body)] text-xs text-sienna/80 flex-1">{sendWarning}</span>
+                <button onClick={() => setSendWarning(null)} className="text-sienna/40 hover:text-sienna/70 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            )}
             <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden focus-within:border-sage/40 focus-within:ring-2 focus-within:ring-sage/10 transition-all">
               <div className="flex items-center gap-2 px-4 py-3">
                 {/* Formatting buttons */}
