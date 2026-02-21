@@ -126,12 +126,19 @@
           "content": "Intro to Algorithms — My Notes"
         },
         {
-          "id": "78e28258-1c9d-4a89-886b-39bf0eeda703",
-          "type": "callout",
-          "content": "This is your personal fork. Edit freely — nothing here affects the master document until you submit a merge request.",
-          "meta": {
-            "calloutType": "info"
-          }
+          "id": "15771a8e-7a48-44dc-8cd4-882bdde0efe2",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "e00be9ef-0942-42f1-a24b-a07c05f90838",
+          "type": "paragraph",
+          "content": "what the helly"
+        },
+        {
+          "id": "faca8fc7-e6af-4a7d-9313-1498536906c0",
+          "type": "paragraph",
+          "content": ""
         },
         {
           "id": "96a4a250-c76b-4f94-bd66-57919c4e6c4d",
@@ -139,15 +146,108 @@
           "content": "The Chain Rule"
         },
         {
+          "id": "c4e30290-1348-46c4-8e4d-52bb68ca3104",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "49668e94-21ec-4c3a-a5a4-04acf922c377",
+          "type": "paragraph",
+          "content": "what the helly"
+        },
+        {
+          "id": "42669e9d-5779-4218-8bf4-4a17249e1fb6",
+          "type": "paragraph",
+          "content": "hi there "
+        },
+        {
+          "id": "172e5974-5486-4dc5-811f-b16d6162f3cf",
+          "type": "latex",
+          "content": "\\frac{a}{b}",
+          "meta": {}
+        },
+        {
+          "id": "13e0f573-a8c5-4022-be74-625ac0736a82",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "2a28a26f-6199-4abb-82f3-5e22ce038c64",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "f1a71a6f-1c38-467d-aa7a-412053c24eaa",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "a65890f9-d0f3-4a82-8c35-7413d7d367aa",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "30028ba7-e6f4-4cfe-b96a-e8969d1d4036",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "a897b674-0168-4a15-b214-1d03f2dd0d3f",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "077eabdd-9eb6-41ec-94e1-6456b66094c1",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
           "id": "6d4c1c5b-3679-46de-a296-717ad611b2f9",
           "type": "paragraph",
           "content": "The chain rule is all about composites — \"outside-inside.\" Apply the outer derivative first, then multiply by the inner derivative."
         },
         {
-          "id": "c07a2c3f-78d4-44f2-a73a-41b8886169c8",
+          "id": "63be2c7c-4c9b-41ef-86e4-aaff807e25ef",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "8303330b-852e-498e-a028-580382eabc6c",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "6eb17399-bb01-4bf8-8922-1006f6a27eb1",
           "type": "latex",
-          "content": "\\frac{d}{dx}\\bigl[f\\bigl(g(x)\\bigr)\\bigr] = f'\\bigl(g(x)\\bigr) \\cdot g(x)",
-          "meta": {}
+          "content": ""
+        },
+        {
+          "id": "a62936da-bfc2-4bce-836c-670b55603ba5",
+          "type": "code",
+          "content": "",
+          "meta": {
+            "language": "python",
+            "filename": ""
+          }
+        },
+        {
+          "id": "322af637-2311-402f-84fb-8e226c39c806",
+          "type": "code",
+          "content": "def goon(penis):\n    return penis + 1",
+          "meta": {
+            "language": "python",
+            "filename": "penar"
+          }
+        },
+        {
+          "id": "f25d7a4b-3667-44fb-a6c6-8d9c824efaed",
+          "type": "paragraph",
+          "content": ""
+        },
+        {
+          "id": "d6122ce2-6e0d-4ac5-af70-89f40299086e",
+          "type": "paragraph",
+          "content": ""
         },
         {
           "id": "f06c6648-ee57-4614-958c-6b2d7e73686c",
@@ -181,16 +281,7 @@
         {
           "id": "c0181e68-7eab-4626-8332-0ebb1f2d8ebd",
           "type": "paragraph",
-          "content": "Binary search only works on **sorted** arrays. The invariant is: target is always in [low, high] if it exists."
-        },
-        {
-          "id": "65d427fe-70d8-48df-af4e-e456e074314e",
-          "type": "code",
-          "content": "def binary_search(arr, target):\n    low, high = 0, len(arr) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            low = mid + 1\n        else:\n            high = mid - 1\n    return -1",
-          "meta": {
-            "language": "python",
-            "filename": "binary_search.py"
-          }
+          "content": "Binary search only works on **sorted** arrays. The invariant is: target is always in [low, high] if it exists. "
         },
         {
           "id": "caccb7dd-3774-4574-b899-dbe7e4de3521",
@@ -199,17 +290,26 @@
           "meta": {}
         },
         {
-          "id": "2a3c66d3-91d9-4877-ac42-3139d7a878d6",
+          "id": "9ceeea43-5dfe-4c0b-ad68-da7cf3d9b1d8",
           "type": "paragraph",
-          "content": "hello there"
+          "content": ""
         },
         {
-          "id": "1e722be0-6e1e-4b34-9cab-27bd5b901250",
-          "type": "chemistry",
-          "content": "{2H2 + O2 -> 2H2O}"
+          "id": "fdbac612-6282-4290-b028-4d31cc29c2e7",
+          "type": "latex",
+          "content": "",
+          "meta": {}
         },
         {
-          "id": "cb6fe752-daea-4f93-a532-67e3ce55c994",
+          "id": "f640c092-4aca-441e-a503-0378c300c6b7",
+          "type": "table",
+          "content": "",
+          "meta": {
+            "caption": ""
+          }
+        },
+        {
+          "id": "fb030cbb-f66f-4e83-a194-7fc7fbc1f87c",
           "type": "paragraph",
           "content": ""
         }
@@ -220,7 +320,7 @@
         "personal"
       ],
       "createdAt": "2026-02-21T03:15:24.424Z",
-      "updatedAt": "2026-02-21T04:33:23.816Z"
+      "updatedAt": "2026-02-21T06:15:00.368Z"
     },
     "math-ua-140::master": {
       "id": "95e0526c-56b5-4e36-b2cf-8f97e606ecea",

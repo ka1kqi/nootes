@@ -150,6 +150,7 @@ export default function Design1() {
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write')
   const editorRef = useRef<BlockEditorHandle>(null)
   const pendingInsertRef = useRef<BlockType | null>(null)
+  const [currentBlockType, setCurrentBlockType] = useState<BlockType>('paragraph')
 
   // ── Document sync (Personal fork for demo user) ─────────────────────────
   const { doc, loading, saveStatus, updateBlocks, saveNow } = useDocument('cs-ua-310', 'demo')
@@ -196,12 +197,19 @@ export default function Design1() {
         <main className="flex-1 flex flex-col min-w-0">
           {/* Toolbar */}
           <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center gap-1 shrink-0">
-            {/* Text block types — compact icon squares */}
-            <TBtn onClick={() => insertBlock('paragraph')} title="Paragraph"><span className="font-mono text-[11px]">¶</span></TBtn>
-            <TBtn onClick={() => insertBlock('h1')} title="Heading 1"><span className="font-mono text-[11px] font-bold">H1</span></TBtn>
-            <TBtn onClick={() => insertBlock('h2')} title="Heading 2"><span className="font-mono text-[11px] font-semibold">H2</span></TBtn>
-            <TBtn onClick={() => insertBlock('h3')} title="Heading 3"><span className="font-mono text-[11px]">H3</span></TBtn>
-            <TBtn onClick={() => insertBlock('quote')} title="Block quote"><span className="text-sm leading-none">❝</span></TBtn>
+            {/* Format dropdown — reflects and changes the focused block's type */}
+            <select
+              value={currentBlockType}
+              onChange={e => editorRef.current?.setCurrentType(e.target.value as BlockType)}
+              className="h-8 bg-transparent font-[family-name:var(--font-body)] text-[11px] text-forest/55 border border-forest/15 squircle-sm px-2 pr-6 focus:outline-none focus:border-forest/30 cursor-pointer shrink-0"
+              title="Format current paragraph"
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="h1">Heading 1</option>
+              <option value="h2">Heading 2</option>
+              <option value="h3">Heading 3</option>
+              <option value="quote">Quote</option>
+            </select>
             <TDivider />
             {/* Rich / special blocks — icon chip + label */}
             <TBtn wide onClick={() => insertBlock('latex')} title="LaTeX equation (Σ)">
@@ -253,7 +261,7 @@ export default function Design1() {
 
           {/* Canvas — generous whitespace */}
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto py-16 px-10">
+            <div className="max-w-3xl mx-auto py-10 px-10">
               {activeTab === 'preview' ? (
                 <div>
                   {/* Title — breathing header */}
@@ -455,6 +463,7 @@ export default function Design1() {
                       ref={editorRef}
                       blocks={doc.blocks}
                       onChange={updateBlocks}
+                      onFocusChange={type => setCurrentBlockType(type ?? 'paragraph')}
                     />
                   ) : (
                     <div className="text-center py-16">

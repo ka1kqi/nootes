@@ -15,6 +15,7 @@ import type { Block, BlockType } from '../hooks/useDocument'
 
 export type BlockEditorHandle = {
   insertBlock: (type: BlockType) => void
+  setCurrentType: (type: BlockType) => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -49,27 +50,27 @@ const CALLOUT_STYLE: Record<string, { bg: string; border: string; icon: string; 
 
 export function BlockPreview({ block }: { block: Block }) {
   if (block.type === 'paragraph') {
-    return <p className="font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed mb-4">{block.content || <span className="opacity-0">.</span>}</p>
+    return <p className="font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed mb-5">{block.content || <span className="opacity-0">.</span>}</p>
   }
   if (block.type === 'h1') {
-    return <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest leading-tight mt-10 mb-5">{block.content}</h1>
+    return <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest leading-tight mt-14 mb-4">{block.content}</h1>
   }
   if (block.type === 'h2') {
-    return <h2 className="font-[family-name:var(--font-body)] text-2xl font-semibold text-forest mt-8 mb-3">{block.content}</h2>
+    return <h2 className="font-[family-name:var(--font-body)] text-2xl font-semibold text-forest mt-10 mb-2">{block.content}</h2>
   }
   if (block.type === 'h3') {
-    return <h3 className="font-[family-name:var(--font-body)] text-lg font-medium text-forest/80 mt-6 mb-2">{block.content}</h3>
+    return <h3 className="font-[family-name:var(--font-body)] text-lg font-medium text-forest/80 mt-7 mb-1">{block.content}</h3>
   }
   if (block.type === 'quote') {
     return (
-      <blockquote className="pl-4 border-l-2 border-sage/50 my-4 italic text-forest/60 font-[family-name:var(--font-body)] text-base">
+      <blockquote className="pl-4 border-l-2 border-sage/50 my-5 italic text-forest/60 font-[family-name:var(--font-body)] text-base">
         {block.content}
       </blockquote>
     )
   }
   if (block.type === 'latex') {
     return (
-      <div className="my-4 bg-parchment border border-forest/10 squircle-xl px-8 py-6 overflow-x-auto">
+      <div className="my-6 bg-parchment border border-forest/10 squircle-xl px-6 py-4 overflow-x-auto">
         <KaTeX math={block.content} display />
       </div>
     )
@@ -82,8 +83,8 @@ export function BlockPreview({ block }: { block: Block }) {
   if (block.type === 'chemistry') {
     const caption = block.meta?.caption as string | undefined
     return (
-      <div className="my-4 bg-parchment border border-forest/10 squircle-xl px-8 py-5">
-        {caption && <p className="font-mono text-[10px] text-forest/35 mb-2 tracking-wider">{caption}</p>}
+      <div className="my-6 bg-parchment border border-forest/10 squircle-xl px-6 py-3">
+        {caption && <p className="font-mono text-[10px] text-forest/35 mb-1 tracking-wider">{caption}</p>}
         <KaTeX math={block.content} display />
       </div>
     )
@@ -91,7 +92,7 @@ export function BlockPreview({ block }: { block: Block }) {
   if (block.type === 'table') {
     const caption = block.meta?.caption as string | undefined
     const lines = block.content.split('\n').filter(Boolean)
-    if (!lines.length) return <div className="my-4 h-12 border border-dashed border-forest/15 squircle flex items-center justify-center font-mono text-xs text-forest/25">Empty table</div>
+    if (!lines.length) return <div className="my-6 h-10 border border-dashed border-forest/15 squircle flex items-center justify-center font-mono text-xs text-forest/25">Empty table</div>
     const [headerRow, ...dataRows] = lines
     const headers = headerRow.split(',').map(s => s.trim())
     const rows = dataRows.map(r => r.split(',').map(s => s.trim()))
@@ -119,50 +120,67 @@ export function BlockPreview({ block }: { block: Block }) {
     const variant = (block.meta?.calloutType as string) || 'info'
     const s = CALLOUT_STYLE[variant] ?? CALLOUT_STYLE.info
     return (
-      <div className={`my-4 ${s.bg} border ${s.border} squircle-xl px-5 py-4 flex gap-3`}>
+      <div className={`my-5 ${s.bg} border ${s.border} squircle-xl px-4 py-3 flex gap-3`}>
         <span className="text-lg shrink-0 mt-0.5">{s.icon}</span>
         <p className="font-[family-name:var(--font-body)] text-sm text-forest/80 leading-relaxed">{block.content}</p>
       </div>
     )
   }
   if (block.type === 'divider') {
-    return <hr className="my-8 border-0 border-t border-forest/[0.08]" />
+    return <hr className="my-4 border-0 border-t border-forest/[0.08]" />
   }
   return null
 }
 
 // ─── Text block (paragraph / h1 / h2 / h3 / quote) ───────────────────────────
+// Completely document-like — no borders, no containers, flows as natural text.
+// Markdown shortcuts: "# ", "## ", "### ", "> " at block start change the type.
 
 function TextBlock({
   block,
   focused,
+  focusEdge,
   onFocus,
   onChange,
+  onTypeChange,
   onEnter,
-  onDelete,
   onBackspaceEmpty,
+  onArrowUp,
+  onArrowDown,
+  onCursorChange,
 }: {
   block: Block
   focused: boolean
+  focusEdge: 'start' | 'end' | number | null
   onFocus: () => void
   onChange: (content: string) => void
+  onTypeChange: (type: BlockType) => void
   onEnter: () => void
-  onDelete: () => void
   onBackspaceEmpty: () => void
+  onArrowUp: () => void
+  onArrowDown: () => void
+  onCursorChange?: (pos: number) => void
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null)
 
-  // Auto-focus when newly focused
+  // Focus and position cursor when this block becomes active
   useEffect(() => {
-    if (focused && taRef.current) {
-      taRef.current.focus()
-      // Move cursor to end
-      const len = taRef.current.value.length
-      taRef.current.setSelectionRange(len, len)
+    const el = taRef.current
+    if (!focused || !el) return
+    el.focus()
+    if (focusEdge === null) return // preserve existing cursor (e.g. user clicked)
+    if (focusEdge === 'start') {
+      el.setSelectionRange(0, 0)
+    } else if (focusEdge === 'end') {
+      el.setSelectionRange(el.value.length, el.value.length)
+    } else {
+      // Numeric — position cursor at this column (clamped to content length)
+      const pos = Math.min(focusEdge, el.value.length)
+      el.setSelectionRange(pos, pos)
     }
-  }, [focused])
+  }, [focused, focusEdge])
 
-  // Auto-grow textarea height
+  // Auto-grow textarea to fit its content
   const autoResize = useCallback(() => {
     const el = taRef.current
     if (!el) return
@@ -170,72 +188,72 @@ function TextBlock({
     el.style.height = `${el.scrollHeight}px`
   }, [])
 
-  useEffect(() => { if (focused) autoResize() }, [focused, block.content, autoResize])
+  useEffect(() => { autoResize() }, [block.content, block.type, autoResize])
 
-  const textClass =
-    block.type === 'h1' ? 'font-[family-name:var(--font-display)] text-5xl text-forest leading-tight'
-    : block.type === 'h2' ? 'font-[family-name:var(--font-body)] text-2xl font-semibold text-forest'
-    : block.type === 'h3' ? 'font-[family-name:var(--font-body)] text-lg font-medium text-forest/80'
-    : block.type === 'quote' ? 'font-[family-name:var(--font-body)] text-base italic text-forest/60'
-    : 'font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed'
-
-  const wrapClass =
-    block.type === 'h1' ? 'mt-10 mb-2'
-    : block.type === 'h2' ? 'mt-7 mb-1'
-    : block.type === 'h3' ? 'mt-5 mb-0.5'
-    : block.type === 'quote' ? 'my-3'
-    : 'my-1'
-
-  if (focused) {
-    return (
-      <div className={`relative group ${wrapClass}`}>
-        {/* Sage accent bar */}
-        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-sage/50 rounded-full" />
-        <div className="pl-4 relative">
-          <textarea
-            ref={taRef}
-            value={block.content}
-            rows={1}
-            className={`w-full resize-none overflow-hidden bg-transparent outline-none border-none ring-0 ${textClass}`}
-            placeholder={`${TYPE_LABEL[block.type] ?? 'Write'}…`}
-            onChange={e => { onChange(e.target.value); autoResize() }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter() }
-              if (e.key === 'Backspace' && block.content === '') { e.preventDefault(); onBackspaceEmpty() }
-            }}
-          />
-          {/* Ghost type label */}
-          <span className="absolute bottom-0 right-0 font-mono text-[9px] text-forest/20 select-none pointer-events-none">
-            {TYPE_LABEL[block.type]}
-          </span>
-        </div>
-      </div>
-    )
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    // Markdown shortcuts detected at the very start of the content
+    if (val.startsWith('### ')) { onTypeChange('h3'); onChange(val.slice(4)); return }
+    if (val.startsWith('## '))  { onTypeChange('h2'); onChange(val.slice(3)); return }
+    if (val.startsWith('# '))   { onTypeChange('h1'); onChange(val.slice(2)); return }
+    if (val.startsWith('> '))   { onTypeChange('quote'); onChange(val.slice(2)); return }
+    onChange(val)
+    autoResize()
   }
 
-  // Unfocused preview (click to edit)
+  // Per-type text styles — no container chrome at all
+  const textClass =
+    block.type === 'h1'    ? 'font-[family-name:var(--font-display)] text-5xl text-forest leading-tight mt-10 mb-1'
+    : block.type === 'h2'  ? 'font-[family-name:var(--font-body)] text-2xl font-semibold text-forest mt-8 mb-0.5'
+    : block.type === 'h3'  ? 'font-[family-name:var(--font-body)] text-lg font-medium text-forest/80 mt-6'
+    : block.type === 'quote' ? 'font-[family-name:var(--font-body)] text-base italic text-forest/60 border-l-2 border-sage/40 pl-4 my-3'
+    : 'font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed'
+
   return (
-    <div
-      className={`relative group ${wrapClass} cursor-text rounded hover:bg-forest/[0.02] transition-colors`}
-      onClick={onFocus}
-    >
-      {/* Faint hover accent bar */}
-      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-sage/0 group-hover:bg-sage/25 rounded-full transition-colors" />
-      <div className="pl-4">
-        {block.type === 'paragraph' && (
-          <p className={`${textClass} min-h-[1.5em]`}>
-            {block.content || <span className="text-forest/20">Click to edit…</span>}
-          </p>
-        )}
-        {block.type === 'h1' && <h1 className={`${textClass} min-h-[1.2em]`}>{block.content || <span className="text-forest/20">Heading 1</span>}</h1>}
-        {block.type === 'h2' && <h2 className={`${textClass} min-h-[1.2em]`}>{block.content || <span className="text-forest/20">Heading 2</span>}</h2>}
-        {block.type === 'h3' && <h3 className={`${textClass} min-h-[1.2em]`}>{block.content || <span className="text-forest/20">Heading 3</span>}</h3>}
-        {block.type === 'quote' && (
-          <blockquote className={`${textClass} border-l-2 border-sage/40 pl-3 min-h-[1.5em]`}>
-            {block.content || <span className="text-forest/20">Block quote…</span>}
-          </blockquote>
-        )}
-      </div>
+    <div onClick={onFocus}>
+      <textarea
+        ref={taRef}
+        value={block.content}
+        rows={1}
+        onFocus={() => { if (!focused) onFocus() }}
+        onSelect={e => onCursorChange?.((e.target as HTMLTextAreaElement).selectionStart)}
+        onClick={e => onCursorChange?.((e.target as HTMLTextAreaElement).selectionStart)}
+        className={`block w-full resize-none overflow-hidden bg-transparent outline-none border-none ring-0 p-0 caret-forest ${textClass}`}
+        onChange={handleChange}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter() }
+          if (e.key === 'Backspace' && block.content === '') { e.preventDefault(); onBackspaceEmpty() }
+          if (e.key === 'ArrowUp' && !e.shiftKey) {
+            const el = taRef.current
+            if (!el) return
+            const savedCol = el.selectionStart
+            if (el.selectionStart === 0 && el.selectionEnd === 0) {
+              e.preventDefault(); onCursorChange?.(savedCol); onArrowUp(); return
+            }
+            requestAnimationFrame(() => {
+              if (document.activeElement !== el) return
+              if (el.selectionStart === 0 || el.selectionStart === savedCol) {
+                onCursorChange?.(savedCol); onArrowUp()
+              }
+            })
+          }
+          if (e.key === 'ArrowDown' && !e.shiftKey) {
+            const el = taRef.current
+            if (!el) return
+            const savedCol = el.selectionStart
+            const len = el.value.length
+            if (el.selectionStart === len && el.selectionEnd === len) {
+              e.preventDefault(); onCursorChange?.(savedCol); onArrowDown(); return
+            }
+            requestAnimationFrame(() => {
+              if (document.activeElement !== el) return
+              if (el.selectionStart === el.value.length || el.selectionStart === savedCol) {
+                onCursorChange?.(savedCol); onArrowDown()
+              }
+            })
+          }
+        }}
+      />
     </div>
   )
 }
@@ -248,16 +266,27 @@ function RichBlock({
   onUpdate,
   onDelete,
   autoEdit = false,
+  selected = false,
+  onArrowUp,
+  onArrowDown,
 }: {
   block: Block
   onUpdate: (updates: Partial<Block>) => void
   onDelete: () => void
   autoEdit?: boolean
+  selected?: boolean
+  onArrowUp?: () => void
+  onArrowDown?: () => void
 }) {
   const [editing, setEditing] = useState(autoEdit)
   const [draft, setDraft] = useState(block.content)
   const [draftMeta, setDraftMeta] = useState<Record<string, unknown>>(block.meta ?? {})
   const wrapRef = useRef<HTMLDivElement>(null)
+
+  // When keyboard-selected, grab DOM focus so key events reach us
+  useEffect(() => {
+    if (selected && !editing) wrapRef.current?.focus()
+  }, [selected, editing])
 
   // Keep draft in sync if block changes externally (e.g. undo)
   useEffect(() => {
@@ -299,16 +328,24 @@ function RichBlock({
     : block.type === 'table' ? 'CSV · first row = headers'
     : 'Callout text'
 
-  const sourceRows = block.type === 'code' ? 10 : block.type === 'table' ? 7 : 5
+  const sourceRows = block.type === 'code' ? 6 : block.type === 'table' ? 4 : 3
 
   if (!editing) {
     return (
       <div
-        className="relative my-4 group cursor-pointer"
+        ref={wrapRef}
+        tabIndex={-1}
+        className={`relative my-2 group cursor-pointer outline-none transition-all squircle-xl ${selected ? 'ring-2 ring-sage/50' : ''}`}
         onClick={openEdit}
+        onKeyDown={e => {
+          if (e.key === 'ArrowUp' && !e.shiftKey)   { e.preventDefault(); onArrowUp?.() }
+          if (e.key === 'ArrowDown' && !e.shiftKey) { e.preventDefault(); onArrowDown?.() }
+          if (e.key === 'Enter')     { e.preventDefault(); openEdit() }
+          if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); onDelete() }
+        }}
       >
-        {/* Hover ring */}
-        <div className="absolute inset-0 rounded-xl ring-inset ring-0 group-hover:ring-2 group-hover:ring-sage/40 transition-all pointer-events-none" />
+        {/* Hover ring (not shown when selected — outer div has the ring) */}
+        <div className={`absolute inset-0 squircle-xl ring-inset pointer-events-none transition-all ${selected ? '' : 'ring-0 group-hover:ring-2 group-hover:ring-sage/40'}`} />
         {/* Delete button on hover */}
         <button
           className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 bg-cream border border-forest/15 squircle-sm flex items-center justify-center font-mono text-[10px] text-forest/40 hover:text-sienna hover:border-sienna/30 transition-all shadow-sm z-10"
@@ -317,13 +354,23 @@ function RichBlock({
           ✕
         </button>
         <BlockPreview block={block} />
+        {/* Keyboard hint when selected */}
+        {selected && (
+          <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-forest/80 text-parchment/80 px-2.5 py-0.5 squircle-sm font-mono text-[9px] backdrop-blur-sm shadow-sm z-10 whitespace-nowrap">
+            <span>↩ edit</span>
+            <span className="text-parchment/30">·</span>
+            <span>⌫ delete</span>
+            <span className="text-parchment/30">·</span>
+            <span>↑↓ navigate</span>
+          </div>
+        )}
       </div>
     )
   }
 
   // ── Edit mode: split pane ────────────────────────────────────────────────
   return (
-    <div ref={wrapRef} className="my-4 border border-sage/40 squircle-xl overflow-hidden bg-cream shadow-[0_2px_16px_-4px_rgba(38,70,53,0.10)]" onKeyDown={handleKeyDown}>
+      <div ref={wrapRef} className="my-2 border border-sage/40 squircle-xl overflow-hidden bg-cream shadow-[0_2px_16px_-4px_rgba(38,70,53,0.10)]" onKeyDown={handleKeyDown}>
       {/* Header bar */}
       <div className="flex items-center gap-2 px-4 py-2 bg-parchment border-b border-forest/[0.08]">
         <span className="font-mono text-[10px] text-forest/45 tracking-wider uppercase">{TYPE_LABEL[block.type]}</span>
@@ -382,14 +429,14 @@ function RichBlock({
           value={draft}
           rows={sourceRows}
           onChange={e => setDraft(e.target.value)}
-          className="w-full bg-transparent font-mono text-[13px] text-forest/80 leading-relaxed p-4 resize-none focus:outline-none"
+          className="w-full bg-transparent font-mono text-[13px] text-forest/80 leading-relaxed p-3 resize-none focus:outline-none"
           spellCheck={false}
           placeholder={hint}
         />
 
         {/* Live preview */}
-        <div className="p-4 bg-parchment/30">
-          <span className="font-mono text-[9px] text-forest/25 block mb-2 tracking-wider uppercase">Live Preview</span>
+        <div className="p-3 bg-parchment/30">
+          <span className="font-mono text-[9px] text-forest/25 block mb-1 tracking-wider uppercase">Live Preview</span>
           <LivePreview block={{ ...block, content: draft, meta: draftMeta }} />
         </div>
       </div>
@@ -408,23 +455,41 @@ function LivePreview({ block }: { block: Block }) {
 
 // ─── Divider block ────────────────────────────────────────────────────────────
 
-function DividerBlock({ onDelete }: { onDelete: () => void }) {
-  const [focused, setFocused] = useState(false)
+function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
+  onDelete: () => void
+  selected?: boolean
+  onArrowUp?: () => void
+  onArrowDown?: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (selected) ref.current?.focus() }, [selected])
   return (
     <div
-      className="relative my-6 group cursor-pointer"
-      tabIndex={0}
-      onClick={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      ref={ref}
+      tabIndex={-1}
+      className="relative my-6 group cursor-pointer outline-none"
+      onKeyDown={e => {
+        if (e.key === 'ArrowUp' && !e.shiftKey)   { e.preventDefault(); onArrowUp?.() }
+        if (e.key === 'ArrowDown' && !e.shiftKey) { e.preventDefault(); onArrowDown?.() }
+        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); onDelete() }
+      }}
     >
-      <hr className="border-0 border-t border-forest/[0.1]" />
-      {focused && (
-        <button
-          className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-5 bg-cream border border-forest/15 squircle-sm flex items-center justify-center font-mono text-[10px] text-forest/40 hover:text-sienna transition-all"
-          onClick={e => { e.stopPropagation(); onDelete() }}
-        >
-          ✕
-        </button>
+      <hr className={`border-0 border-t transition-colors ${selected ? 'border-sage/50' : 'border-forest/[0.1] group-hover:border-forest/20'}`} />
+      {selected && (
+        <>
+          <button
+            className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-5 bg-cream border border-forest/15 squircle-sm flex items-center justify-center font-mono text-[10px] text-forest/40 hover:text-sienna transition-all"
+            onClick={e => { e.stopPropagation(); onDelete() }}
+          >
+            ✕
+          </button>
+          {/* Keyboard hint */}
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-forest/80 text-parchment/80 px-2.5 py-0.5 squircle-sm font-mono text-[9px] backdrop-blur-sm shadow-sm z-10 whitespace-nowrap">
+            <span>⌫ delete</span>
+            <span className="text-parchment/30">·</span>
+            <span>↑↓ navigate</span>
+          </div>
+        </>
       )}
     </div>
   )
@@ -434,28 +499,70 @@ function DividerBlock({ onDelete }: { onDelete: () => void }) {
 
 export const BlockEditor = forwardRef<
   BlockEditorHandle,
-  { blocks: Block[]; onChange: (blocks: Block[]) => void; readOnly?: boolean }
->(function BlockEditor({ blocks, onChange, readOnly = false }, ref) {
+  { blocks: Block[]; onChange: (blocks: Block[]) => void; readOnly?: boolean; onFocusChange?: (type: BlockType | null) => void }
+>(function BlockEditor({ blocks, onChange, readOnly = false, onFocusChange }, ref) {
   const [focusedId, setFocusedId] = useState<string | null>(null)
+  const [focusEdge, setFocusEdge] = useState<'start' | 'end' | number | null>('end')
   const [autoEditId, setAutoEditId] = useState<string | null>(null)
+  const cursorPosRef = useRef<number>(0)
 
-  // Expose insertBlock to parent toolbar via ref
+  const focusBlock = useCallback((id: string | null, edge: 'start' | 'end' | number | null = 'end') => {
+    setFocusEdge(edge)
+    setFocusedId(id)
+  }, [])
+
+  // Notify parent of the focused block's type so the toolbar can reflect it
+  useEffect(() => {
+    const block = blocks.find(b => b.id === focusedId)
+    onFocusChange?.(block && TEXT_TYPES.includes(block.type) ? block.type : null)
+  }, [focusedId, blocks, onFocusChange])
+
+  // Expose insertBlock + setCurrentType to parent toolbar via ref
   useImperativeHandle(ref, () => ({
     insertBlock(type: BlockType) {
       const idx = focusedId ? blocks.findIndex(b => b.id === focusedId) : blocks.length - 1
       const insertAt = idx === -1 ? blocks.length : idx + 1
       const nb = newBlock(type)
+
+      // If a text block is focused, split it at the cursor position
+      const focusedBlock = focusedId ? blocks.find(b => b.id === focusedId) : null
+      if (focusedBlock && TEXT_TYPES.includes(focusedBlock.type) && idx !== -1) {
+        const cursor = cursorPosRef.current
+        const before = focusedBlock.content.slice(0, cursor)
+        const after = focusedBlock.content.slice(cursor)
+        const afterBlock = { ...newBlock('paragraph'), content: after }
+        const next = [
+          ...blocks.slice(0, idx),
+          { ...focusedBlock, content: before },
+          nb,
+          ...(after.length > 0 ? [afterBlock] : []),
+          ...blocks.slice(idx + 1),
+        ]
+        onChange(next)
+        if (TEXT_TYPES.includes(type)) {
+          setTimeout(() => focusBlock(nb.id, 'end'), 0)
+        } else if (RICH_TYPES.includes(type)) {
+          setTimeout(() => setAutoEditId(nb.id), 0)
+        }
+        return
+      }
+
       const next = [...blocks.slice(0, insertAt), nb, ...blocks.slice(insertAt)]
       onChange(next)
       if (TEXT_TYPES.includes(type)) {
-        // Focus text blocks immediately
-        setTimeout(() => setFocusedId(nb.id), 0)
+        setTimeout(() => focusBlock(nb.id, 'end'), 0)
       } else if (RICH_TYPES.includes(type)) {
-        // Auto-open rich blocks in edit mode so the user sees the editor right away
         setTimeout(() => setAutoEditId(nb.id), 0)
       }
     },
-  }), [blocks, focusedId, onChange])
+    setCurrentType(type: BlockType) {
+      if (!focusedId) return
+      const block = blocks.find(b => b.id === focusedId)
+      if (block && TEXT_TYPES.includes(block.type)) {
+        onChange(blocks.map(b => b.id === focusedId ? { ...b, type } : b))
+      }
+    },
+  }), [blocks, focusedId, focusBlock, onChange])
 
   const updateBlock = useCallback((id: string, updates: Partial<Block>) => {
     onChange(blocks.map(b => b.id === id ? { ...b, ...updates } : b))
@@ -465,35 +572,52 @@ export const BlockEditor = forwardRef<
     if (blocks.length <= 1) {
       const fresh = newBlock('paragraph')
       onChange([fresh])
-      setFocusedId(fresh.id)
+      focusBlock(fresh.id, 'end')
       return
     }
     const idx = blocks.findIndex(b => b.id === id)
     const next = blocks.filter(b => b.id !== id)
     onChange(next)
     const focusTarget = next[Math.max(0, idx - 1)]
-    setFocusedId(focusTarget?.id ?? null)
-  }, [blocks, onChange])
+    focusBlock(focusTarget?.id ?? null, 'end')
+  }, [blocks, focusBlock, onChange])
 
   const insertAfter = useCallback((afterId: string, type: BlockType = 'paragraph') => {
     const idx = blocks.findIndex(b => b.id === afterId)
     const nb = newBlock(type)
     const next = [...blocks.slice(0, idx + 1), nb, ...blocks.slice(idx + 1)]
     onChange(next)
-    setTimeout(() => setFocusedId(nb.id), 0)
-  }, [blocks, onChange])
+    setTimeout(() => focusBlock(nb.id, 'start'), 0)
+  }, [blocks, focusBlock, onChange])
+
+  // Navigate one block at a time — lands on rich/divider blocks too (gives them keyboard focus)
+  const arrowNav = useCallback((direction: 'up' | 'down') => {
+    if (!focusedId) return
+    const idx = blocks.findIndex(b => b.id === focusedId)
+    if (idx === -1) return
+    const step = direction === 'up' ? -1 : 1
+    const target = blocks[idx + step]
+    if (!target) return
+    if (TEXT_TYPES.includes(target.type)) {
+      // Preserve column position across blocks
+      focusBlock(target.id, cursorPosRef.current)
+    } else {
+      // Rich or divider: set as focused (its useEffect will grab DOM focus)
+      setFocusedId(target.id)
+    }
+  }, [blocks, focusedId, focusBlock])
 
   // Click on bottom empty area → focus last block or add paragraph
   const handleBottomClick = useCallback(() => {
     const last = blocks[blocks.length - 1]
     if (last && TEXT_TYPES.includes(last.type)) {
-      setFocusedId(last.id)
+      focusBlock(last.id, 'end')
     } else {
       const nb = newBlock('paragraph')
       onChange([...blocks, nb])
-      setTimeout(() => setFocusedId(nb.id), 0)
+      setTimeout(() => focusBlock(nb.id, 'end'), 0)
     }
-  }, [blocks, onChange])
+  }, [blocks, focusBlock, onChange])
 
   if (readOnly) {
     return (
@@ -503,43 +627,76 @@ export const BlockEditor = forwardRef<
     )
   }
 
+  const insertAt = useCallback((idx: number) => {
+    const nb = newBlock('paragraph')
+    const next = [...blocks.slice(0, idx), nb, ...blocks.slice(idx)]
+    onChange(next)
+    setTimeout(() => focusBlock(nb.id, 'start'), 0)
+  }, [blocks, focusBlock, onChange])
+
   return (
     <div className="outline-none" onClick={e => { if (e.target === e.currentTarget) handleBottomClick() }}>
-      {blocks.map(block => {
-        if (TEXT_TYPES.includes(block.type)) {
-          return (
-            <TextBlock
-              key={block.id}
-              block={block}
-              focused={focusedId === block.id}
-              onFocus={() => setFocusedId(block.id)}
-              onChange={content => updateBlock(block.id, { content })}
-              onEnter={() => insertAfter(block.id)}
-              onDelete={() => deleteBlock(block.id)}
-              onBackspaceEmpty={() => deleteBlock(block.id)}
-            />
-          )
-        }
-        if (RICH_TYPES.includes(block.type)) {
-          return (
-            <RichBlock
-              key={block.id}
-              block={block}
-              autoEdit={autoEditId === block.id}
-              onUpdate={updates => { updateBlock(block.id, updates); setAutoEditId(null) }}
-              onDelete={() => { deleteBlock(block.id); setAutoEditId(null) }}
-            />
-          )
-        }
-        if (block.type === 'divider') {
-          return (
-            <DividerBlock
-              key={block.id}
-              onDelete={() => deleteBlock(block.id)}
-            />
-          )
-        }
-        return null
+      {/* Click zone before first block if it's a rich/divider block */}
+      {blocks.length > 0 && !TEXT_TYPES.includes(blocks[0].type) && (
+        <div className="h-2 cursor-text" onClick={() => insertAt(0)} />
+      )}
+      {blocks.map((block, idx) => {
+        const blockEl = (() => {
+          if (TEXT_TYPES.includes(block.type)) {
+            return (
+              <TextBlock
+                block={block}
+                focused={focusedId === block.id}
+                focusEdge={focusEdge}
+                onFocus={() => focusBlock(block.id, null)}
+                onChange={content => updateBlock(block.id, { content })}
+                onTypeChange={type => updateBlock(block.id, { type })}
+                onEnter={() => insertAfter(block.id)}
+                onBackspaceEmpty={() => deleteBlock(block.id)}
+                onArrowUp={() => arrowNav('up')}
+                onArrowDown={() => arrowNav('down')}
+                onCursorChange={pos => { cursorPosRef.current = pos }}
+              />
+            )
+          }
+          if (RICH_TYPES.includes(block.type)) {
+            return (
+              <RichBlock
+                block={block}
+                autoEdit={autoEditId === block.id}
+                selected={focusedId === block.id}
+                onUpdate={updates => { updateBlock(block.id, updates); setAutoEditId(null) }}
+                onDelete={() => { deleteBlock(block.id); setAutoEditId(null) }}
+                onArrowUp={() => arrowNav('up')}
+                onArrowDown={() => arrowNav('down')}
+              />
+            )
+          }
+          if (block.type === 'divider') {
+            return (
+              <DividerBlock
+                selected={focusedId === block.id}
+                onDelete={() => deleteBlock(block.id)}
+                onArrowUp={() => arrowNav('up')}
+                onArrowDown={() => arrowNav('down')}
+              />
+            )
+          }
+          return null
+        })()
+
+        // Minimal click zone only between adjacent non-text blocks
+        const nextBlock = blocks[idx + 1]
+        const showGap = !TEXT_TYPES.includes(block.type) && (!nextBlock || !TEXT_TYPES.includes(nextBlock.type))
+
+        return (
+          <div key={block.id}>
+            {blockEl}
+            {showGap && (
+              <div className="h-1 cursor-text hover:h-2 transition-all" onClick={() => insertAt(idx + 1)} />
+            )}
+          </div>
+        )
       })}
       {/* Click-to-continue area */}
       <div className="min-h-16 cursor-text" onClick={handleBottomClick} />
