@@ -144,11 +144,6 @@ export default function Design1() {
     }
   }, [activeTab])
 
-  const tabCls = (tab: 'write' | 'preview') =>
-    `px-3 py-1 font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-all ${
-      activeTab === tab ? 'bg-forest text-parchment' : 'text-forest/40 hover:text-forest/70'
-    }`
-
   return (
     <div className="h-screen overflow-hidden bg-cream flex flex-col stagger">
       <Navbar variant="light" />
@@ -221,8 +216,8 @@ export default function Design1() {
 
             {/* Master / Personal tab switcher */}
             <div className="flex border border-forest/15 squircle-sm overflow-hidden shrink-0">
-              <button onClick={() => handleTabChange('preview')} className={tabCls('preview')}>Master</button>
-              <button onClick={() => handleTabChange('write')} className={tabCls('write')}>Personal</button>
+              <button onClick={() => setActiveTab('preview')} className={tabCls('preview')}>Master</button>
+              <button onClick={() => setActiveTab('write')} className={tabCls('write')}>Personal</button>
             </div>
           </div>
 
