@@ -298,6 +298,9 @@ interface PanelState {
   queryLoading: boolean
   queryResult: string | null
   queryError: string | null
+  // manual node creation
+  newNodeName: string
+  newNodeText: string
 }
 
 // ─── GRAPH VIEW ──────────────────────────────────────────────────────────────
@@ -332,6 +335,8 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
             queryLoading: false,
             queryResult: null,
             queryError: null,
+            newNodeName: '',
+            newNodeText: '',
           }
     )
   }, [])
@@ -469,6 +474,43 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
       )
     }
   }, [panel, onQuery])
+
+  const manualCounter = useRef(0)
+
+  const handleCreateManualNode = useCallback(() => {
+    if (!panel || !panel.newNodeName.trim()) return
+    const name = panel.newNodeName.trim()
+    const text = panel.newNodeText.trim()
+    const id = `manual-${manualCounter.current++}`
+
+    // Place new node offset below-right of parent
+    const angle = Math.random() * Math.PI * 2
+    const dist = 220
+    const nx = panel.cx + Math.cos(angle) * dist - NW / 2
+    const ny = panel.cy + Math.sin(angle) * dist - NH / 2
+
+    const newNode: Node = {
+      id,
+      type: 'circle' as const,
+      position: { x: nx, y: ny },
+      data: { label: name, text: text || name, index: 0, total: 1, isRoot: false },
+    }
+
+    setNodes(nds => [...nds, newNode])
+    setEdges(eds => [
+      ...eds,
+      {
+        id: `manual-edge-${id}`,
+        source: panel.nodeId,
+        target: id,
+        type: 'curved',
+        style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.7, strokeDasharray: '4 3' },
+        markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
+        data: { curvature: 0.25 },
+      },
+    ])
+    setPanel(p => p ? { ...p, newNodeName: '', newNodeText: '' } : null)
+  }, [panel, setNodes, setEdges])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -640,7 +682,63 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
             {/* Divider */}
             <div style={{ height: 1, background: '#264635', opacity: 0.12, margin: '0 16px' }} />
 
-            {/* Expand form */}
+            {/* Manual node creation */}
+            <div style={{ padding: '12px 16px 16px', flexShrink: 0 }}>
+              <p style={{
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
+                color: '#A3B18A', textTransform: 'uppercase', letterSpacing: '0.1em',
+                margin: '0 0 8px',
+              }}>
+                + add child node
+              </p>
+              <input
+                value={panel.newNodeName}
+                onChange={e => setPanel(p => p ? { ...p, newNodeName: e.target.value } : null)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateManualNode() }}
+                placeholder="Node name…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#E9E4D4', border: '1.5px solid #264635',
+                  borderRadius: 8, padding: '7px 10px',
+                  fontFamily: "'Gamja Flower', cursive", fontSize: 13,
+                  color: '#1A1A18', outline: 'none',
+                  marginBottom: 6,
+                }}
+              />
+              <input
+                value={panel.newNodeText}
+                onChange={e => setPanel(p => p ? { ...p, newNodeText: e.target.value } : null)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateManualNode() }}
+                placeholder="Description (optional)…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#E9E4D4', border: '1.5px solid #A3B18A',
+                  borderRadius: 8, padding: '7px 10px',
+                  fontFamily: 'inherit', fontSize: 11,
+                  color: '#1A1A18', outline: 'none',
+                }}
+              />
+              <button
+                onClick={handleCreateManualNode}
+                disabled={!panel.newNodeName.trim()}
+                style={{
+                  marginTop: 8, width: '100%',
+                  background: '#264635',
+                  color: '#E9E4D4', border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 0', cursor: !panel.newNodeName.trim() ? 'not-allowed' : 'pointer',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase',
+                  opacity: !panel.newNodeName.trim() ? 0.4 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                ◈ create node
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: 1, background: '#264635', opacity: 0.12, margin: '0 16px' }} />
             <div style={{ padding: '12px 16px 16px', flexShrink: 0 }}>
               <p style={{
                 fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
