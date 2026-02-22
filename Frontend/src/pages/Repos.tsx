@@ -245,7 +245,7 @@ export default function Repos() {
         {/* Header */}
         <div className="max-w-5xl mx-auto px-6 pt-12 pb-8">
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">BROWSE</span>
-          <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Nootbooks</h1>
+          <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Public Nootbooks</h1>
           <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/50 max-w-lg">
             Public nootbooks and invite-only nootbooks that match your tags.
           </p>
@@ -260,7 +260,7 @@ export default function Repos() {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search by title or tag…"
+                placeholder="Search public nootbooks…"
                 className="w-full bg-parchment border border-forest/10 squircle pl-10 pr-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/30 outline-none focus:border-sage/40 transition-all"
               />
             </div>

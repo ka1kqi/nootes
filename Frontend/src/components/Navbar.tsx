@@ -8,7 +8,7 @@ function getInitials(name: string): string {
 }
 
 const navLinks = [
-  { path: '/repos', label: 'Nootbooks' },
+  { path: '/repos', label: 'Public Nootbooks' },
   { path: '/my-repos', label: 'My Nootbooks' },
   { path: '/editor/scratch', label: 'Editor' },
   { path: '/chat', label: 'Chat' },
