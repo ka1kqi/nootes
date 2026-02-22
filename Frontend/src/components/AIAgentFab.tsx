@@ -32,33 +32,51 @@ export function AIAgentFab({ bottomClass = 'bottom-6' }: { bottomClass?: string 
         variant="light"
       />
 
-      {/* FAB button */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className={`fixed ${bottomClass} left-6 z-50 w-12 h-12 rounded-full bg-forest flex items-center justify-center
-          shadow-[0_4px_20px_-4px_rgba(26,47,38,0.45)]
-          hover:scale-110 hover:shadow-[0_6px_28px_-4px_rgba(26,47,38,0.6)]
-          transition-all duration-200 cursor-pointer`}
-        aria-label="Open AI assistant"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M12 21 C12 21 5 17 5 10 C5 6 8.5 3.5 12 3.5 C15.5 3.5 19 6 19 10 C19 17 12 21 12 21Z"
-            stroke="#E9E4D4"
-            strokeWidth="1.4"
-            fill="rgba(233,228,212,0.08)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path d="M12 21 L12 10" stroke="#E9E4D4" strokeWidth="1.2" strokeLinecap="round" opacity="0.7" />
-          <path d="M12 12 L9 9.5" stroke="#8a9b75" strokeWidth="0.9" strokeLinecap="round" opacity="0.8" />
-          <path d="M12 15 L15 12.5" stroke="#8a9b75" strokeWidth="0.9" strokeLinecap="round" opacity="0.8" />
-          <g opacity="0.85">
-            <path d="M18.5 5 L18.5 7" stroke="#8a9b75" strokeWidth="0.9" strokeLinecap="round" />
-            <path d="M17.5 6 L19.5 6" stroke="#8a9b75" strokeWidth="0.9" strokeLinecap="round" />
-          </g>
-        </svg>
-      </button>
+      {/* FAB button + tooltip wrapper */}
+      <div className={`fixed ${bottomClass} left-6 z-50 group`}>
+        {/* Hover tooltip */}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 pointer-events-none
+          opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0
+          transition-all duration-150">
+          <span className="font-mono text-[9px] text-parchment/80 bg-forest-deep/90 backdrop-blur-sm px-2.5 py-1 squircle-sm whitespace-nowrap shadow-sm">
+            ⌘K
+          </span>
+        </div>
+
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-12 h-12 rounded-full bg-forest flex items-center justify-center
+            shadow-[0_4px_20px_-4px_rgba(26,47,38,0.45)]
+            hover:scale-110 hover:shadow-[0_6px_28px_-4px_rgba(26,47,38,0.6)]
+            transition-all duration-200 cursor-pointer"
+          aria-label="Open noot (⌘K)"
+        >
+          <svg width="26" height="18.5" viewBox="0 0 28 20" fill="none" aria-hidden>
+            {/* Body */}
+            <ellipse cx="14" cy="11.5" rx="6.5" ry="3.5"
+              fill="rgba(233,228,212,0.08)"
+              stroke="#E9E4D4" strokeWidth="1.15" strokeLinejoin="round" />
+            {/* Head */}
+            <path d="M 19 9.5 Q 23.5 7.8 25.5 11 Q 24.5 14.2 21.5 13 L 19 12 Z"
+              fill="rgba(233,228,212,0.08)"
+              stroke="#E9E4D4" strokeWidth="1.05" strokeLinejoin="round" />
+            {/* Eye */}
+            <circle cx="24" cy="10" r="0.7" fill="#E9E4D4" />
+            {/* Nostril */}
+            <circle cx="25.8" cy="11.2" r="0.38" fill="#E9E4D4" opacity="0.55" />
+            {/* Front legs */}
+            <path d="M 17.5 14.5 L 16.5 18.5" stroke="#E9E4D4" strokeWidth="1" strokeLinecap="round" />
+            <path d="M 19 14.5 L 20.2 18" stroke="#E9E4D4" strokeWidth="1" strokeLinecap="round" />
+            {/* Back legs */}
+            <path d="M 10.5 14.5 L 9.5 18.5" stroke="#E9E4D4" strokeWidth="1" strokeLinecap="round" />
+            <path d="M 12 14.5 L 13.5 18" stroke="#E9E4D4" strokeWidth="1" strokeLinecap="round" />
+            {/* Tail — animated sway */}
+            <path className="noot-tail"
+              d="M 7.8 12.5 Q 3.5 12.5 1.5 9.5 Q 0.2 7.2 1.2 5"
+              stroke="#8a9b75" strokeWidth="1.15" strokeLinecap="round" fill="none" />
+          </svg>
+        </button>
+      </div>
     </>
   )
 }

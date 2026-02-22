@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Navbar } from '../components/Navbar'
+import { useAuth } from '../hooks/useAuth'
 
 /* ------------------------------------------------------------------ */
 /* Aura Store                                                          */
@@ -8,11 +9,11 @@ import { Navbar } from '../components/Navbar'
 /* ------------------------------------------------------------------ */
 
 const auraTiers = [
-  { threshold: 0, label: 'Seedling', color: '#8B6E4E', icon: '○', description: 'Full editor, forking, contributing, basic chat, limited AI.', unlocked: true },
-  { threshold: 100, label: 'Sprout', color: '#A3B18A', icon: '◐', description: 'AI-generated flashcards from nootbook content.', unlocked: true },
-  { threshold: 250, label: 'Sapling', color: '#5C7A6B', icon: '◑', description: 'AI-generated practice exams based on class nootes.', unlocked: true },
-  { threshold: 500, label: 'Grove', color: '#264635', icon: '●', description: 'Advanced AI study tools and priority merge consideration.', unlocked: false },
-  { threshold: 1000, label: 'Ancient Oak', color: '#1a2f26', icon: '✦', description: 'Trusted Contributor — moderation privileges, cross-school access.', unlocked: false },
+  { threshold: 0,    label: 'Seedling',    color: '#8B6E4E', icon: '○', description: 'Full editor, forking, contributing, basic chat, limited AI.' },
+  { threshold: 100,  label: 'Sprout',      color: '#A3B18A', icon: '◐', description: 'AI-generated flashcards from nootbook content.' },
+  { threshold: 250,  label: 'Sapling',     color: '#5C7A6B', icon: '◑', description: 'AI-generated practice exams based on class nootes.' },
+  { threshold: 500,  label: 'Grove',       color: '#264635', icon: '●', description: 'Advanced AI study tools and priority merge consideration.' },
+  { threshold: 1000, label: 'Ancient Oak', color: '#1a2f26', icon: '✦', description: 'Trusted Contributor — moderation privileges, cross-school access.' },
 ]
 
 const auraPacks = [
@@ -74,18 +75,6 @@ const premiumFeatures = [
   },
 ]
 
-const currentAura = 347
-
-function RarityBorder({ rarity }: { rarity: string }) {
-  const borderColor: Record<string, string> = {
-    common: 'border-forest/10',
-    rare: 'border-sage/30',
-    epic: 'border-amber/30',
-    legendary: 'border-amber/50',
-  }
-  return null // used for class lookup only
-}
-
 function rarityBorderClass(rarity: string): string {
   const map: Record<string, string> = {
     common: 'border-forest/10 hover:border-forest/20',
@@ -107,10 +96,12 @@ function rarityTagClass(rarity: string): string {
 }
 
 export default function AuraStore() {
+  const { profile } = useAuth()
   const [activeSection, setActiveSection] = useState<'packs' | 'cosmetics' | 'premium'>('packs')
 
-  const nextTier = auraTiers.find(t => !t.unlocked) || auraTiers[auraTiers.length - 1]
-  const progressToNext = nextTier ? Math.min(100, (currentAura / nextTier.threshold) * 100) : 100
+  const currentAura = profile?.aura ?? 0
+  const tiers = auraTiers.map(t => ({ ...t, unlocked: currentAura >= t.threshold }))
+  const nextTier = tiers.find(t => !t.unlocked) ?? tiers[tiers.length - 1]
 
   return (
     <div className="min-h-screen bg-cream flex flex-col">
@@ -150,7 +141,7 @@ export default function AuraStore() {
               <div className="text-right">
                 <span className="font-mono text-[10px] text-forest/30 tracking-[0.2em] uppercase block mb-2">CURRENT TIER</span>
                 <span className="font-[family-name:var(--font-display)] text-3xl text-sage block">
-                  {auraTiers.filter(t => t.unlocked).pop()?.label}
+                  {tiers.filter(t => t.unlocked).pop()?.label ?? 'Seedling'}
                 </span>
                 <span className="font-mono text-[10px] text-forest/25 mt-1 block">
                   {nextTier.threshold - currentAura} to {nextTier.label}
@@ -161,7 +152,7 @@ export default function AuraStore() {
             {/* Progress bar to next tier */}
             <div className="mt-6 relative z-10">
               <div className="flex items-center justify-between mb-2">
-                {auraTiers.map((tier, i) => (
+                {tiers.map((tier, i) => (
                   <div key={tier.threshold} className="flex flex-col items-center">
                     <span
                       className={`text-sm mb-1 ${tier.unlocked ? 'opacity-80' : 'opacity-25'}`}
@@ -178,7 +169,7 @@ export default function AuraStore() {
               <div className="h-2 bg-forest/[0.06] rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-sage/60 to-sage rounded-full transition-all duration-1000"
-                  style={{ width: `${(currentAura / auraTiers[auraTiers.length - 1].threshold) * 100}%` }}
+                  style={{ width: `${Math.min(100, (currentAura / tiers[tiers.length - 1].threshold) * 100)}%` }}
                 />
               </div>
             </div>
@@ -363,7 +354,7 @@ export default function AuraStore() {
               Aura points are threshold-based — once you reach a tier, its features are permanently unlocked.
             </p>
             <div className="space-y-3">
-              {auraTiers.map((tier, i) => (
+              {tiers.map((tier, i) => (
                 <div
                   key={tier.threshold}
                   className={`bg-parchment border squircle-xl p-5 flex items-center gap-5 transition-all ${
