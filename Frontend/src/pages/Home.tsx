@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { KaTeX } from '../components/KaTeX'
+import { NewNootModal } from '../components/NewNootModal'
 
 /* ------------------------------------------------------------------ */
 /* Home — Authenticated dashboard                                       */
@@ -58,13 +60,13 @@ function getGreeting(firstName: string): string {
 const quickActions = [
   {
     label: 'New Noot',
-    desc: 'Open the editor',
+    desc: 'Start writing',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
       </svg>
     ),
-    to: '/editor/scratch',
+    onClick: 'modal' as const,
     accent: 'bg-forest text-parchment',
   },
   {
@@ -170,6 +172,8 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 export default function Home() {
+  const navigate = useNavigate()
+  const [modalOpen, setModalOpen] = useState(false)
   const greeting = getGreeting(user.name.split(' ')[0])
   return (
     <div className="min-h-screen bg-cream flex flex-col">
@@ -218,19 +222,29 @@ export default function Home() {
 
           {/* Quick actions */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
-            {quickActions.map((a, i) => (
-              <Link
-                key={i}
-                to={a.to}
-                className={`group flex flex-col gap-3 p-5 squircle-xl transition-all hover:shadow-[0_4px_24px_-8px_rgba(38,70,53,0.12)] hover:-translate-y-0.5 ${a.accent}`}
-              >
-                <span className="opacity-70">{a.icon}</span>
-                <div>
-                  <span className="font-[family-name:var(--font-body)] text-sm font-medium block">{a.label}</span>
-                  <span className="font-mono text-[10px] opacity-50 block mt-0.5">{a.desc}</span>
-                </div>
-              </Link>
-            ))}
+            {quickActions.map((a, i) => {
+              const cls = `group flex flex-col gap-3 p-5 squircle-xl transition-all hover:shadow-[0_4px_24px_-8px_rgba(38,70,53,0.12)] hover:-translate-y-0.5 ${a.accent}`
+              if ('onClick' in a && a.onClick === 'modal') {
+                return (
+                  <button key={i} onClick={() => setModalOpen(true)} className={cls}>
+                    <span className="opacity-70">{a.icon}</span>
+                    <div>
+                      <span className="font-[family-name:var(--font-body)] text-sm font-medium block">{a.label}</span>
+                      <span className="font-mono text-[10px] opacity-50 block mt-0.5">{a.desc}</span>
+                    </div>
+                  </button>
+                )
+              }
+              return (
+                <Link key={i} to={(a as any).to} className={cls}>
+                  <span className="opacity-70">{a.icon}</span>
+                  <div>
+                    <span className="font-[family-name:var(--font-body)] text-sm font-medium block">{a.label}</span>
+                    <span className="font-mono text-[10px] opacity-50 block mt-0.5">{a.desc}</span>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
@@ -400,6 +414,12 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <NewNootModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={(repoId) => navigate(`/editor/${repoId}`)}
+      />
     </div>
   )
 }

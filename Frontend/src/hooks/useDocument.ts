@@ -30,12 +30,8 @@ export type Document = {
   repoId: string
   userId: string
   title: string
-  course?: string
-  professor?: string
-  semester?: string
-  version?: string
+  version?: string[] | null
   blocks: Block[]
-  tags?: string[]
   updatedAt: string
 }
 
@@ -121,41 +117,28 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           historyRef.current = [blocks]
           historyIndexRef.current = 0
         } else {
-          // 1. Download the .md file from Storage (404 = first visit, not an error)
-          const { data: fileData, error: downloadErr } = await supabase.storage
-            .from(BUCKET)
-            .download(storagePath(userId, repoId))
-
-          if (cancelled) return
-
-          // Treat 404 / object-not-found as empty doc
-          if (downloadErr && !downloadErr.message.includes('Object not found') && !downloadErr.message.includes('404')) {
-            throw downloadErr
-          }
-
-          const markdown = fileData ? await fileData.text() : ''
-          const blocks = markdown ? markdownToBlocks(markdown) : [newBlock('paragraph')]
-
-          // 2. Fetch metadata row (title, version, tags) — may not exist on first visit
-          const { data: meta, error: metaErr } = await supabase
+          // Load blocks from documents table by id
+          const { data: docRow } = await supabase
             .from('documents')
-            .select('id, title, version, tags, updated_at')
-            .eq('repo_id', repoId)
-            .eq('user_id', userId)
+            .select('id, title, version, blocks, created_at')
+            .eq('id', repoId)
             .maybeSingle()
 
           if (cancelled) return
-          if (metaErr) throw metaErr
+
+          const rawBlocks = docRow?.blocks
+          const blocks: Block[] = Array.isArray(rawBlocks) && rawBlocks.length > 0
+            ? (rawBlocks as Block[])
+            : [newBlock('paragraph')]
 
           const loaded: Document = {
-            id: meta?.id ?? crypto.randomUUID(),
+            id: docRow?.id ?? crypto.randomUUID(),
             repoId,
             userId,
-            title: meta?.title || repoTitle || 'My Notes',
-            version: meta?.version ?? '1.0.0',
-            tags: meta?.tags ?? [],
+            title: docRow?.title || repoTitle || 'My Notes',
+            version: docRow?.version ?? null,
             blocks,
-            updatedAt: meta?.updated_at ?? new Date().toISOString(),
+            updatedAt: docRow?.created_at ?? new Date().toISOString(),
           }
           setDoc(loaded)
           docRef.current = loaded
@@ -237,33 +220,15 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     }
 
     try {
-      const markdown = blocksToMarkdown(blocks)
-      const blob = new Blob([markdown], { type: 'text/markdown' })
-
-      // 1. Upload .md file to Storage (upsert: true overwrites existing)
-      const { error: uploadErr } = await supabase.storage
-        .from(BUCKET)
-        .upload(storagePath(userId, repoId), blob, {
-          contentType: 'text/markdown',
-          upsert: true,
-        })
-      if (uploadErr) throw uploadErr
-
-      // 2. Upsert metadata row (no content column)
-      const { error: metaErr } = await supabase
+      // Update blocks by document id
+      const { error: upsertErr } = await supabase
         .from('documents')
-        .upsert(
-          {
-            repo_id: repoId,
-            user_id: userId,
-            title: docRef.current.title || repoTitle || 'My Notes',
-            version: docRef.current.version ?? '1.0.0',
-            tags: docRef.current.tags ?? [],
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'repo_id,user_id' },
-        )
-      if (metaErr) throw metaErr
+        .update({
+          title: docRef.current.title || repoTitle || 'My Notes',
+          blocks,
+        })
+        .eq('id', repoId)
+      if (upsertErr) throw upsertErr
 
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 1500)
