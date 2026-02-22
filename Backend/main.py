@@ -9,7 +9,7 @@ import os
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from md_utils import document_to_json, json_to_document, blocks_to_markdown, markdown_to_blocks
+from doc_utils import document_to_json, json_to_document, blocks_to_markdown, markdown_to_blocks
 from nim_client import nim_chat, nim_graph, nim_embed_single, nim_moderate
 
 app = FastAPI(title="Nootes API")
@@ -49,7 +49,7 @@ def _doc_path(repo_id: str, user_id: str) -> Path:
 
 
 def read_doc(repo_id: str, user_id: str) -> dict | None:
-    """Read a document from its .md file, or None if not found."""
+    """Read a document from its .json file, or None if not found."""
     path = _doc_path(repo_id, user_id)
     if not path.exists():
         return None
@@ -62,7 +62,7 @@ def read_doc(repo_id: str, user_id: str) -> dict | None:
 
 
 def write_doc(doc: dict):
-    """Write a document to its .md file."""
+    """Write a document to its .json file."""
     repo_id = doc["repoId"]
     user_id = doc["userId"]
     path = _doc_path(repo_id, user_id)
