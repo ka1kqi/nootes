@@ -8,7 +8,8 @@ This module provides typed helpers for the four models we use:
   3. Merge / Chat — llama-3.1-nemotron-nano-8b-v1
   4. Graph / Tasks — llama-3.3-nemotron-super-49b-v1
 
-Set NVIDIA_NIM_BASE_URL and NVIDIA_NIM_API_KEY in the Railway environment.
+All four containers run on a single H100 80GB Brev instance, each on its
+own port (8001-8004). Set per-model base URLs via NIM_*_BASE_URL env vars.
 """
 
 from __future__ import annotations
@@ -23,18 +24,15 @@ logger = logging.getLogger(__name__)
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-# Base URL for the NIM endpoints (Brev tunnel/deployment or self-hosted)
-# Examples:
-#   https://<brev-tunnel-link>       — Brev VM tunnel
-#   https://<deployment-id>.brev.dev — Brev Deployments
-#   http://localhost:8000            — local NIM container
+# Shared defaults — used as fallback when per-model URLs are not set
 NIM_BASE_URL = os.environ.get("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com")
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 
-# Graph model can run on a separate NIM instance (e.g. a larger GPU).
-# Falls back to the shared URL/key when not set.
+# Per-model base URLs (each NIM container runs on its own port / tunnel)
+MERGE_BASE_URL = os.environ.get("NIM_MERGE_BASE_URL", NIM_BASE_URL)
+MODERATE_BASE_URL = os.environ.get("NIM_MODERATE_BASE_URL", NIM_BASE_URL)
+EMBED_BASE_URL = os.environ.get("NIM_EMBED_BASE_URL", NIM_BASE_URL)
 GRAPH_BASE_URL = os.environ.get("NIM_GRAPH_BASE_URL", NIM_BASE_URL)
-GRAPH_API_KEY = os.environ.get("NIM_GRAPH_API_KEY", NIM_API_KEY)
 
 # Model identifiers — override via env if deploying custom model names
 EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/llama-nemotron-embed-vl-1b-v2")
@@ -94,7 +92,7 @@ async def nim_chat(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    data = await _post("/v1/chat/completions", body, base_url=base_url, api_key=api_key)
+    data = await _post("/v1/chat/completions", body, base_url=base_url or MERGE_BASE_URL, api_key=api_key)
     return (
         data.get("choices", [{}])[0]
         .get("message", {})
@@ -119,7 +117,6 @@ async def nim_graph(
         temperature=0.7,
         max_tokens=4096,
         base_url=GRAPH_BASE_URL,
-        api_key=GRAPH_API_KEY,
     )
 
 
@@ -136,7 +133,7 @@ async def nim_embed(texts: list[str]) -> list[list[float]]:
         "input": texts,
         "input_type": "passage",
     }
-    data = await _post("/v1/embeddings", body)
+    data = await _post("/v1/embeddings", body, base_url=EMBED_BASE_URL)
     # Sort by index to guarantee order matches input
     items = sorted(data.get("data", []), key=lambda d: d.get("index", 0))
     return [item["embedding"] for item in items]
@@ -187,6 +184,7 @@ async def nim_moderate(message: str) -> dict[str, Any]:
             model=MODERATE_MODEL,
             temperature=0.0,
             max_tokens=64,
+            base_url=MODERATE_BASE_URL,
         )
         result = result.strip().upper()
 
