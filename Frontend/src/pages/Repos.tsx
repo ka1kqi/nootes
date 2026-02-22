@@ -310,7 +310,7 @@ export default function Repos() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">BROWSE</span>
           <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Public Nootbooks</h1>
           <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/50 max-w-lg">
-            Public nootbooks and invite-only nootbooks that match your tags.
+            Explore the nootes knowledge base.
           </p>
 
           {/* Search + filter bar */}
@@ -403,8 +403,8 @@ export default function Repos() {
                       <span
                         key={tag}
                         className={`font-mono text-[10px] px-2 py-0.5 squircle-sm border ${(profile?.tags ?? []).includes(tag)
-                            ? 'text-sage/80 border-sage/25 bg-sage/[0.06]'
-                            : 'text-forest/35 border-forest/10'
+                          ? 'text-sage/80 border-sage/25 bg-sage/[0.06]'
+                          : 'text-forest/35 border-forest/10'
                           }`}
                       >{tag}</span>
                     )) : (
