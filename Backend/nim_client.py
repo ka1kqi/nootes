@@ -1,15 +1,9 @@
 """
 NIM API client for Nootes — wraps NVIDIA NIM inference endpoints.
 
-All NIM containers (on Brev or elsewhere) expose an OpenAI-compatible API.
-This module provides typed helpers for the four models we use:
-  1. Embeddings  — llama-nemotron-embed-vl-1b-v2
-  2. Moderation  — nemotron-content-safety-reasoning-4b
-  3. Merge / Chat — llama-3.1-nemotron-nano-8b-v1
-  4. Graph / Tasks — llama-3.3-nemotron-super-49b-v1
-
-All four containers run on a single H100 80GB Brev instance, each on its
-own port (8001-8004). Set per-model base URLs via NIM_*_BASE_URL env vars.
+All models are served via the hosted NVIDIA NIM API (integrate.api.nvidia.com).
+Per-model base URLs can be overridden via NIM_*_BASE_URL env vars for
+self-hosting on Brev or other GPU providers.
 """
 
 from __future__ import annotations
@@ -17,6 +11,8 @@ from __future__ import annotations
 import os
 import logging
 from typing import Any
+from dotenv import load_dotenv
+load_dotenv()
 
 import httpx
 
@@ -24,23 +20,24 @@ logger = logging.getLogger(__name__)
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-# Shared defaults — used as fallback when per-model URLs are not set
+# Shared defaults — all models use the same hosted endpoint and API key
 NIM_BASE_URL = os.environ.get("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com")
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 
-# Per-model base URLs (each NIM container runs on its own port / tunnel)
+# Per-model base URLs (optional — only needed if self-hosting on separate containers)
 MERGE_BASE_URL = os.environ.get("NIM_MERGE_BASE_URL", NIM_BASE_URL)
 MODERATE_BASE_URL = os.environ.get("NIM_MODERATE_BASE_URL", NIM_BASE_URL)
 EMBED_BASE_URL = os.environ.get("NIM_EMBED_BASE_URL", NIM_BASE_URL)
+EMBED_API_KEY = os.environ.get("NIM_EMBED_API_KEY", NIM_API_KEY)
 GRAPH_BASE_URL = os.environ.get("NIM_GRAPH_BASE_URL", NIM_BASE_URL)
 
-# Model identifiers — override via env if deploying custom model names
+# Model identifiers
 EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/llama-nemotron-embed-vl-1b-v2")
 MODERATE_MODEL = os.environ.get("NIM_MODERATE_MODEL", "nvidia/nemotron-content-safety-reasoning-4b")
 MERGE_MODEL = os.environ.get("NIM_MERGE_MODEL", "nvidia/llama-3.1-nemotron-nano-8b-v1")
 GRAPH_MODEL = os.environ.get("NIM_GRAPH_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
 
-# Shared timeout (merge/graph can be slow for large inputs)
+# Shared timeout
 TIMEOUT = float(os.environ.get("NIM_TIMEOUT", "120"))
 
 
@@ -133,7 +130,7 @@ async def nim_embed(texts: list[str]) -> list[list[float]]:
         "input": texts,
         "input_type": "passage",
     }
-    data = await _post("/v1/embeddings", body, base_url=EMBED_BASE_URL)
+    data = await _post("/v1/embeddings", body, base_url=EMBED_BASE_URL, api_key=EMBED_API_KEY)
     # Sort by index to guarantee order matches input
     items = sorted(data.get("data", []), key=lambda d: d.get("index", 0))
     return [item["embedding"] for item in items]

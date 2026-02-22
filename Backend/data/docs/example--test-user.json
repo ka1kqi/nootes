@@ -1,0 +1,238 @@
+{
+  "id": "40327899-dc74-49f8-a80b-9ca90462ece6",
+  "repoId": "example",
+  "userId": "test-user",
+  "title": "Rich Text Feature Showcase — My Notes",
+  "course": "CS-101",
+  "professor": "Dr. Smith",
+  "semester": "Spring 2026",
+  "version": "1.0.0+personal",
+  "contributorCount": 1,
+  "tags": [
+    "example",
+    "showcase",
+    "rich-text",
+    "personal"
+  ],
+  "createdAt": "2026-02-22T08:42:46.400021+00:00",
+  "updatedAt": "2026-02-22T08:42:46.400039+00:00",
+  "blocks": [
+    {
+      "id": "b-h1-001",
+      "type": "h1",
+      "content": "Rich Text Feature Showcase"
+    },
+    {
+      "id": "b-para-001",
+      "type": "paragraph",
+      "content": "This document demonstrates every block type supported by Nootes."
+    },
+    {
+      "id": "b-divider-001",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-001",
+      "type": "h2",
+      "content": "Headings"
+    },
+    {
+      "id": "b-h3-001",
+      "type": "h3",
+      "content": "This is a level-3 heading"
+    },
+    {
+      "id": "b-para-002",
+      "type": "paragraph",
+      "content": "Regular paragraph text goes here. You can write as much as you like in a single paragraph block."
+    },
+    {
+      "id": "b-divider-002",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-002",
+      "type": "h2",
+      "content": "Blockquote"
+    },
+    {
+      "id": "b-quote-001",
+      "type": "quote",
+      "content": "The best way to predict the future is to invent it. — Alan Kay"
+    },
+    {
+      "id": "b-divider-003",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-003",
+      "type": "h2",
+      "content": "LaTeX Math"
+    },
+    {
+      "id": "b-latex-001",
+      "type": "latex",
+      "content": "E = mc^2"
+    },
+    {
+      "id": "b-latex-002",
+      "type": "latex",
+      "content": "\\int_{-\\infty}^{\\infty} e^{-x^2} \\, dx = \\sqrt{\\pi}"
+    },
+    {
+      "id": "b-divider-004",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-004",
+      "type": "h2",
+      "content": "Code Blocks"
+    },
+    {
+      "id": "b-code-001",
+      "type": "code",
+      "content": "def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n - 1) + fibonacci(n - 2)\n\nprint(fibonacci(10))",
+      "meta": {
+        "language": "python",
+        "filename": "fibonacci.py"
+      }
+    },
+    {
+      "id": "b-code-002",
+      "type": "code",
+      "content": "function greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet('Nootes'));",
+      "meta": {
+        "language": "typescript",
+        "filename": "greet.ts"
+      }
+    },
+    {
+      "id": "b-divider-005",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-005",
+      "type": "h2",
+      "content": "Chemistry"
+    },
+    {
+      "id": "b-chem-001",
+      "type": "chemistry",
+      "content": "H_2O",
+      "meta": {
+        "caption": "Water molecule"
+      }
+    },
+    {
+      "id": "b-chem-002",
+      "type": "chemistry",
+      "content": "2H_2 + O_2 \\rightarrow 2H_2O",
+      "meta": {
+        "caption": "Combustion of hydrogen"
+      }
+    },
+    {
+      "id": "b-divider-006",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-006",
+      "type": "h2",
+      "content": "Tables"
+    },
+    {
+      "id": "b-table-001",
+      "type": "table",
+      "content": "Element,Symbol,Atomic Number\nHydrogen,H,1\nHelium,He,2\nLithium,Li,3\nCarbon,C,6",
+      "meta": {
+        "caption": "Periodic Table (excerpt)"
+      }
+    },
+    {
+      "id": "b-divider-007",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-007",
+      "type": "h2",
+      "content": "Callouts"
+    },
+    {
+      "id": "b-callout-001",
+      "type": "callout",
+      "content": "This is an informational callout with helpful context for the reader.",
+      "meta": {
+        "calloutType": "info"
+      }
+    },
+    {
+      "id": "b-callout-002",
+      "type": "callout",
+      "content": "Pro tip: Use keyboard shortcuts to quickly insert new block types.",
+      "meta": {
+        "calloutType": "tip"
+      }
+    },
+    {
+      "id": "b-callout-003",
+      "type": "callout",
+      "content": "Be careful when deleting blocks — this action cannot be undone beyond the undo history.",
+      "meta": {
+        "calloutType": "warning"
+      }
+    },
+    {
+      "id": "b-callout-004",
+      "type": "callout",
+      "content": "Breaking change: Documents are now stored as JSON instead of Markdown.",
+      "meta": {
+        "calloutType": "important"
+      }
+    },
+    {
+      "id": "b-divider-008",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-008",
+      "type": "h2",
+      "content": "Diagrams (Mermaid)"
+    },
+    {
+      "id": "b-diagram-001",
+      "type": "diagram",
+      "content": "graph TD\n    A[Start] --> B{Is it working?}\n    B -- Yes --> C[Great!]\n    B -- No --> D[Debug]\n    D --> B",
+      "meta": {
+        "caption": "Development workflow"
+      }
+    },
+    {
+      "id": "b-divider-009",
+      "type": "divider",
+      "content": ""
+    },
+    {
+      "id": "b-h2-009",
+      "type": "h2",
+      "content": "Empty Paragraph"
+    },
+    {
+      "id": "b-para-003",
+      "type": "paragraph",
+      "content": ""
+    },
+    {
+      "id": "b-para-004",
+      "type": "paragraph",
+      "content": "The block above is an intentionally empty paragraph — these are preserved losslessly in JSON."
+    }
+  ]
+}
