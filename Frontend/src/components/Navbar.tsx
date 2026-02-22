@@ -13,7 +13,6 @@ const navLinks = [
   { path: '/my-repos', label: 'My Nootbooks' },
   { path: '/editor/scratch', label: 'Editor' },
   { path: '/chat', label: 'Chat' },
-  { path: '/diff', label: 'Diff' },
 ]
 
 const profileDropdownLinks = [

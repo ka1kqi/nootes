@@ -59,7 +59,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/repos" element={<ProtectedRoute><Repos /></ProtectedRoute>} />
             <Route path="/my-repos" element={<ProtectedRoute><MyRepos /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/diff" element={<Diff />} />
+            <Route path="/diff/:repoId" element={<ProtectedRoute><Diff /></ProtectedRoute>} />
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
