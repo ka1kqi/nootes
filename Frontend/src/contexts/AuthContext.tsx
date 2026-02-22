@@ -10,7 +10,7 @@ interface AuthContextValue {
   profile: Profile | null
   session: Session | null
   loading: boolean
-  sessionReady: boolean
+  sessionReady: number
   signInWithGoogle: () => Promise<void>
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>
   signUp: (email: string, password: string) => Promise<{ error: string | null }>
@@ -68,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [sessionReady, setSessionReady] = useState(false)
+  const [sessionReady, setSessionReady] = useState(0)
 
   // Load session on mount + subscribe to auth changes
   useEffect(() => {
@@ -84,17 +84,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Unblock rendering immediately — profile loads in the background
         setLoading(false)
 
-        // sessionReady gates data-fetching hooks to prevent stale-token queries.
-        // If there's no session, or a fresh token just arrived, mark ready immediately.
+        // sessionReady is an incrementing counter that gates data-fetching hooks.
+        // Using a counter (not boolean) ensures every TOKEN_REFRESHED increments
+        // the value, triggering re-fetches even when the tab regains focus after
+        // a token expiry — a boolean set-to-true would be a no-op in that case.
         if (!session || event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-          setSessionReady(true)
+          setSessionReady(v => v + 1)
         } else if (event === 'INITIAL_SESSION' && session) {
-          // Token may be expired — only mark ready if it's still valid.
+          // Token may be expired — only increment if it's still valid.
           // If expired, Supabase auto-refreshes and fires TOKEN_REFRESHED.
           const expiresAt = session.expires_at ?? 0
           const isValid = expiresAt > Math.floor(Date.now() / 1000) + 5
-          if (isValid) setSessionReady(true)
-          // else: wait for TOKEN_REFRESHED to set sessionReady
+          if (isValid) setSessionReady(v => v + 1)
+          // else: wait for TOKEN_REFRESHED to increment
         }
 
         if (session?.user) {
