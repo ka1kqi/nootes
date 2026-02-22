@@ -17,15 +17,21 @@ import Chat from './pages/Chat.tsx'
 import AuraStore from './pages/AuraStore.tsx'
 import Graph_Creation from './pages/Graph_Creation.tsx'
 import Settings from './pages/Settings.tsx'
+import HomeV1 from './pages/HomeV1.tsx'
+import HomeV2 from './pages/HomeV2.tsx'
+import HomeV3 from './pages/HomeV3.tsx'
+import HomeV4 from './pages/HomeV4.tsx'
+import HomeV5 from './pages/HomeV5.tsx'
 
 // Renders AIAgentFab on all pages except landing, home (inline chatbox), and login
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const hideOn = new Set(['/', '/home', '/login'])
+  const hideOn = new Set(['/', '/home', '/login', '/1', '/2', '/3', '/4', '/5'])
+  const isEditor = location.pathname.startsWith('/editor/')
   return (
     <>
       {children}
-      {!hideOn.has(location.pathname) && <AIAgentFab />}
+      {!hideOn.has(location.pathname) && <AIAgentFab bottomClass={isEditor ? 'bottom-12' : 'bottom-6'} />}
     </>
   )
 }
@@ -49,6 +55,11 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/store" element={<ProtectedRoute><AuraStore /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/graph" element={<Graph_Creation />} />
+            <Route path="/1" element={<HomeV1 />} />
+            <Route path="/2" element={<HomeV2 />} />
+            <Route path="/3" element={<HomeV3 />} />
+            <Route path="/4" element={<HomeV4 />} />
+            <Route path="/5" element={<HomeV5 />} />
           </Routes>
         </AppShell>
       </AuthProvider>

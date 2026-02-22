@@ -624,17 +624,15 @@ function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
       }}
     >
       <hr className={`border-0 border-t transition-colors ${selected ? 'border-sage/50' : 'border-forest/[0.1] group-hover:border-forest/20'}`} />
-      <button
-        className={`absolute right-0 top-1/2 -translate-y-1/2 h-5 w-5 bg-cream border border-forest/15 squircle-sm flex items-center justify-center font-mono text-[10px] text-forest/40 hover:text-sienna transition-all ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-        onClick={e => { e.stopPropagation(); onDelete() }}
-      >
-        ✕
-      </button>
-      {/* Hint — visible on hover or when selected */}
-      <div className={`absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-forest/80 text-parchment/80 px-2.5 py-0.5 squircle-sm font-mono text-[9px] backdrop-blur-sm shadow-sm z-10 whitespace-nowrap transition-opacity duration-150 ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-        <span>⌫ delete</span>
-        <span className="text-parchment/30">·</span>
-        <span>↑↓ navigate</span>
+      {/* Action button — matches RichBlock style */}
+      <div className={`absolute -bottom-[26px] left-1/2 -translate-x-1/2 flex items-center gap-px bg-forest/80 backdrop-blur-sm squircle-sm shadow-sm z-10 overflow-hidden transition-opacity duration-150 ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        <button
+          className="flex items-center gap-1.5 px-3 py-1 font-[family-name:var(--font-body)] text-[10px] text-parchment/60 hover:text-sienna/90 hover:bg-white/10 transition-colors whitespace-nowrap"
+          onClick={e => { e.stopPropagation(); onDelete() }}
+        >
+          <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+          Delete
+        </button>
       </div>
     </div>
   )

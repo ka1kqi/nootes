@@ -2,7 +2,6 @@
 
 # github
 /.github
-/.claude
 
 # dependencies
 /node_modules
@@ -58,3 +57,4 @@ notes
 
 #claude
 claude_prompt.md
+/.claude

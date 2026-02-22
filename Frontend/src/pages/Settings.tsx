@@ -82,10 +82,7 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-cream flex flex-col">
-      <Navbar
-        variant="light"
-        breadcrumbs={[{ label: 'NYU' }, { label: 'Settings' }]}
-      />
+      <Navbar variant="light" />
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-6 py-12">
