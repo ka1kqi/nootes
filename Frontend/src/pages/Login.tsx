@@ -23,7 +23,7 @@ export default function Login() {
   const { user, signInWithGoogle, signInWithEmail, signUp } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/chat'
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/home'
 
   // Redirect authenticated users (handles post-OAuth callback)
   useEffect(() => {

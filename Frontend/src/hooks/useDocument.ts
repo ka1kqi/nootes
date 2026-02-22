@@ -30,12 +30,8 @@ export type Document = {
   repoId: string
   userId: string
   title: string
-  course?: string
-  professor?: string
-  semester?: string
-  version?: string
+  version?: string[] | null
   blocks: Block[]
-  tags?: string[]
   updatedAt: string
 }
 
@@ -140,8 +136,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             repoId,
             userId,
             title: repoTitle || 'My Notes',
-            version: '1.0.0',
-            tags: [],
+            version: null,
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -240,17 +235,11 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       // 2. Upsert metadata row (no content column)
       const { error: metaErr } = await supabase
         .from('documents')
-        .upsert(
-          {
-            repo_id: repoId,
-            user_id: userId,
-            title: docRef.current.title || repoTitle || 'My Notes',
-            version: docRef.current.version ?? '1.0.0',
-            tags: docRef.current.tags ?? [],
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'repo_id,user_id' },
-        )
+        .update({
+          title: docRef.current.title || repoTitle || 'My Notes',
+          blocks,
+        })
+        .eq('id', repoId)
       if (metaErr) throw metaErr
 
       setSaveStatus('saved')

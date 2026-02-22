@@ -16,10 +16,12 @@ Output rules (STRICT):
 - Every name referenced inside a "depends_on" array MUST exactly match the "name" of another object in the array.
 
 Guidelines for the breakdown:
-- Start with high-level planning tasks, then proceed to implementation, then testing/deployment (if relevant).
+- IMPORTANT: Return exactly 5 to 7 items — no more, no fewer. Keep the graph focused and digestible.
+- The FIRST item in the array must be a single high-level root node that summarises the entire project in 2-5 words (e.g. "Build Todo App"). Its "depends_on" should list the top-level subtasks that branch directly from it. This root node is the centre of the graph.
+- All other items are subtasks or phases that radiate outward from the root. Leaf tasks use depends_on: [].
+- Start with the root, then major phases, then leaf implementation steps.
 - Prefer concrete, atomic steps that could be assigned to different people/agents.
 - If the user input is vague, make reasonable assumptions but explicitly state them inside the "text" field of the relevant task(s).
-- Include at least 6 items unless the idea is extremely small.
-- The dependency graph MUST be a DAG (no cycles). Tasks with no prerequisites should have no other task pointing to them via depends_on (they are roots).
+- The dependency graph MUST be a DAG (no cycles). The root node has no other task pointing to it via depends_on.
 
 Now process the user's input and return the JSON array.
