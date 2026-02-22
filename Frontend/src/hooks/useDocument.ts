@@ -29,6 +29,7 @@ export type Document = {
   id: string
   repoId: string
   userId: string
+  owner_user_id: string | null
   title: string
   version?: string[] | null
   tags: string[]
@@ -114,6 +115,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             id: 'scratch',
             repoId: 'scratch',
             userId,
+            owner_user_id: userId,
             title: 'Quick Notes',
             tags: [],
             source_document_id: null,
@@ -131,7 +133,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           // Load everything from Supabase — blocks stored as jsonb
           const { data: docRow } = await supabase
             .from('documents')
-            .select('title, version, tags, source_document_id, blocks, access_level, is_public_root, merge_policy')
+            .select('title, version, tags, source_document_id, blocks, access_level, is_public_root, merge_policy, owner_user_id')
             .eq('id', repoId)
             .maybeSingle()
 
@@ -146,6 +148,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             id: repoId,
             repoId,
             userId,
+            owner_user_id: docRow?.owner_user_id ?? null,
             title: docRow?.title || repoTitle || 'My Notes',
             version: docRow?.version ?? null,
             tags: Array.isArray(docRow?.tags) ? docRow.tags : [],
@@ -171,6 +174,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             id: 'scratch',
             repoId: 'scratch',
             userId,
+            owner_user_id: userId,
             title: 'Quick Notes',
             tags: [],
             source_document_id: null,
@@ -190,6 +194,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             id: crypto.randomUUID(),
             repoId,
             userId,
+            owner_user_id: null,
             title: repoTitle || 'My Notes',
             tags: [],
             source_document_id: null,

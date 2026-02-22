@@ -72,6 +72,18 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [draft, setDraft] = useState({ full_name: '', display_name: '', organization: '' })
+  const [draftTags, setDraftTags] = useState<string[]>([])
+  const [tagInputVal, setTagInputVal] = useState('')
+
+  // Inline tags state (always-visible, saves immediately)
+  const [profileTags, setProfileTags] = useState<string[]>([])
+  const [inlineTagInput, setInlineTagInput] = useState('')
+  const [tagsSaving, setTagsSaving] = useState(false)
+
+  // Sync profileTags whenever profile loads/changes
+  useEffect(() => {
+    if (profile) setProfileTags(profile.tags ?? [])
+  }, [profile])
 
   // Animate in when editing opens, animate out before closing
   function openEdit() {
@@ -92,6 +104,8 @@ export default function Profile() {
         display_name: profile.display_name ?? '',
         organization: profile.organization ?? '',
       })
+      setDraftTags(profile.tags ?? [])
+      setTagInputVal('')
     }
   }, [editing, profile])
 
@@ -149,13 +163,15 @@ export default function Profile() {
     setSaving(true)
     setSaveError(null)
 
+    // Only send fields that have non-empty values in the draft
+    const updates: Record<string, unknown> = { tags: draftTags }
+    if (draft.full_name.trim())    updates.full_name    = draft.full_name.trim()
+    if (draft.display_name.trim()) updates.display_name = draft.display_name.trim()
+    if (draft.organization.trim()) updates.organization = draft.organization.trim()
+
     const { error } = await supabase
       .from('profiles')
-      .update({
-        full_name:    draft.full_name.trim()    || profile?.full_name,
-        display_name: draft.display_name.trim() || profile?.display_name,
-        organization: draft.organization.trim() || null,
-      })
+      .update(updates)
       .eq('id', user.id)
 
     if (error) {
@@ -166,7 +182,15 @@ export default function Profile() {
 
     setSaving(false)
     closeEdit()
+    setProfileTags(draftTags)
     setTimeout(() => window.location.reload(), 230)
+  }
+
+  async function saveInlineTags(tags: string[]) {
+    if (!user) return
+    setTagsSaving(true)
+    await supabase.from('profiles').update({ tags }).eq('id', user.id)
+    setTagsSaving(false)
   }
 
   return (
@@ -232,6 +256,58 @@ export default function Profile() {
                         />
                       </div>
 
+                      <div className="flex flex-col gap-2">
+                        <label className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">Tags</label>
+                        <p className="font-mono text-[9px] text-forest/30 leading-relaxed -mt-1">
+                          Tags control access to restricted documents and invite-only forks.
+                        </p>
+                        <form
+                          onSubmit={e => {
+                            e.preventDefault()
+                            const tag = tagInputVal.trim().toLowerCase().replace(/\s+/g, '-')
+                            if (!tag || draftTags.includes(tag)) { setTagInputVal(''); return }
+                            setDraftTags(prev => [...prev, tag])
+                            setTagInputVal('')
+                          }}
+                          className="flex items-center gap-1.5"
+                        >
+                          <input
+                            type="text"
+                            value={tagInputVal}
+                            onChange={e => setTagInputVal(e.target.value)}
+                            placeholder="add a tag…"
+                            className="flex-1 min-w-0 bg-cream border border-forest/15 squircle-sm px-3 py-2 font-mono text-[11px] text-forest/60 placeholder:text-forest/25 outline-none focus:border-forest/35 transition-colors"
+                          />
+                          <button
+                            type="submit"
+                            className="shrink-0 w-8 h-8 flex items-center justify-center bg-forest/[0.06] hover:bg-forest/[0.12] text-forest/50 hover:text-forest/70 squircle-sm transition-all"
+                            title="Add tag"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                          </button>
+                        </form>
+                        {draftTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {draftTags.map(tag => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center gap-1 font-mono text-[10px] text-forest/50 bg-forest/[0.04] border border-forest/10 pl-2 pr-1 py-0.5 squircle-sm"
+                              >
+                                {tag}
+                                <button
+                                  type="button"
+                                  onClick={() => setDraftTags(prev => prev.filter(t => t !== tag))}
+                                  className="text-forest/25 hover:text-sienna/60 transition-colors leading-none ml-0.5"
+                                  title="Remove tag"
+                                >×</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {saveError && (
                         <p className="font-mono text-[10px] text-rust/70">{saveError}</p>
                       )}
@@ -276,7 +352,7 @@ export default function Profile() {
                       </div>
 
                       {/* Meta */}
-                      <div className="space-y-2 mb-6">
+                      <div className="space-y-2 mb-4">
                         {[
                           profile.organization ? { label: 'School', value: profile.organization } : null,
                           { label: 'Tier', value: profile.tier },
@@ -287,6 +363,72 @@ export default function Profile() {
                             <span className="font-[family-name:var(--font-body)] text-xs text-forest/70 capitalize">{m!.value}</span>
                           </div>
                         ))}
+                      </div>
+
+                      {/* Tags — inline view + edit, always visible */}
+                      <div className="mb-5 pt-3 border-t border-forest/[0.06]">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-mono text-[9px] text-forest/30 tracking-wider uppercase">My Tags</span>
+                          {tagsSaving && (
+                            <span className="font-mono text-[8px] text-forest/25 animate-pulse">saving…</span>
+                          )}
+                        </div>
+                        {/* Current tags display */}
+                        <div className="flex flex-wrap gap-1.5 mb-2 min-h-[1.5rem]">
+                          {profileTags.length > 0 ? profileTags.map(tag => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-1 font-mono text-[10px] text-forest/55 bg-forest/[0.05] border border-forest/10 pl-2 pr-1 py-0.5 squircle-sm"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = profileTags.filter(t => t !== tag)
+                                  setProfileTags(next)
+                                  saveInlineTags(next)
+                                }}
+                                className="text-forest/25 hover:text-sienna/60 transition-colors leading-none ml-0.5"
+                                title="Remove tag"
+                              >×</button>
+                            </span>
+                          )) : (
+                            <span className="font-mono text-[10px] text-forest/20 italic">No tags — add one below</span>
+                          )}
+                        </div>
+                        {/* Add tag input */}
+                        <form
+                          onSubmit={e => {
+                            e.preventDefault()
+                            const tag = inlineTagInput.trim().toLowerCase().replace(/\s+/g, '-')
+                            if (!tag || profileTags.includes(tag)) { setInlineTagInput(''); return }
+                            const next = [...profileTags, tag]
+                            setProfileTags(next)
+                            saveInlineTags(next)
+                            setInlineTagInput('')
+                          }}
+                          className="flex items-center gap-1.5"
+                        >
+                          <input
+                            type="text"
+                            value={inlineTagInput}
+                            onChange={e => setInlineTagInput(e.target.value)}
+                            placeholder="add a tag…"
+                            className="flex-1 min-w-0 bg-cream border border-forest/15 squircle-sm px-2.5 py-1.5 font-mono text-[10px] text-forest/60 placeholder:text-forest/20 outline-none focus:border-forest/30 transition-colors"
+                          />
+                          <button
+                            type="submit"
+                            className="shrink-0 w-7 h-7 flex items-center justify-center bg-forest/[0.05] hover:bg-forest/[0.10] text-forest/40 hover:text-forest/60 squircle-sm transition-all"
+                            title="Add tag"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                          </button>
+                        </form>
+                        <p className="font-mono text-[9px] text-forest/20 mt-1.5 leading-relaxed">
+                          Tags control access to restricted docs &amp; invite-only forks.
+                        </p>
                       </div>
 
                       {/* Stats grid */}
@@ -319,6 +461,72 @@ export default function Profile() {
                           </div>
                         </div>
                       )}
+
+                      {/* Tags — always visible, inline editable */}
+                      <div className="mt-4 pt-4 border-t border-forest/[0.06]">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-mono text-[9px] text-forest/25 tracking-wider uppercase">Tags</span>
+                          {tagsSaving && (
+                            <span className="font-mono text-[8px] text-forest/25 animate-pulse">saving…</span>
+                          )}
+                        </div>
+                        <p className="font-mono text-[9px] text-forest/25 leading-relaxed mb-3">
+                          Tags unlock access to restricted documents and invite-only forks.
+                        </p>
+                        {/* Add tag input */}
+                        <form
+                          onSubmit={e => {
+                            e.preventDefault()
+                            const tag = inlineTagInput.trim().toLowerCase().replace(/\s+/g, '-')
+                            if (!tag || profileTags.includes(tag)) { setInlineTagInput(''); return }
+                            const next = [...profileTags, tag]
+                            setProfileTags(next)
+                            saveInlineTags(next)
+                            setInlineTagInput('')
+                          }}
+                          className="flex items-center gap-1.5 mb-2.5"
+                        >
+                          <input
+                            type="text"
+                            value={inlineTagInput}
+                            onChange={e => setInlineTagInput(e.target.value)}
+                            placeholder="add a tag…"
+                            className="flex-1 min-w-0 bg-cream border border-forest/15 squircle-sm px-2.5 py-1.5 font-mono text-[10px] text-forest/60 placeholder:text-forest/20 outline-none focus:border-forest/30 transition-colors"
+                          />
+                          <button
+                            type="submit"
+                            className="shrink-0 w-7 h-7 flex items-center justify-center bg-forest/[0.05] hover:bg-forest/[0.10] text-forest/40 hover:text-forest/60 squircle-sm transition-all"
+                            title="Add tag"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                          </button>
+                        </form>
+                        {/* Tag chips */}
+                        <div className="flex flex-wrap gap-1.5 min-h-[1.5rem]">
+                          {profileTags.length > 0 ? profileTags.map(tag => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-1 font-mono text-[10px] text-forest/50 bg-forest/[0.04] border border-forest/10 pl-2 pr-1 py-0.5 squircle-sm"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = profileTags.filter(t => t !== tag)
+                                  setProfileTags(next)
+                                  saveInlineTags(next)
+                                }}
+                                className="text-forest/20 hover:text-sienna/60 transition-colors leading-none ml-0.5"
+                                title="Remove tag"
+                              >×</button>
+                            </span>
+                          )) : (
+                            <span className="font-mono text-[10px] text-forest/20 italic">No tags yet</span>
+                          )}
+                        </div>
+                      </div>
 
                       {/* Edit button */}
                       <button

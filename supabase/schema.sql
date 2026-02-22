@@ -71,10 +71,6 @@ create table if not exists documents (
   -- explicit owner
   owner_user_id      uuid        not null references auth.users(id) on delete cascade,
 
-  -- "public version" / canonical root that this document belongs to.
-  -- If this doc IS the public root, set root_document_id = id.
-  root_document_id   uuid        references documents(id) on delete set null,
-
   -- if this doc was copied/forked from another doc (lineage)
   source_document_id uuid        references documents(id) on delete set null,
 
@@ -342,10 +338,15 @@ CREATE POLICY "repositories: owners can delete"
 -- documents -----------------------------------------------
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
--- Users can only access their own document metadata rows
+-- Anyone authenticated can read public documents
+CREATE POLICY "documents: read public"
+  ON documents FOR SELECT TO authenticated
+  USING (access_level = 'public');
+
+-- Users can fully manage their own documents
 CREATE POLICY "documents: users manage own"
   ON documents FOR ALL TO authenticated
-  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  USING (owner_user_id = auth.uid()) WITH CHECK (owner_user_id = auth.uid());
 
 -- document_versions ---------------------------------------
 ALTER TABLE document_versions ENABLE ROW LEVEL SECURITY;

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Link, useParams, useLocation } from 'react-router-dom'
+import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
 import { useDocument, type BlockType, type Document } from '../hooks/useDocument'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge } from '../contexts/EditorBridgeContext'
+import { supabase } from '../lib/supabase'
 
 /* ------------------------------------------------------------------ */
 /* Design 1 — "The Zen Canvas" (refined)                              */
@@ -77,13 +78,69 @@ export default function Design1() {
   const tagsInfoRef = useRef<HTMLSpanElement>(null)
 
   // ── Auth + routing ───────────────────────────────────────────────────────
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { repoId = '' } = useParams<{ repoId: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const repoMeta = location.state as { name?: string; code?: string; org?: string; field?: string; description?: string } | null
 
   // ── Document sync (Personal fork for this repo) ──────────────────────────
   const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
+
+  // ── Ownership: can the current user edit this document? ─────────────────
+  // For scratch, always owner. For real docs, compare owner_user_id.
+  const isOwner = repoId === 'scratch' || (doc !== null && doc.owner_user_id !== null && doc.owner_user_id === user?.id)
+
+  // ── Fork button availability ─────────────────────────────────────────────
+  // Enabled when: merge_policy === 'anyone', or invite_only + shared tags
+  const userTags: string[] = profile?.tags ?? []
+  const docTags: string[] = doc?.tags ?? []
+  const hasSharedTags = docTags.some(t => userTags.includes(t))
+  const forkEnabled = !isOwner && repoId !== 'scratch' && (
+    doc?.merge_policy === 'anyone' ||
+    (doc?.merge_policy === 'invite_only' && hasSharedTags)
+  )
+
+  // ── Fork handler ─────────────────────────────────────────────────────────
+  const [forking, setForking] = useState(false)
+  const [forkError, setForkError] = useState<string | null>(null)
+  const handleFork = useCallback(async () => {
+    if (!forkEnabled || !user || !doc) return
+    setForking(true)
+    setForkError(null)
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .insert({
+          owner_user_id:      user.id,
+          source_document_id: repoId,
+          title:              doc.title,
+          blocks:             doc.blocks,
+          tags:               doc.tags,
+          access_level:       'private',
+          is_public_root:     false,
+          merge_policy:       'invite_only',
+        })
+        .select('id')
+        .single()
+
+      if (error || !data?.id) {
+        setForkError(error?.message ?? 'Unknown error')
+        console.error('Fork failed:', error)
+        return
+      }
+
+      navigate(`/editor/${data.id}`, {
+        state: repoMeta ? { ...repoMeta, name: `Fork of ${doc.title}` } : { name: `Fork of ${doc.title}` },
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setForkError(msg)
+      console.error('Fork error:', e)
+    } finally {
+      setForking(false)
+    }
+  }, [forkEnabled, user, doc, repoId, repoMeta, navigate])
 
   // ── Register with EditorBridge so Noot can insert blocks ─────────────────
   const bridge = useEditorBridge()
@@ -184,6 +241,7 @@ export default function Design1() {
   // If we're on the master preview tab, stash the type and switch tabs —
   // the effect below fires it once the editor is actually mounted.
   const insertBlock = useCallback((type: BlockType) => {
+    if (!isOwner) return
     if (activeTab !== 'write') {
       pendingInsertRef.current = type
       setActiveTab('write')
@@ -191,7 +249,7 @@ export default function Design1() {
     } else {
       editorRef.current?.insertBlock(type)
     }
-  }, [activeTab])
+  }, [activeTab, isOwner])
 
   useEffect(() => {
     if (activeTab === 'write' && pendingInsertRef.current) {
@@ -211,7 +269,7 @@ export default function Design1() {
         {/* Main editor */}
         <main className="flex-1 flex flex-col min-w-0">
           {/* Toolbar */}
-          <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center shrink-0 gap-0">
+          <div className={`border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center shrink-0 gap-0 ${!isOwner && activeTab === 'write' ? 'opacity-40 pointer-events-none' : ''}`}>
             {/* Insert buttons — clips if viewport too narrow; right side is always visible */}
             <div className="flex-1 min-w-0 overflow-hidden flex items-center gap-1">
               {/* Text type buttons — reflects and changes the focused block's type */}
@@ -381,10 +439,11 @@ export default function Design1() {
                   <input
                     type="text"
                     value={doc?.title ?? ''}
-                    onChange={e => updateTitle(e.target.value)}
-                    onBlur={e => { if (!e.target.value.trim()) updateTitle('My Noots') }}
+                    onChange={e => isOwner && updateTitle(e.target.value)}
+                    onBlur={e => { if (isOwner && !e.target.value.trim()) updateTitle('My Noots') }}
                     placeholder="Untitled"
-                    className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6 bg-transparent w-full outline-none border-b-2 border-transparent focus:border-forest/20 hover:border-forest/10 transition-colors placeholder-forest/20 caret-forest/40"
+                    readOnly={!isOwner}
+                    className={`font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6 bg-transparent w-full outline-none border-b-2 border-transparent transition-colors placeholder-forest/20 caret-forest/40 ${isOwner ? 'focus:border-forest/20 hover:border-forest/10' : 'cursor-default opacity-60'}`}
                   />
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
@@ -406,8 +465,8 @@ export default function Design1() {
                       {saveStatus === 'unsaved' && '● Unsaved'}
                       {saveStatus === 'offline' && '⚡ Offline'}
                     </span>
-                    {/* Submit for merge — only for forks */}
-                    {isFork && (
+                    {/* Submit for merge — only for forks owned by current user */}
+                    {isFork && isOwner && (
                     <button
                       className="ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors"
                       onClick={() => {
@@ -418,6 +477,41 @@ export default function Design1() {
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
                       Submit for Merge
                     </button>
+                    )}
+                    {/* Fork button — shown when viewing someone else's document */}
+                    {!isOwner && repoId !== 'scratch' && (
+                    <div className="ml-auto flex flex-col items-end gap-1">
+                    <button
+                      disabled={!forkEnabled || forking}
+                      title={
+                        doc?.merge_policy === 'no_merges'
+                          ? 'Forking is disabled for this document'
+                          : doc?.merge_policy === 'invite_only' && !hasSharedTags
+                          ? 'You need matching tags to fork this document'
+                          : 'Fork this document to your workspace'
+                      }
+                      className={`flex items-center gap-2 px-4 py-1.5 font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm border transition-colors ${
+                        forkEnabled && !forking
+                          ? 'bg-sage/10 border-sage/40 text-forest hover:bg-sage/20 hover:border-sage/60 cursor-pointer'
+                          : 'bg-forest/[0.03] border-forest/10 text-forest/30 cursor-not-allowed opacity-60'
+                      }`}
+                      onClick={handleFork}
+                    >
+                      {forking ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364l-2.121 2.121M8.757 15.243l-2.121 2.121m0-12.728l2.121 2.121M15.243 15.243l2.121 2.121" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      )}
+                      {forking ? 'Forking…' : 'Fork'}
+                    </button>
+                    {forkError && (
+                      <span className="font-mono text-[10px] text-red-500/70 max-w-[220px] text-right leading-tight">{forkError}</span>
+                    )}
+                    </div>
                     )}
                   </div>
                 </div>
@@ -435,8 +529,9 @@ export default function Design1() {
                   <BlockEditor
                     ref={editorRef}
                     blocks={doc.blocks}
-                    onChange={updateBlocks}
+                    onChange={isOwner ? updateBlocks : () => {}}
                     onFocusChange={type => setCurrentBlockType(type ?? 'paragraph')}
+                    readOnly={!isOwner}
                   />
                 ) : (
                   <div className="text-center py-16">
@@ -531,7 +626,7 @@ export default function Design1() {
                 })()}
               </div>
             </div>
-            {activeTab === 'write' && (
+            {activeTab === 'write' && isOwner && (
               <form
                 onSubmit={e => {
                   e.preventDefault()
@@ -564,7 +659,7 @@ export default function Design1() {
               {activeTags.length > 0 ? activeTags.map(tag => (
                 <span key={tag} className="inline-flex items-center gap-1 font-mono text-[10px] text-forest/40 border border-forest/10 pl-2 pr-1 py-0.5 squircle-sm hover:bg-forest/[0.03] transition-colors">
                   {tag}
-                  {activeTab === 'write' && (
+                  {activeTab === 'write' && isOwner && (
                     <button
                       onClick={() => updateTags((doc?.tags ?? []).filter(t => t !== tag))}
                       className="text-forest/20 hover:text-sienna/60 transition-colors leading-none"
@@ -580,18 +675,21 @@ export default function Design1() {
 
           {/* Visibility — personal tab only, non-scratch only */}
           {activeTab === 'write' && repoId !== 'scratch' && (
-            <div className="mt-8 pt-6 border-t border-forest/[0.06]">
-              <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-4">Visibility</h4>
+            <div className={`mt-8 pt-6 border-t border-forest/[0.06] ${!isOwner ? 'opacity-40 pointer-events-none' : ''}`}>
+              <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-4">
+                Visibility {!isOwner && <span className="normal-case tracking-normal ml-1">(read-only)</span>}
+              </h4>
               <div className="flex flex-col gap-1.5">
                 {(['private', 'restricted', 'public'] as const).map(level => (
                   <button
                     key={level}
-                    onClick={() => updateVisibility(level)}
+                    onClick={() => isOwner && updateVisibility(level)}
+                    disabled={!isOwner}
                     className={`text-left w-full flex items-center gap-2 px-2.5 py-1.5 squircle-sm font-mono text-[10px] transition-all ${
                       doc?.access_level === level
                         ? 'bg-forest/[0.06] text-forest'
                         : 'text-forest/35 hover:text-forest/60 hover:bg-forest/[0.03]'
-                    }`}
+                    } ${!isOwner ? 'cursor-default' : ''}`}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       level === 'public'     ? 'bg-sage' :
@@ -609,8 +707,9 @@ export default function Design1() {
                   <label className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 block mb-2">Merge policy</label>
                   <select
                     value={doc?.merge_policy ?? 'invite_only'}
-                    onChange={e => updateMergePolicy(e.target.value as Document['merge_policy'])}
-                    className="w-full bg-cream border border-forest/10 squircle-sm px-2.5 py-1.5 font-mono text-[10px] text-forest/60 focus:outline-none focus:border-forest/25 transition-colors cursor-pointer"
+                    onChange={e => isOwner && updateMergePolicy(e.target.value as Document['merge_policy'])}
+                    disabled={!isOwner}
+                    className={`w-full bg-cream border border-forest/10 squircle-sm px-2.5 py-1.5 font-mono text-[10px] text-forest/60 focus:outline-none focus:border-forest/25 transition-colors ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
                   >
                     <option value="no_merges">No merges</option>
                     <option value="invite_only">Invite only</option>
