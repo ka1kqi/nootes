@@ -77,7 +77,7 @@ create table if not exists documents (
   source_document_id uuid        references documents(id) on delete set null,
 
   title              text        not null,
-  blocks             jsonb       not null default '[]'::jsonb,
+  blocks             text       not null default ''::text,
   version            text        not null default '1.0.0',
   tags               text[]      not null default '{}'::text[],
 

@@ -66,6 +66,7 @@ export default function Design1() {
   const [currentBlockType, setCurrentBlockType] = useState<BlockType>('paragraph')
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
+  const [tagInput, setTagInput] = useState('')
 
   // ── Auth + routing ───────────────────────────────────────────────────────
   const { user } = useAuth()
@@ -74,7 +75,7 @@ export default function Design1() {
   const repoMeta = location.state as { name?: string; code?: string; org?: string; field?: string; description?: string } | null
 
   // ── Document sync (Personal fork for this repo) ──────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
 
   // ── Master document (read-only) ─────────────────────────────────────────
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
@@ -82,7 +83,7 @@ export default function Design1() {
   useEffect(() => {
     fetch(`http://localhost:3001/api/repos/${repoId}/master`)
       .then(r => r.json())
-      .then(({ data }) => setMasterDoc(data))
+      .then(({ data }) => setMasterDoc(data ? { tags: [], source_document_id: null, ...data } : null))
       .catch(() => { })
       .finally(() => setMasterLoading(false))
   }, [])
@@ -108,6 +109,24 @@ export default function Design1() {
     const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
     return blocks.filter(b => b.type === 'h1' || b.type === 'h2' || b.type === 'h3')
   }, [activeTab, doc?.blocks, masterDoc?.blocks])
+
+  // ── Sidebar stats: block type counts + tags from active document ─────────
+  const blockStats = useMemo(() => {
+    const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
+    const count = (type: string) => blocks.filter(b => b.type === type).length
+    return [
+      { label: 'LaTeX equations', count: count('latex') },
+      { label: 'Code blocks',     count: count('code') },
+      { label: 'Diagrams',        count: count('diagram') },
+      { label: 'Tables',          count: count('table') },
+      { label: 'Chemical eqs.',   count: count('chemistry') },
+    ]
+  }, [activeTab, doc?.blocks, masterDoc?.blocks])
+
+  const activeTags = useMemo(() =>
+    activeTab === 'write' ? (doc?.tags ?? []) : (masterDoc?.tags ?? []),
+    [activeTab, doc?.tags, masterDoc?.tags]
+  )
 
   // Scroll tracking: highlight the heading currently in view
   useEffect(() => {
@@ -333,15 +352,24 @@ export default function Design1() {
                   <span className="font-mono text-[10px] text-forest/25 tracking-[0.3em] uppercase block mb-4">
                     {repoId === 'scratch' ? 'PERSONAL SCRATCH PAD' : repoMeta ? `${repoMeta.code} · ${repoMeta.org} — PERSONAL` : repoId.toUpperCase()}
                   </span>
-                  <h1 className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6">
-                    {doc?.title ?? 'My Noots'}
-                  </h1>
+                  <input
+                    type="text"
+                    value={doc?.title ?? ''}
+                    onChange={e => updateTitle(e.target.value)}
+                    onBlur={e => { if (!e.target.value.trim()) updateTitle('My Noots') }}
+                    placeholder="Untitled"
+                    className="font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6 bg-transparent w-full outline-none border-b-2 border-transparent focus:border-forest/20 hover:border-forest/10 transition-colors placeholder-forest/20 caret-forest/40"
+                  />
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
                       {doc?.version ?? '…'}
                     </span>
-                    <span className="font-mono text-[10px] text-forest/30">Personal fork</span>
-                    <span className="text-forest/10">|</span>
+                    {doc?.source_document_id && (
+                      <>
+                        <span className="font-mono text-[10px] text-forest/30">Personal fork</span>
+                        <span className="text-forest/10">|</span>
+                      </>
+                    )}
                     <span className={`font-mono text-[10px] transition-colors ${saveStatus === 'saved' ? 'text-sage/50' :
                         saveStatus === 'saving' ? 'text-amber-400' :
                           saveStatus === 'unsaved' ? 'text-amber-500' :
@@ -438,21 +466,64 @@ export default function Design1() {
           <div className="mt-8 pt-6 border-t border-forest/[0.06]">
             <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-4">Block Types</h4>
             <div className="flex flex-col gap-2">
-              {[{ label: 'LaTeX equations', count: 4 }, { label: 'Code blocks', count: 1 }, { label: 'Diagrams', count: 1 }, { label: 'Tables', count: 1 }, { label: 'Chemical eqs.', count: 2 }].map(bt => (
+              {blockStats.map(bt => bt.count > 0 && (
                 <div key={bt.label} className="flex items-center justify-between">
                   <span className="font-mono text-[10px] text-forest/30">{bt.label}</span>
                   <span className="font-mono text-[10px] text-sage/60 bg-sage/[0.06] px-1.5 py-0.5 squircle-sm">{bt.count}</span>
                 </div>
               ))}
+              {blockStats.every(bt => bt.count === 0) && (
+                <span className="font-mono text-[10px] text-forest/20 italic">No special blocks yet</span>
+              )}
             </div>
           </div>
 
           <div className="mt-8 pt-6 border-t border-forest/[0.06]">
             <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-4">Tags</h4>
+            {activeTab === 'write' && (
+              <form
+                onSubmit={e => {
+                  e.preventDefault()
+                  const tag = tagInput.trim().toLowerCase().replace(/\s+/g, '-')
+                  if (!tag || (doc?.tags ?? []).includes(tag)) { setTagInput(''); return }
+                  updateTags([...(doc?.tags ?? []), tag])
+                  setTagInput('')
+                }}
+                className="flex items-center gap-1 mb-2.5"
+              >
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  placeholder="add tag…"
+                  className="flex-1 min-w-0 font-mono text-[10px] text-forest/50 bg-transparent border border-forest/10 focus:border-forest/25 outline-none px-2 py-1 squircle-sm placeholder-forest/20 transition-colors"
+                />
+                <button
+                  type="submit"
+                  className="shrink-0 w-6 h-6 flex items-center justify-center text-forest/30 hover:text-forest/60 hover:bg-forest/[0.05] squircle-sm transition-all"
+                  title="Add tag"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                </button>
+              </form>
+            )}
             <div className="flex flex-wrap gap-1.5">
-              {['exam-relevant', 'midterm', 'derivatives', 'algorithms'].map(tag => (
-                <span key={tag} className="font-mono text-[10px] text-forest/40 border border-forest/10 px-2 py-0.5 squircle-sm hover:bg-forest/[0.03] transition-colors">{tag}</span>
-              ))}
+              {activeTags.length > 0 ? activeTags.map(tag => (
+                <span key={tag} className="inline-flex items-center gap-1 font-mono text-[10px] text-forest/40 border border-forest/10 pl-2 pr-1 py-0.5 squircle-sm hover:bg-forest/[0.03] transition-colors">
+                  {tag}
+                  {activeTab === 'write' && (
+                    <button
+                      onClick={() => updateTags((doc?.tags ?? []).filter(t => t !== tag))}
+                      className="text-forest/20 hover:text-sienna/60 transition-colors leading-none"
+                      title="Remove tag"
+                    >×</button>
+                  )}
+                </span>
+              )) : (
+                <span className="font-mono text-[10px] text-forest/20 italic">No tags</span>
+              )}
             </div>
           </div>
         </aside>

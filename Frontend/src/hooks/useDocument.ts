@@ -31,6 +31,8 @@ export type Document = {
   userId: string
   title: string
   version?: string[] | null
+  tags: string[]
+  source_document_id?: string | null
   blocks: Block[]
   updatedAt: string
 }
@@ -67,6 +69,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
 
   const pendingRef = useRef<Block[] | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const docRef = useRef<Document | null>(null)
 
   // Undo history
@@ -109,6 +112,8 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             repoId: 'scratch',
             userId,
             title: 'Quick Notes',
+            tags: [],
+            source_document_id: null,
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -117,26 +122,28 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           historyRef.current = [blocks]
           historyIndexRef.current = 0
         } else {
-          // Load from backend master for local testing
-          let blocks: Block[] = [newBlock('paragraph')]
-          try {
-            const res = await fetch(`http://localhost:3001/api/repos/${repoId}/master`)
-            if (res.ok) {
-              const { data } = await res.json()
-              if (data?.blocks) blocks = data.blocks as Block[]
-            }
-          } catch {
-            // Backend unreachable
-          }
+          // Load everything from Supabase — blocks stored as jsonb
+          const { data: docRow } = await supabase
+            .from('documents')
+            .select('title, version, tags, source_document_id, blocks')
+            .eq('id', repoId)
+            .maybeSingle()
 
           if (cancelled) return
 
+          const rawBlocks = docRow?.blocks
+          const blocks: Block[] = Array.isArray(rawBlocks) && rawBlocks.length > 0
+            ? (rawBlocks as Block[])
+            : [newBlock('paragraph')]
+
           const loaded: Document = {
-            id: crypto.randomUUID(),
+            id: repoId,
             repoId,
             userId,
-            title: repoTitle || 'My Notes',
-            version: null,
+            title: docRow?.title || repoTitle || 'My Notes',
+            version: docRow?.version ?? null,
+            tags: Array.isArray(docRow?.tags) ? docRow.tags : [],
+            source_document_id: docRow?.source_document_id ?? null,
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -156,6 +163,8 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             repoId: 'scratch',
             userId,
             title: 'Quick Notes',
+            tags: [],
+            source_document_id: null,
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -170,6 +179,8 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             repoId,
             userId,
             title: repoTitle || 'My Notes',
+            tags: [],
+            source_document_id: null,
             blocks: [newBlock('paragraph')],
             updatedAt: new Date().toISOString(),
           }
@@ -220,19 +231,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     }
 
     try {
-      const json = blocksToJson(blocks)
-      const blob = new Blob([json], { type: 'application/json' })
-
-      // 1. Upload .json file to Storage (upsert: true overwrites existing)
-      const { error: uploadErr } = await supabase.storage
-        .from(BUCKET)
-        .upload(storagePath(userId, repoId), blob, {
-          contentType: 'application/json',
-          upsert: true,
-        })
-      if (uploadErr) throw uploadErr
-
-      // 2. Upsert metadata row (no content column)
+      // Write blocks directly to the jsonb column — no Storage upload needed
       const { error: metaErr } = await supabase
         .from('documents')
         .update({
@@ -307,5 +306,37 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     scheduleSave(blocks)
   }, [scheduleSave])
 
-  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo }
+  // Update title in local state and debounce-persist to Supabase
+  const updateTitle = useCallback((title: string) => {
+    setDoc(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, title }
+      docRef.current = updated
+      return updated
+    })
+
+    if (isScratch) return // scratch has no documents row
+
+    if (titleTimerRef.current) clearTimeout(titleTimerRef.current)
+    titleTimerRef.current = setTimeout(async () => {
+      if (!docRef.current) return
+      await supabase.from('documents').update({ title }).eq('id', repoId)
+    }, 800)
+  }, [repoId, isScratch])
+
+  // Update tags in local state and persist immediately to Supabase
+  const updateTags = useCallback(async (tags: string[]) => {
+    setDoc(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, tags }
+      docRef.current = updated
+      return updated
+    })
+
+    if (isScratch) return // scratch has no documents row
+
+    await supabase.from('documents').update({ tags }).eq('id', repoId)
+  }, [repoId, isScratch])
+
+  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags }
 }
