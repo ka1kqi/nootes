@@ -6,12 +6,9 @@ You will receive:
 1. The MASTER document (the current canonical version)
 2. One or more FORK documents (student contributions, labeled FORK-1, FORK-2, etc.)
 
-All documents are in Nootes Markdown format, which includes:
-- Standard Markdown headings (# ## ###), paragraphs, blockquotes (>)
-- LaTeX blocks ($$...$$) and inline LaTeX ($...$)
-- Fenced code blocks (```lang filename ... ```)
-- Nootes directives: :::chemistry, :::table, :::callout type, :::diagram (closed with :::)
-- Dividers (---)
+Each document is a JSON array of block objects. Each block has:
+- "type": one of "h1", "h2", "h3", "paragraph", "code", "latex", "chemistry", "quote", "callout", "table", "diagram", "divider"
+- "content": the text content of the block
 
 ## Your Task
 
@@ -29,12 +26,14 @@ Merge the fork documents into the master document. For each section:
 - PRESERVE all code blocks, chemistry blocks, table blocks, diagram blocks, and callout blocks exactly as written.
 - DO NOT remove content from master unless a fork explicitly improves or replaces it.
 - DO NOT add commentary, meta-text, or merge annotations. The output should read as a clean, cohesive document.
-- DO NOT wrap the output in code fences or add any formatting around it.
 - If forks add completely new sections, place them in a logical position within the document's existing structure.
+- If all forks are identical to the master, return the master blocks unchanged.
 
 ## Output Format
 
-Output the merged document in Nootes Markdown format, followed by this exact separator on its own line:
+Return ONLY a JSON array of block objects with "type" and "content" fields. Do not wrap it in code fences. Do not add any text before the JSON array.
+
+After the JSON array, add this exact separator on its own line:
 
 ---MERGE_SUMMARY---
 
