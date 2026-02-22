@@ -185,16 +185,31 @@ async def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
     return {"data": doc}
 
 
+# ─── Prompt file resolution ──────────────────────────────────────────────────
+
+_PROMPT_DIRS = [
+    Path(__file__).parent / "gpt_prompts",          # inside Backend/ (Docker)
+    Path(__file__).parent.parent / "gpt_prompts",   # repo root (local dev)
+]
+
+
+def _find_prompt(filename: str) -> Path | None:
+    for d in _PROMPT_DIRS:
+        p = d / filename
+        if p.exists():
+            return p
+    return None
+
+
 # ─── Graph / Task Flow (Nemotron Super 49B via NIM) ──────────────────────────
 
-GRAPH_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "gpt_prompt.txt"
+GRAPH_PROMPT_PATH = _find_prompt("gpt_prompt.txt")
 
 
 def _load_graph_prompt() -> str:
-    try:
+    if GRAPH_PROMPT_PATH:
         return GRAPH_PROMPT_PATH.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return "You are a graph task flow generation assistant."
+    return "You are a graph task flow generation assistant."
 
 
 class ChatMessage(BaseModel):
@@ -222,14 +237,13 @@ async def proxy_prompt(body: PromptRequest):
 
 # ─── Noot Agent (dual-mode: text or graph) ───────────────────────────────────
 
-NOOT_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "noot_prompt.txt"
+NOOT_PROMPT_PATH = _find_prompt("noot_prompt.txt")
 
 
 def _load_noot_prompt() -> str:
-    try:
+    if NOOT_PROMPT_PATH:
         return NOOT_PROMPT_PATH.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return "You are Noot, a helpful AI study companion."
+    return "You are Noot, a helpful AI study companion."
 
 
 @app.post("/api/noot")
@@ -305,18 +319,17 @@ async def embed_document(body: EmbedRequest):
 
 # ─── Merge (Nemotron Nano 8B via NIM) ────────────────────────────────────────
 
-MERGE_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "merge_prompt.txt"
+MERGE_PROMPT_PATH = _find_prompt("merge_prompt.txt")
 
 
 def _load_merge_prompt() -> str:
-    try:
+    if MERGE_PROMPT_PATH:
         return MERGE_PROMPT_PATH.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return (
-            "You are a document merge assistant. Merge the provided document blocks into one. "
-            "Return ONLY a JSON array of block objects with 'type' and 'content' fields. "
-            "After the JSON array, add a line '---MERGE_SUMMARY---' followed by a brief summary."
-        )
+    return (
+        "You are a document merge assistant. Merge the provided document blocks into one. "
+        "Return ONLY a JSON array of block objects with 'type' and 'content' fields. "
+        "After the JSON array, add a line '---MERGE_SUMMARY---' followed by a brief summary."
+    )
 
 
 def _format_merge_input(master: dict, forks: list[dict]) -> str:
