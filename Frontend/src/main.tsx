@@ -1,9 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { FloatingAssistant } from './components/FloatingAssistant'
 import Landing from './pages/Landing.tsx'
 import Home from './pages/Home.tsx'
 import Login from './pages/Login.tsx'
@@ -17,25 +18,39 @@ import AuraStore from './pages/AuraStore.tsx'
 import Graph_Creation from './pages/Graph_Creation.tsx'
 import Settings from './pages/Settings.tsx'
 
+// Renders FloatingAssistant on all pages except landing, home (chat), and login
+function AppShell({ children }: { children: React.ReactNode }) {
+  const location = useLocation()
+  const hideOn = new Set(['/', '/home', '/login'])
+  return (
+    <>
+      {children}
+      {!hideOn.has(location.pathname) && <FloatingAssistant />}
+    </>
+  )
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/home" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/editor" element={<Navigate to="/repos" replace />} />
-          <Route path="/editor/:repoId" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
-          <Route path="/repos" element={<Repos />} />
-          <Route path="/my-repos" element={<ProtectedRoute><MyRepos /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-          <Route path="/diff" element={<Diff />} />
-          <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-          <Route path="/store" element={<ProtectedRoute><AuraStore /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/graph" element={<Graph_Creation />} />
-        </Routes>
+        <AppShell>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/editor" element={<Navigate to="/repos" replace />} />
+            <Route path="/editor/:repoId" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
+            <Route path="/repos" element={<Repos />} />
+            <Route path="/my-repos" element={<ProtectedRoute><MyRepos /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/diff" element={<Diff />} />
+            <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+            <Route path="/store" element={<ProtectedRoute><AuraStore /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/graph" element={<Graph_Creation />} />
+          </Routes>
+        </AppShell>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

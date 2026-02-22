@@ -8,7 +8,6 @@ const navLinks = [
   { path: '/my-repos', label: 'My Nootbooks' },
   { path: '/editor/scratch', label: 'Editor' },
   { path: '/diff', label: 'Diff' },
-  { path: '/chat', label: 'Chat' },
   { path: '/graph', label: 'Graph' },
 ]
 
