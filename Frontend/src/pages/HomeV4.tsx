@@ -87,7 +87,7 @@ export default function HomeV4() {
 
   return (
     <div className="h-screen bg-cream flex flex-col overflow-hidden">
-      <Navbar variant="light" breadcrumbs={[{ label: firstName }, { label: 'Workshop' }]} />
+      <Navbar variant="light" />
 
       {/* ── Toolbar strip with search ────────────────────────────── */}
       <div className="shrink-0 border-b border-forest/[0.08] bg-cream">

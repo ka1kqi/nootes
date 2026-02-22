@@ -76,7 +76,7 @@ export default function HomeV1() {
 
   return (
     <div className="h-screen bg-cream flex flex-col overflow-hidden">
-      <Navbar variant="light" breadcrumbs={[{ label: firstName }, { label: 'Home' }]} />
+      <Navbar variant="light" />
 
       {/* ── Two-page book layout ──────────────────────────────────── */}
       <div className="flex-1 flex min-h-0 relative">

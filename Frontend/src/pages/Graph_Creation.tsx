@@ -634,7 +634,7 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-cream">
       {/* ── Navbar ─────────────────────────────────────────────────────────── */}
-      <Navbar variant="light" breadcrumbs={[{ label: 'NYU' }, { label: 'AI Graph' }]} />
+      <Navbar variant="light" />
 
       {/* ── Control bar ────────────────────────────────────────────────────── */}
       <div className="border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center justify-between flex-shrink-0 z-10">

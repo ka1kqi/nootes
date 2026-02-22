@@ -6,7 +6,7 @@ import { SpotlightSearch } from './SpotlightSearch'
 /* Bottom-left FAB. Click or ⌘K opens spotlight search overlay.       */
 /* ------------------------------------------------------------------ */
 
-export function AIAgentFab() {
+export function AIAgentFab({ bottomClass = 'bottom-6' }: { bottomClass?: string }) {
   const [open, setOpen] = useState(false)
 
   // ⌘K / Ctrl+K shortcut
@@ -35,10 +35,10 @@ export function AIAgentFab() {
       {/* FAB button */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="fixed bottom-6 left-6 z-50 w-12 h-12 rounded-full bg-forest flex items-center justify-center
+        className={`fixed ${bottomClass} left-6 z-50 w-12 h-12 rounded-full bg-forest flex items-center justify-center
           shadow-[0_4px_20px_-4px_rgba(26,47,38,0.45)]
           hover:scale-110 hover:shadow-[0_6px_28px_-4px_rgba(26,47,38,0.6)]
-          transition-all duration-200 cursor-pointer"
+          transition-all duration-200 cursor-pointer`}
         aria-label="Open AI assistant"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>

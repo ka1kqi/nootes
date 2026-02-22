@@ -56,7 +56,7 @@ export default function HomeV3() {
 
   return (
     <div className="h-screen bg-[#F5F0E4] flex flex-col overflow-hidden">
-      <Navbar variant="light" breadcrumbs={[{ label: firstName }, { label: 'Home' }]} />
+      <Navbar variant="light" />
 
       {/* ── Search banner ────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-forest/10 bg-[#F0EBDB]">

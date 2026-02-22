@@ -43,7 +43,7 @@ export default function HomeV2() {
 
   return (
     <div className="h-screen bg-cream flex flex-col overflow-hidden">
-      <Navbar variant="light" breadcrumbs={[{ label: firstName }, { label: 'Home' }]} />
+      <Navbar variant="light" />
 
       {/* ── Grid layout ──────────────────────────────────────────── */}
       <div className="flex-1 grid grid-cols-12 grid-rows-6 gap-[3px] p-[3px] min-h-0 bg-forest/[0.06]">

@@ -112,7 +112,7 @@ export default function HomeV5() {
       }} />
 
       {/* ── Nav ──────────────────────────────────────────────────── */}
-      <Navbar variant="dark" breadcrumbs={[{ label: firstName }, { label: 'Home' }]} />
+      <Navbar variant="dark" />
 
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto relative z-10">

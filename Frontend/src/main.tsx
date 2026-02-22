@@ -27,10 +27,11 @@ import HomeV5 from './pages/HomeV5.tsx'
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const hideOn = new Set(['/', '/home', '/login', '/1', '/2', '/3', '/4', '/5'])
+  const isEditor = location.pathname.startsWith('/editor/')
   return (
     <>
       {children}
-      {!hideOn.has(location.pathname) && <AIAgentFab />}
+      {!hideOn.has(location.pathname) && <AIAgentFab bottomClass={isEditor ? 'bottom-12' : 'bottom-6'} />}
     </>
   )
 }

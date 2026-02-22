@@ -14,11 +14,16 @@ import { useAuth } from '../hooks/useAuth'
 /*   - floating content cards, section labels, handwritten accents    */
 /* ------------------------------------------------------------------ */
 
-const collaborators = [
-  { name: 'Aisha M.', color: '#264635', initials: 'AM' },
-  { name: 'Jake T.', color: '#A3B18A', initials: 'JT' },
-  { name: 'Priya K.', color: '#8B6E4E', initials: 'PK' },
-]
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
 
 // ─── Toolbar helpers (scoped to this file) ────────────────────────────────────
 
@@ -314,15 +319,15 @@ export default function Design1() {
 
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">{masterDoc?.version ?? '…'}</span>
-                    <span className="font-mono text-[10px] text-forest/30">47 contributors</span>
-                    <span className="text-forest/10">|</span>
-                    <span className="font-mono text-[10px] text-forest/30">Last merged 2h ago</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-4">
-                    {collaborators.map(c => (
-                      <div key={c.initials} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium text-parchment border-2 border-cream shadow-sm" style={{ backgroundColor: c.color }} title={c.name}>{c.initials}</div>
-                    ))}
-                    <span className="font-mono text-[10px] text-sage/60 ml-1">3 online</span>
+                    {(masterDoc as any)?.contributorCount != null && (
+                      <>
+                        <span className="font-mono text-[10px] text-forest/30">{(masterDoc as any).contributorCount} contributors</span>
+                        <span className="text-forest/10">|</span>
+                      </>
+                    )}
+                    {masterDoc?.updatedAt && (
+                      <span className="font-mono text-[10px] text-forest/30">Last merged {relativeTime(masterDoc.updatedAt)}</span>
+                    )}
                   </div>
                 </div>
 
@@ -441,7 +446,6 @@ export default function Design1() {
                   {saveStatus === 'offline' && 'Backend offline'}
                 </span>
               )}
-              <span className="font-mono text-[10px] text-sage/60">3 online</span>
             </div>
           </div>
         </main>

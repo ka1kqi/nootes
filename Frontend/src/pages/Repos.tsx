@@ -150,10 +150,7 @@ function BranchIcon() {
 export default function Repos() {
   return (
     <div className="min-h-screen bg-cream flex flex-col">
-      <Navbar
-        variant="light"
-        breadcrumbs={[{ label: 'Nootbooks' }]}
-      />
+      <Navbar variant="light" />
 
       <div className="flex-1 overflow-y-auto stagger">
         {/* Header */}

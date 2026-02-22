@@ -383,7 +383,7 @@ export default function Home() {
 
   return (
     <div className="h-screen bg-cream flex flex-col overflow-hidden">
-      <Navbar variant="light" breadcrumbs={[{ label: firstName }, { label: 'Home' }]} />
+      <Navbar variant="light" />
 
       {/* ── Content area ─────────────────────────────────────────────── */}
       <div ref={contentRef} className="flex-1 relative overflow-hidden">

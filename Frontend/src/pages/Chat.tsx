@@ -177,10 +177,44 @@ export default function Chat() {
   const [sendWarning, setSendWarning] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const [onlineCount, setOnlineCount] = useState(0)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { channels, loading: channelsLoading } = useChannels()
   const { messages, loading: messagesLoading } = useMessages(activeChannel)
   const { sendMessage, sending } = useSendMessage()
+
+  // Track presence in the active channel
+  useEffect(() => {
+    if (!activeChannel || !user) return
+    const ch = supabase.channel(`presence:${activeChannel}`, {
+      config: { presence: { key: user.id } },
+    })
+    ch.on('presence', { event: 'sync' }, () => {
+      setOnlineCount(Object.keys(ch.presenceState()).length)
+    })
+    ch.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await ch.track({ user_id: user.id, online_at: new Date().toISOString() })
+      }
+    })
+    return () => { supabase.removeChannel(ch) }
+  }, [activeChannel, user])
+
+  // Clear search when switching channels
+  useEffect(() => {
+    setSearchOpen(false)
+    setSearchQuery('')
+  }, [activeChannel])
+
+  // Focus search input when opening
+  useEffect(() => {
+    if (searchOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    }
+  }, [searchOpen])
 
   // Scroll the messages container to the bottom
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
@@ -243,13 +277,7 @@ export default function Chat() {
 
   return (
     <div className="h-screen bg-cream flex flex-col animate-fade-up overflow-hidden">
-      <Navbar
-        variant="light"
-        breadcrumbs={[
-          { label: 'Chat' },
-          ...(activeChannelData ? [{ label: activeChannelData.name }] : []),
-        ]}
-      />
+      <Navbar variant="light" />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Channel sidebar */}
@@ -343,11 +371,26 @@ export default function Chat() {
               </span>
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-xl text-forest">{activeChannelData?.name ?? '…'}</h2>
-                <span className="font-mono text-[10px] text-forest/25">{activeChannelData?.members ?? 0} members</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] text-forest/25">{activeChannelData?.members ?? 0} members</span>
+                  {onlineCount > 0 && (
+                    <>
+                      <span className="text-forest/15 font-mono text-[10px]">·</span>
+                      <span className="flex items-center gap-1 font-mono text-[10px] text-sage/60">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sage inline-block" />
+                        {onlineCount} online
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button className="w-8 h-8 flex items-center justify-center text-forest/30 hover:text-forest/60 hover:bg-forest/[0.04] squircle-sm transition-all" title="Search">
+              <button
+                onClick={() => setSearchOpen(o => !o)}
+                className={`w-8 h-8 flex items-center justify-center squircle-sm transition-all ${searchOpen ? 'bg-forest/[0.07] text-forest/70' : 'text-forest/30 hover:text-forest/60 hover:bg-forest/[0.04]'}`}
+                title="Search messages"
+              >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
               </button>
               <button className="w-8 h-8 flex items-center justify-center text-forest/30 hover:text-forest/60 hover:bg-forest/[0.04] squircle-sm transition-all" title="Members">
@@ -359,6 +402,33 @@ export default function Chat() {
             </div>
           </div>
 
+          {/* Search bar */}
+          {searchOpen && (
+            <div className="border-b border-forest/[0.08] bg-cream/60 px-4 py-2 flex items-center gap-2 shrink-0">
+              <svg className="w-3.5 h-3.5 text-forest/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Escape' && (setSearchOpen(false), setSearchQuery(''))}
+                placeholder="Search messages…"
+                className="flex-1 bg-transparent font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none"
+              />
+              {searchQuery && (
+                <span className="font-mono text-[10px] text-forest/30 shrink-0">
+                  {messages.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())).length} results
+                </span>
+              )}
+              <button
+                onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+                className="w-5 h-5 flex items-center justify-center text-forest/25 hover:text-forest/50 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          )}
+
           {/* Messages */}
           <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
             {/* Date divider */}
@@ -368,24 +438,37 @@ export default function Chat() {
               <div className="flex-1 h-px bg-forest/[0.06]" />
             </div>
 
-            {messagesLoading ? (
+            {(() => {
+              const displayedMessages = searchQuery.trim()
+                ? messages.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+                : messages
+              return messagesLoading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-6 h-6 border-2 border-sage/30 border-t-sage rounded-full animate-spin" />
                   <span className="font-mono text-[10px] text-forest/25 tracking-[0.2em] uppercase">Loading messages</span>
                 </div>
               </div>
-            ) : messages.length === 0 ? (
+            ) : displayedMessages.length === 0 ? (
               <div className="text-center py-16">
-                <p className="font-[family-name:var(--font-display)] text-2xl text-forest/20 mb-2">no messages yet</p>
-                <p className="font-[family-name:var(--font-body)] text-sm text-forest/30">Be the first to say something!</p>
+                {searchQuery.trim() ? (
+                  <>
+                    <p className="font-[family-name:var(--font-display)] text-2xl text-forest/20 mb-2">no results</p>
+                    <p className="font-[family-name:var(--font-body)] text-sm text-forest/30">No messages match "{searchQuery}"</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-[family-name:var(--font-display)] text-2xl text-forest/20 mb-2">no messages yet</p>
+                    <p className="font-[family-name:var(--font-body)] text-sm text-forest/30">Be the first to say something!</p>
+                  </>
+                )}
               </div>
             ) : (
               <div>
-                {messages.map((msg, idx) => {
+                {displayedMessages.map((msg, idx) => {
                   const CLUSTER_MS = 5 * 60_000
-                  const prevMsg = idx > 0 ? messages[idx - 1] : null
-                  const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
+                  const prevMsg = idx > 0 ? displayedMessages[idx - 1] : null
+                  const nextMsg = idx < displayedMessages.length - 1 ? displayedMessages[idx + 1] : null
 
                   const isGrouped = !!(prevMsg?.user_id === msg.user_id &&
                     Math.abs(new Date(msg.created_at).getTime() - new Date(prevMsg!.created_at).getTime()) < CLUSTER_MS)
@@ -470,6 +553,15 @@ export default function Chat() {
 
                   return (
                     <div key={msg.id} className={`group flex flex-col items-start px-3 ${topMargin}`}>
+                      {/* Name row sits above the bubble row, indented past the avatar */}
+                      {showAvatar && (
+                        <div className="flex items-center gap-1.5 mb-1 pl-10">
+                          <span className="font-[family-name:var(--font-body)] text-xs text-forest/60 font-medium">{displayName}</span>
+                          {badges.map((b, bi) => <span key={bi} className="text-xs">{b}</span>)}
+                          <span className={`w-1.5 h-1.5 rounded-full ${tierColor(tier)}`} title={`${tier} · ${aura} aura`} />
+                          <span className="font-mono text-[9px] text-sage/40">{aura} ✦</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         {showAvatar ? (
                           <div
@@ -481,18 +573,8 @@ export default function Chat() {
                         ) : (
                           <div className="w-8 shrink-0" />
                         )}
-                        <div className="flex flex-col items-start gap-0.5">
-                          {showAvatar && (
-                            <div className="flex items-center gap-1.5 mb-0.5 pl-0.5">
-                              <span className="font-[family-name:var(--font-body)] text-xs text-forest/60 font-medium">{displayName}</span>
-                              {badges.map((b, bi) => <span key={bi} className="text-xs">{b}</span>)}
-                              <span className={`w-1.5 h-1.5 rounded-full ${tierColor(tier)}`} title={`${tier} · ${aura} aura`} />
-                              <span className="font-mono text-[9px] text-sage/40">{aura} ✦</span>
-                            </div>
-                          )}
-                          <div className={`bg-parchment border border-forest/[0.08] ${otherRounding} px-3 py-2 max-w-[20rem] lg:max-w-md`}>
-                            {bubbleContent}
-                          </div>
+                        <div className={`bg-parchment border border-forest/[0.08] ${otherRounding} px-3 py-2 max-w-[20rem] lg:max-w-md`}>
+                          {bubbleContent}
                         </div>
                         <span className="font-mono text-[9px] text-forest/20 opacity-0 group-hover:opacity-100 transition-opacity">{time}</span>
                       </div>
@@ -508,7 +590,8 @@ export default function Chat() {
                   )
                 })}
               </div>
-            )}
+            )
+            })()}
 
           </div>
 
