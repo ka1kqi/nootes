@@ -47,6 +47,9 @@ class MergeRequest(BaseModel):
     fork_label: Optional[str] = "Fork"
 
 
+class UpdateDocRequest(BaseModel):
+    blocks: Optional[list[Block]] = None
+    title: Optional[str] = None
 
 
 
@@ -358,36 +361,85 @@ def _parse_merge_result(result: str) -> tuple[list[dict], str]:
     else:
         merged_raw, summary = result, "Merge completed (no summary generated)."
 
-    # Extract JSON array from model output
     merged_raw = merged_raw.strip()
-    # Handle model wrapping JSON in ```json ... ```
+
+    # Strip ```json ... ``` fences if present
     if merged_raw.startswith("```"):
         merged_raw = re.sub(r"^```\w*\n?", "", merged_raw)
         merged_raw = re.sub(r"\n?```\s*$", "", merged_raw)
+        merged_raw = merged_raw.strip()
 
-    # Model may prefix with prose — find the first '[' for the JSON array
+    # ── Strategy 1: find a JSON array ────────────────────────────────────────
     bracket_idx = merged_raw.find("[")
-    if bracket_idx > 0:
-        merged_raw = merged_raw[bracket_idx:]
+    if bracket_idx >= 0:
+        candidate = merged_raw[bracket_idx:]
+        try:
+            blocks = json.loads(candidate)
+            if isinstance(blocks, list):
+                for b in blocks:
+                    b["id"] = uuid.uuid4().hex[:8]
+                    b.setdefault("type", "paragraph")
+                    b.setdefault("content", "")
+                return blocks, summary.strip()
+        except json.JSONDecodeError:
+            pass
 
-    if not merged_raw:
-        logger.error("Merge model returned empty content")
-        return [], summary.strip()
+    # ── Strategy 2: model returned ---\n{obj}\n--- delimited blocks ──────────
+    # Strip leading/trailing --- lines and split on blank-line-separated objects
+    lines = merged_raw.splitlines()
+    json_chunks: list[str] = []
+    current: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "---":
+            if current:
+                json_chunks.append("\n".join(current).strip())
+                current = []
+        else:
+            if stripped:
+                current.append(line)
+    if current:
+        json_chunks.append("\n".join(current).strip())
 
-    try:
-        blocks = json.loads(merged_raw)
-    except json.JSONDecodeError:
-        # Model returned prose instead of JSON (e.g. "no changes needed")
-        # Signal caller to keep master blocks unchanged
-        logger.warning("Merge model returned non-JSON: %s", merged_raw[:200])
-        return [], summary.strip() if summary.strip() != "Merge completed (no summary generated)." else merged_raw.strip()
+    blocks: list[dict] = []
+    for chunk in json_chunks:
+        if not chunk:
+            continue
+        # Each chunk may be a single object or a JSON array
+        try:
+            parsed = json.loads(chunk)
+            if isinstance(parsed, list):
+                blocks.extend(parsed)
+            elif isinstance(parsed, dict):
+                blocks.append(parsed)
+        except json.JSONDecodeError:
+            continue
 
-    # Re-generate IDs
-    for b in blocks:
-        b["id"] = uuid.uuid4().hex[:8]
-        b.setdefault("type", "paragraph")
-        b.setdefault("content", "")
-    return blocks, summary.strip()
+    if blocks:
+        for b in blocks:
+            b["id"] = uuid.uuid4().hex[:8]
+            b.setdefault("type", "paragraph")
+            b.setdefault("content", "")
+        return blocks, summary.strip()
+
+    # ── Strategy 3: extract every {...} object anywhere in the text ──────────
+    objects = re.findall(r'\{[^{}]+\}', merged_raw)
+    for obj_str in objects:
+        try:
+            b = json.loads(obj_str)
+            if "type" in b or "content" in b:
+                b["id"] = uuid.uuid4().hex[:8]
+                b.setdefault("type", "paragraph")
+                b.setdefault("content", "")
+                blocks.append(b)
+        except json.JSONDecodeError:
+            continue
+
+    if blocks:
+        return blocks, summary.strip()
+
+    logger.warning("Merge model returned unparseable content: %s", merged_raw[:300])
+    return [], summary.strip()
 
 
 @app.post("/api/repos/{repo_id}/merge")

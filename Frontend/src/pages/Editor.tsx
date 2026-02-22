@@ -168,8 +168,13 @@ export default function Design1() {
         return
       }
 
-      // 3. Call merge endpoint
-      const res = await fetch('/api/merge', {
+      // 3. Call merge endpoint — derive base the same way useChat does
+      const apiBase = (() => {
+        const url = import.meta.env.VITE_API_URL as string | undefined
+        if (!url) return '/api'
+        return url.replace(/\/[^/]+$/, '') // strip last segment (/prompt) → keeps /api
+      })()
+      const res = await fetch(`${apiBase}/merge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
