@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link, useParams, useLocation } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
-import { useDocument, type BlockType } from '../hooks/useDocument'
+import { useDocument, type BlockType, type Document } from '../hooks/useDocument'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge } from '../contexts/EditorBridgeContext'
 
@@ -73,6 +73,8 @@ export default function Design1() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
   const [tagInput, setTagInput] = useState('')
+  const [showTagsInfo, setShowTagsInfo] = useState(false)
+  const tagsInfoRef = useRef<HTMLSpanElement>(null)
 
   // ── Auth + routing ───────────────────────────────────────────────────────
   const { user } = useAuth()
@@ -81,7 +83,7 @@ export default function Design1() {
   const repoMeta = location.state as { name?: string; code?: string; org?: string; field?: string; description?: string } | null
 
   // ── Document sync (Personal fork for this repo) ──────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
 
   // ── Register with EditorBridge so Noot can insert blocks ─────────────────
   const bridge = useEditorBridge()
@@ -123,6 +125,8 @@ export default function Design1() {
   }, [undo, redo, activeTab])
 
   // ── TOC: derive headings from active document ───────────────────────────────
+  const isFork = Boolean(doc?.source_document_id)
+
   const headings = useMemo(() => {
     const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
     return blocks.filter(b => b.type === 'h1' || b.type === 'h2' || b.type === 'h3')
@@ -278,7 +282,8 @@ export default function Design1() {
                 {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : ''}
               </span>
 
-              {/* Diff page link */}
+              {/* Diff page link — only for forks */}
+              {isFork && (
               <Link
                 to="/diff"
                 className="flex items-center gap-1.5 h-7 px-3 border border-forest/15 squircle-sm font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase text-forest/40 hover:text-forest/70 hover:border-forest/25 transition-all shrink-0"
@@ -288,8 +293,10 @@ export default function Design1() {
                 </svg>
                 Diff
               </Link>
+              )}
 
-              {/* Master / Personal tab switcher — sliding indicator */}
+              {/* Master / Personal tab switcher — only for forks */}
+              {isFork && (
               <div className="relative flex h-7 border border-forest/15 squircle-sm overflow-hidden shrink-0">
                 {/* Sliding background pill */}
                 <span
@@ -307,6 +314,7 @@ export default function Design1() {
                   style={{ color: activeTab === 'write' ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
                 >Personal</button>
               </div>
+              )}
             </div>
           </div>
 
@@ -398,9 +406,10 @@ export default function Design1() {
                       {saveStatus === 'unsaved' && '● Unsaved'}
                       {saveStatus === 'offline' && '⚡ Offline'}
                     </span>
-                    {/* Submit for merge — hidden on scratch pad */}
+                    {/* Submit for merge — only for forks */}
+                    {isFork && (
                     <button
-                      className={`ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors ${repoId === 'scratch' ? 'hidden' : ''}`}
+                      className="ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors"
                       onClick={() => {
                         saveNow()
                         alert('Merge request submitted! The semantic merge engine will process your fork in the next merge cycle.')
@@ -409,6 +418,7 @@ export default function Design1() {
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
                       Submit for Merge
                     </button>
+                    )}
                   </div>
                 </div>
 
@@ -464,7 +474,8 @@ export default function Design1() {
         </main>
 
         {/* Right sidebar — airy TOC */}
-        <aside className="w-56 border-l border-forest/[0.08] bg-cream p-5 shrink-0 hidden lg:block">
+        <aside className="w-56 border-l border-forest/[0.08] bg-cream shrink-0 hidden lg:flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-5">
           <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-5">Contents</h4>
           <nav className="flex flex-col gap-1">
             {headings.length === 0 ? (
@@ -496,7 +507,30 @@ export default function Design1() {
           </div>
 
           <div className="mt-8 pt-6 border-t border-forest/[0.06]">
-            <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-4">Tags</h4>
+            <div className="flex items-center gap-1.5 mb-4">
+              <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30">Tags</h4>
+              <div className="relative">
+                <span
+                  ref={tagsInfoRef}
+                  onMouseEnter={() => setShowTagsInfo(true)}
+                  onMouseLeave={() => setShowTagsInfo(false)}
+                  className="font-mono text-[8px] leading-none text-forest/30 border border-forest/15 rounded-full w-3 h-3 inline-flex items-center justify-center cursor-default select-none hover:text-forest/50 hover:border-forest/30 transition-colors"
+                >i</span>
+                {showTagsInfo && (() => {
+                  const r = tagsInfoRef.current?.getBoundingClientRect()
+                  if (!r) return null
+                  return (
+                    <div
+                      style={{ position: 'fixed', top: r.top - 8, left: r.left - 220, zIndex: 9999, transform: 'translateY(-100%)' }}
+                      className="w-52 bg-forest text-parchment font-mono text-[9px] leading-relaxed px-3 py-2.5 squircle-sm shadow-xl pointer-events-none"
+                    >
+                      Tags control who can view and collaborate on your document. Users with matching tags can view restricted documents, merge into invite-only documents, and contribute when merge policy is set to restricted.
+                      <span className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-0 h-0 border-y-4 border-y-transparent border-l-4 border-l-forest" />
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
             {activeTab === 'write' && (
               <form
                 onSubmit={e => {
@@ -542,6 +576,50 @@ export default function Design1() {
                 <span className="font-mono text-[10px] text-forest/20 italic">No tags</span>
               )}
             </div>
+          </div>
+
+          {/* Visibility — personal tab only, non-scratch only */}
+          {activeTab === 'write' && repoId !== 'scratch' && (
+            <div className="mt-8 pt-6 border-t border-forest/[0.06]">
+              <h4 className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 mb-4">Visibility</h4>
+              <div className="flex flex-col gap-1.5">
+                {(['private', 'restricted', 'public'] as const).map(level => (
+                  <button
+                    key={level}
+                    onClick={() => updateVisibility(level)}
+                    className={`text-left w-full flex items-center gap-2 px-2.5 py-1.5 squircle-sm font-mono text-[10px] transition-all ${
+                      doc?.access_level === level
+                        ? 'bg-forest/[0.06] text-forest'
+                        : 'text-forest/35 hover:text-forest/60 hover:bg-forest/[0.03]'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      level === 'public'     ? 'bg-sage' :
+                      level === 'restricted' ? 'bg-amber/70' :
+                                               'bg-forest/25'
+                    }`} />
+                    {level}
+                  </button>
+                ))}
+              </div>
+
+              {/* Merge policy — only shown when public or restricted */}
+              {(doc?.access_level === 'public' || doc?.access_level === 'restricted') && (
+                <div className="mt-4">
+                  <label className="font-mono text-[9px] tracking-[0.3em] uppercase text-forest/30 block mb-2">Merge policy</label>
+                  <select
+                    value={doc?.merge_policy ?? 'invite_only'}
+                    onChange={e => updateMergePolicy(e.target.value as Document['merge_policy'])}
+                    className="w-full bg-cream border border-forest/10 squircle-sm px-2.5 py-1.5 font-mono text-[10px] text-forest/60 focus:outline-none focus:border-forest/25 transition-colors cursor-pointer"
+                  >
+                    <option value="no_merges">No merges</option>
+                    <option value="invite_only">Invite only</option>
+                    <option value="anyone">Anyone</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
           </div>
         </aside>
       </div>

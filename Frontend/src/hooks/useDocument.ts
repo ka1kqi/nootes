@@ -33,6 +33,9 @@ export type Document = {
   version?: string[] | null
   tags: string[]
   source_document_id?: string | null
+  access_level: 'private' | 'public' | 'restricted'
+  is_public_root: boolean
+  merge_policy: 'no_merges' | 'invite_only' | 'anyone'
   blocks: Block[]
   updatedAt: string
 }
@@ -114,6 +117,9 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             title: 'Quick Notes',
             tags: [],
             source_document_id: null,
+            access_level: 'private',
+            is_public_root: false,
+            merge_policy: 'invite_only',
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -125,7 +131,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           // Load everything from Supabase — blocks stored as jsonb
           const { data: docRow } = await supabase
             .from('documents')
-            .select('title, version, tags, source_document_id, blocks')
+            .select('title, version, tags, source_document_id, blocks, access_level, is_public_root, merge_policy')
             .eq('id', repoId)
             .maybeSingle()
 
@@ -144,6 +150,9 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             version: docRow?.version ?? null,
             tags: Array.isArray(docRow?.tags) ? docRow.tags : [],
             source_document_id: docRow?.source_document_id ?? null,
+            access_level: docRow?.access_level ?? 'private',
+            is_public_root: docRow?.is_public_root ?? false,
+            merge_policy: docRow?.merge_policy ?? 'invite_only',
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -165,6 +174,9 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             title: 'Quick Notes',
             tags: [],
             source_document_id: null,
+            access_level: 'private',
+            is_public_root: false,
+            merge_policy: 'invite_only',
             blocks,
             updatedAt: new Date().toISOString(),
           }
@@ -181,6 +193,9 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
             title: repoTitle || 'My Notes',
             tags: [],
             source_document_id: null,
+            access_level: 'private',
+            is_public_root: false,
+            merge_policy: 'invite_only',
             blocks: [newBlock('paragraph')],
             updatedAt: new Date().toISOString(),
           }
@@ -338,5 +353,40 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     await supabase.from('documents').update({ tags }).eq('id', repoId)
   }, [repoId, isScratch])
 
-  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags }
+  // Update access_level (and is_public_root) — persists immediately
+  const updateVisibility = useCallback(async (access_level: Document['access_level']) => {
+    const is_public_root = access_level !== 'private'
+    setDoc(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, access_level, is_public_root }
+      docRef.current = updated
+      return updated
+    })
+
+    if (isScratch) return
+
+    await supabase
+      .from('documents')
+      .update({ access_level, is_public_root })
+      .eq('id', repoId)
+  }, [repoId, isScratch])
+
+  // Update merge_policy — persists immediately
+  const updateMergePolicy = useCallback(async (merge_policy: Document['merge_policy']) => {
+    setDoc(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, merge_policy }
+      docRef.current = updated
+      return updated
+    })
+
+    if (isScratch) return
+
+    await supabase
+      .from('documents')
+      .update({ merge_policy })
+      .eq('id', repoId)
+  }, [repoId, isScratch])
+
+  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy }
 }
