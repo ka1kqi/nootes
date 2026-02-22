@@ -123,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         supabase.auth.refreshSession()
+        setSessionReady(v => v + 1)
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)

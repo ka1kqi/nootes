@@ -137,8 +137,8 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
   // Scratch additionally falls back to localStorage when offline
   useEffect(() => {
     if (!userId || !sessionReady) return
-    // Skip network fetch when we already have this document cached
-    if (cacheKey && documentCache.has(cacheKey)) return
+    // Clear cache entry so tab-restore re-fetches fresh data
+    if (cacheKey) documentCache.delete(cacheKey)
 
     let cancelled = false
     setLoading(true)
