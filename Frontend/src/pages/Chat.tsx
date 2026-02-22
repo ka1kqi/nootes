@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Navbar } from '../components/Navbar'
 import { KaTeX } from '../components/KaTeX'
-import { useChannels } from '../hooks/useChat'
-import { useMessages } from '../hooks/useChat'
-import { useSendMessage } from '../hooks/useChat'
+import { useChannels, useMessages, useSendMessage, getFirstCachedChannelId } from '../hooks/useChat'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import type { Message, Reaction } from '../lib/supabase'
@@ -172,7 +170,7 @@ function ThreadCount({ messageId }: { messageId: string }) {
 
 export default function Chat() {
   const { user } = useAuth()
-  const [activeChannel, setActiveChannel] = useState<string | null>(null)
+  const [activeChannel, setActiveChannel] = useState<string | null>(getFirstCachedChannelId)
   const [messageText, setMessageText] = useState('')
   const [sendWarning, setSendWarning] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)

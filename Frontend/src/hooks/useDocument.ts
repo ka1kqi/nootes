@@ -74,6 +74,10 @@ export type Document = {
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'unsaved' | 'error' | 'offline'
 
+// ─── Module-level document cache ─────────────────────────────────────────────
+// Persists documents for the SPA session so re-navigation shows data instantly.
+const documentCache = new Map<string, Document>()
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function newBlock(type: BlockType): Block {
@@ -98,28 +102,39 @@ const storagePath = (uid: string, rid: string) => `${uid}/${rid}.json`
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useDocument(repoId: string, userId: string, repoTitle?: string) {
-  const [doc, setDoc] = useState<Document | null>(null)
-  const [loading, setLoading] = useState(true)
+  // ── Cache lookup ───────────────────────────────────────────────────────────
+  const cacheKey = userId && repoId ? `${userId}:${repoId}` : ''
+  const cachedDoc = cacheKey ? documentCache.get(cacheKey) : undefined
+
+  const [doc, setDoc] = useState<Document | null>(cachedDoc ?? null)
+  const [loading, setLoading] = useState(!cachedDoc)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
 
   const pendingRef = useRef<Block[] | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const docRef = useRef<Document | null>(null)
+  const docRef = useRef<Document | null>(cachedDoc ?? null)
   // Tracks the fingerprint of blocks that were last successfully embedded.
   // Saves that don't change text content skip the embed API call entirely.
   const lastEmbedFingerprintRef = useRef<string>('')
 
-  // Undo history
-  const historyRef = useRef<Block[][]>([])
-  const historyIndexRef = useRef<number>(-1)
+  // Undo history — seeded from cache so undo works immediately on re-navigation
+  const historyRef = useRef<Block[][]>(cachedDoc?.blocks ? [cachedDoc.blocks] : [])
+  const historyIndexRef = useRef<number>(cachedDoc?.blocks ? 0 : -1)
 
   const isScratch = repoId === 'scratch'
+
+  // Keep the module-level cache in sync whenever doc state changes
+  useEffect(() => {
+    if (doc && cacheKey) documentCache.set(cacheKey, doc)
+  }, [doc, cacheKey])
 
   // Fetch on mount — Supabase Storage for both scratch and real repos
   // Scratch additionally falls back to localStorage when offline
   useEffect(() => {
     if (!userId) return
+    // Skip network fetch when we already have this document cached
+    if (cacheKey && documentCache.has(cacheKey)) return
 
     let cancelled = false
     setLoading(true)

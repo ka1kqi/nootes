@@ -12,12 +12,21 @@ export interface ChannelWithMeta extends Channel {
   members: number
 }
 
+// ─── Module-level caches ──────────────────────────────────────────────────────
+// Persist across SPA navigations so re-entering chat/editor shows data instantly.
+let _channelsCache: ChannelWithMeta[] | null = null
+const messagesCache = new Map<string, Message[]>()
+
+export function getFirstCachedChannelId(): string | null {
+  return _channelsCache?.[0]?.id ?? null
+}
+
 // ─── useChannels ─────────────────────────────────────────────────────────────
 
 export function useChannels() {
   const { user } = useAuth()
-  const [channels, setChannels] = useState<ChannelWithMeta[]>([])
-  const [loading, setLoading] = useState(true)
+  const [channels, setChannels] = useState<ChannelWithMeta[]>(_channelsCache ?? [])
+  const [loading, setLoading] = useState(_channelsCache === null)
 
   const fetchChannels = useCallback(async () => {
     if (!user) {
@@ -42,34 +51,17 @@ export function useChannels() {
 
       if (error || !channelRows) { setLoading(false); return }
 
-      // For each channel, get last message for preview
-      const enriched: ChannelWithMeta[] = await Promise.all(
-        channelRows.map(async (ch) => {
-          const { data: lastMsgs } = await supabase
-            .from('messages')
-            .select('content, created_at')
-            .eq('channel_id', ch.id)
-            .is('thread_id', null)
-            .order('created_at', { ascending: false })
-            .limit(1)
-
-          const last = lastMsgs?.[0]
-          const lastMessage = last?.content?.slice(0, 80) ?? 'No messages yet'
-          const lastTime = last
-            ? formatRelativeTime(new Date(last.created_at))
-            : ''
-
-          return {
-            ...ch,
-            unread: 0, // unread tracking can be enhanced later
-            lastMessage,
-            lastTime,
-            members: ch.member_count,
-          }
-        })
-      )
+      // Build enriched channel list without per-channel message queries
+      const enriched: ChannelWithMeta[] = channelRows.map(ch => ({
+        ...ch,
+        unread: 0,
+        lastMessage: '',
+        lastTime: '',
+        members: ch.member_count,
+      }))
 
       setChannels(enriched)
+      _channelsCache = enriched
       setLoading(false)
 
       // Auto-join user to all channels if not already a member
@@ -87,8 +79,8 @@ export function useChannels() {
   }, [user])
 
   useEffect(() => {
-    // Only show loading spinner on first load, not on tab-refocus re-fetches
-    if (channels.length === 0) setLoading(true)
+    // Only show loading spinner on first load, not when cache exists
+    if (_channelsCache === null) setLoading(true)
     fetchChannels()
   }, [fetchChannels])
 
@@ -112,8 +104,10 @@ export function useChannels() {
 const PAGE_SIZE = 50
 
 export function useMessages(channelId: string | null) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
+  const [messages, setMessages] = useState<Message[]>(() =>
+    channelId ? (messagesCache.get(channelId) ?? []) : []
+  )
+  const [loading, setLoading] = useState(!(channelId && messagesCache.has(channelId)))
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
   const fetchMessages = useCallback(async () => {
@@ -133,15 +127,19 @@ export function useMessages(channelId: string | null) {
 
     if (!error && data) {
       setMessages(data as Message[])
+      messagesCache.set(channelId, data as Message[])
     }
     setLoading(false)
   }, [channelId])
 
   useEffect(() => {
-    setLoading(true)
-    setMessages([])
+    // Only show loading/clear if we have no cached data for this channel
+    if (channelId && !messagesCache.has(channelId)) {
+      setLoading(true)
+      setMessages([])
+    }
     fetchMessages()
-  }, [fetchMessages])
+  }, [fetchMessages, channelId])
 
   // Realtime subscription for new messages in this channel
   useEffect(() => {
@@ -168,7 +166,9 @@ export function useMessages(channelId: string | null) {
             setMessages(prev => {
               // Deduplicate by id
               if (prev.some(m => m.id === data.id)) return prev
-              return [...prev, data as Message]
+              const updated = [...prev, data as Message]
+              if (channelId) messagesCache.set(channelId, updated)
+              return updated
             })
           }
         }
