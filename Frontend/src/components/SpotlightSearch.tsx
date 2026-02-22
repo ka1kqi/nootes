@@ -6,15 +6,11 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rawGraphPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
-import { useNavigate } from 'react-router-dom'
 import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
 import { supabase } from '../lib/supabase'
-<<<<<<< HEAD
-=======
 import { createDocument } from '../hooks/useMyRepos'
->>>>>>> 8eb6a7e (git agentic)
 
 interface AttachedFile {
   name: string
@@ -31,7 +27,7 @@ interface AttachedFile {
 
 // ─── API CONFIG ─────────────────────────────────────────────────────────
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt').replace(/\/api\/prompt$/, '')
-const NOOT_API_URL  = `${API_BASE}/api/noot`
+const NOOT_API_URL = `${API_BASE}/api/noot`
 const GRAPH_API_URL = `${API_BASE}/api/prompt`
 
 // ─── PARSE GRAPH RESPONSE ──────────────────────────────────────────────
@@ -78,7 +74,7 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
     if (rawStart !== -1) {
       const afterBracket = body.slice(rawStart + 1).trimStart()
       const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
-      const end   = body.lastIndexOf(']')
+      const end = body.lastIndexOf(']')
       if (start !== -1 && end !== -1 && end >= start) {
         const jsonStr = body.slice(start, end + 1).replace(/\/\/[^\n\r]*/g, '')
         const parsed = JSON.parse(jsonStr)
@@ -100,7 +96,7 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
     if (rawStart === -1) return null
     const afterBracket = body.slice(rawStart + 1).trimStart()
     const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
-    const end   = body.lastIndexOf(']')
+    const end = body.lastIndexOf(']')
     if (start === -1 || end === -1 || end <= start) return null
     const parsed = JSON.parse(body.slice(start, end + 1))
     if (!Array.isArray(parsed) || parsed.length === 0 || typeof parsed[0].type !== 'string') return null
@@ -155,9 +151,9 @@ function escHtml(str: string): string {
 }
 
 function exportToPDF(messages: ChatMessage[]) {
-  const userMessages  = messages.filter(m => m.role === 'user')
-  const mainPrompt    = userMessages[0]?.content ?? 'Noot Conversation'
-  const generatedAt   = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const userMessages = messages.filter(m => m.role === 'user')
+  const mainPrompt = userMessages[0]?.content ?? 'Noot Conversation'
+  const generatedAt = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   let bodyHtml = ''
   let graphIndex = 0
 
@@ -295,8 +291,6 @@ export function SpotlightSearch({
   const { user } = useAuth()
   const history = useGraphHistory()
   const editorBridge = useEditorBridge()
-  const { user } = useAuth()
-  const navigate = useNavigate()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -341,7 +335,7 @@ export function SpotlightSearch({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: 'noot_agent_v1',
           messages: historyRef.current,
         }),
       })
@@ -350,7 +344,6 @@ export function SpotlightSearch({
       const content: string = data.content ?? ''
       historyRef.current = [...historyRef.current, { role: 'assistant', content }]
 
-<<<<<<< HEAD
       // Check for write-to-editor response
       const writeData = parseWriteResponse(content)
       if (writeData) {
@@ -358,13 +351,12 @@ export function SpotlightSearch({
           editorBridge.insertBlocks(writeData.blocks)
           setMessages(prev => [...prev, {
             id: id + '-r',
-            role: 'assistant',
+            role: 'assistant' as const,
             content: writeData.confirmation,
             writeData,
           }])
         } else {
           // No editor open — create a new document and navigate to it
-          // Use the h1 block content as the title, fall back to prompt text
           const blocks = writeData.blocks.map(b => ({ ...b, id: crypto.randomUUID() }))
           const h1Block = blocks.find(b => b.type === 'h1')
           const rawTitle = (h1Block?.content as string | undefined) || text
@@ -390,7 +382,7 @@ export function SpotlightSearch({
           if (docId) {
             setMessages(prev => [...prev, {
               id: id + '-r',
-              role: 'assistant',
+              role: 'assistant' as const,
               content: `Created note "${title}" — opening editor…`,
               writeData,
             }])
@@ -399,109 +391,88 @@ export function SpotlightSearch({
           } else {
             setMessages(prev => [...prev, {
               id: id + '-r',
-              role: 'assistant',
+              role: 'assistant' as const,
               content: writeData.confirmation + '\n\n⚠ Could not create note — are you signed in?',
               writeData,
             }])
           }
-=======
-      // ── Check for navigate response
-      const navData = parseNavigateResponse(content)
-      if (navData) {
-        let resolvedRoute = navData.route
-        let navMessage = navData.message
-        const searchMatch = resolvedRoute.match(/__SEARCH:(.+?)__/)
-        if (searchMatch && user) {
-          const searchTitle = searchMatch[1]
-          const { data: found } = await supabase
-            .from('documents')
-            .select('id')
-            .eq('owner_user_id', user.id)
-            .ilike('title', `%${searchTitle}%`)
-            .limit(1)
-            .single()
-          if (found) {
-            resolvedRoute = `/editor/${found.id}`
-          } else {
-            navMessage += `\n\n⚠ Couldn't find a nootbook matching "${searchTitle}".`
+        }
+      } else {
+        // ── Check for navigate response
+        const navData = parseNavigateResponse(content)
+        if (navData) {
+          let resolvedRoute = navData.route
+          let navMessage = navData.message
+          const searchMatch = resolvedRoute.match(/__SEARCH:(.+?)__/)
+          if (searchMatch && user) {
+            const searchTitle = searchMatch[1]
+            const { data: found } = await supabase
+              .from('documents')
+              .select('id')
+              .eq('owner_user_id', user.id)
+              .ilike('title', `%${searchTitle}%`)
+              .limit(1)
+              .single()
+            if (found) {
+              resolvedRoute = `/editor/${found.id}`
+            } else {
+              navMessage += `\n\n⚠ Couldn't find a nootbook matching "${searchTitle}".`
+              resolvedRoute = ''
+            }
+          } else if (searchMatch) {
+            navMessage += '\n\n⚠ Sign in to search your nootbooks.'
             resolvedRoute = ''
           }
-        } else if (searchMatch) {
-          navMessage += '\n\n⚠ Sign in to search your nootbooks.'
-          resolvedRoute = ''
->>>>>>> 8eb6a7e (git agentic)
-        }
-        setMessages(prev => [...prev, {
-          id: id + '-r', role: 'assistant', content: navMessage,
-          navigateData: { route: resolvedRoute, message: navMessage },
-        }])
-        if (resolvedRoute) navigate(resolvedRoute)
-
-      // ── Check for create-repo response
-      } else {
-        const repoData = parseCreateRepoResponse(content)
-        if (repoData) {
-          let repoMessage = repoData.message
-          let createdId: string | undefined
-          if (user) {
-            const { docId, error } = await createDocument(user, {
-              title: repoData.title,
-              tags: repoData.tags ?? [],
-            })
-            if (error) {
-              repoMessage += `\n\n⚠ ${error}`
-            } else if (docId) {
-              createdId = docId
-              if (repoData.initial_blocks?.length) {
-                const blocksWithIds = repoData.initial_blocks.map((b, i) => ({
-                  id: `init-${Date.now()}-${i}`,
-                  type: b.type,
-                  content: b.content,
-                  ...(b.meta ? { meta: b.meta } : {}),
-                }))
-                await fetch(`${API_BASE}/api/repos/${docId}/personal/${user.id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ blocks: blocksWithIds, title: repoData.title }),
-                }).catch(() => {
-                  repoMessage += '\n\n⚠ Nootbook created but initial content could not be saved.'
-                })
-              }
-              navigate(`/editor/${docId}`)
-            }
-          } else {
-            repoMessage += '\n\n⚠ You need to be signed in to create a nootbook.'
-          }
           setMessages(prev => [...prev, {
-            id: id + '-r', role: 'assistant', content: repoMessage,
-            createRepoData: { title: repoData.title, message: repoMessage, repoId: createdId },
+            id: id + '-r', role: 'assistant' as const, content: navMessage,
+            navigateData: { route: resolvedRoute, message: navMessage },
           }])
-
-        // ── Check for write-to-editor response
+          if (resolvedRoute) navigate(resolvedRoute)
         } else {
-          const writeData = parseWriteResponse(content)
-          if (writeData) {
-            if (editorBridge.isEditorActive) {
-              editorBridge.insertBlocks(writeData.blocks)
-              setMessages(prev => [...prev, {
-                id: id + '-r',
-                role: 'assistant',
-                content: writeData.confirmation,
-                writeData,
-              }])
+          // ── Check for create-repo response
+          const repoData = parseCreateRepoResponse(content)
+          if (repoData) {
+            let repoMessage = repoData.message
+            let createdId: string | undefined
+            if (user) {
+              const { docId, error } = await createDocument(user, {
+                title: repoData.title,
+                tags: repoData.tags ?? [],
+              })
+              if (error) {
+                repoMessage += `\n\n⚠ ${error}`
+              } else if (docId) {
+                createdId = docId
+                if (repoData.initial_blocks?.length) {
+                  const blocksWithIds = repoData.initial_blocks.map((b, i) => ({
+                    id: `init-${Date.now()}-${i}`,
+                    type: b.type,
+                    content: b.content,
+                    ...(b.meta ? { meta: b.meta } : {}),
+                  }))
+                  await fetch(`${API_BASE}/api/repos/${docId}/personal/${user.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ blocks: blocksWithIds, title: repoData.title }),
+                  }).catch(() => {
+                    repoMessage += '\n\n⚠ Nootbook created but initial content could not be saved.'
+                  })
+                }
+                navigate(`/editor/${docId}`)
+              }
             } else {
-              setMessages(prev => [...prev, {
-                id: id + '-r',
-                role: 'assistant',
-                content: writeData.confirmation + '\n\n⚠ Open a document in the editor first so I can write to it.',
-                writeData,
-              }])
+              repoMessage += '\n\n⚠ You need to be signed in to create a nootbook.'
             }
+            setMessages(prev => [...prev, {
+              id: id + '-r', role: 'assistant' as const, content: repoMessage,
+              createRepoData: { title: repoData.title, message: repoMessage, repoId: createdId },
+            }])
           } else {
+            // ── Fall through to graph/plain response
             const graphData = parseGraphResponse(content)
             setMessages(prev => [...prev, {
               id: id + '-r',
-              role: 'assistant',
+              role: 'assistant' as const,
               content,
               graphData,
             }])
@@ -663,10 +634,10 @@ export function SpotlightSearch({
     ? 'text-sage/35 hover:text-sage/60 hover:bg-sage/10'
     : 'text-forest/30 hover:text-forest/55 hover:bg-forest/8'
   // Drag handle bar — forest header in light, subtle lift in dark
-  const handleBg    = isDark ? 'bg-white/[0.04]'   : 'bg-forest'
-  const handleBorder = isDark ? 'border-sage/15'    : 'border-forest-deep/25'
-  const handleGrip  = isDark ? 'text-sage/30'       : 'text-parchment/35'
-  const handleLabel = isDark ? 'text-sage/50'        : 'text-parchment/70'
+  const handleBg = isDark ? 'bg-white/[0.04]' : 'bg-forest'
+  const handleBorder = isDark ? 'border-sage/15' : 'border-forest-deep/25'
+  const handleGrip = isDark ? 'text-sage/30' : 'text-parchment/35'
+  const handleLabel = isDark ? 'text-sage/50' : 'text-parchment/70'
   const handleClose = isDark
     ? 'text-sage/35 hover:text-sage/65 hover:bg-sage/10'
     : 'text-parchment/45 hover:text-parchment/90 hover:bg-parchment/10'
@@ -868,7 +839,7 @@ export function SpotlightSearch({
                       if (b.type === 'h2') return `## ${b.content}`
                       if (b.type === 'h3') return `### ${b.content}`
                       if (b.type === 'latex') return `$$${b.content}$$`
-                      if (b.type === 'code') return `\`\`\`${(b.meta as Record<string,string>)?.language ?? ''}\n${b.content}\n\`\`\``
+                      if (b.type === 'code') return `\`\`\`${(b.meta as Record<string, string>)?.language ?? ''}\n${b.content}\n\`\`\``
                       if (b.type === 'quote') return `> ${b.content}`
                       if (b.type === 'divider') return '---'
                       return b.content
@@ -902,7 +873,7 @@ export function SpotlightSearch({
       {loading && (
         <div className="flex justify-start">
           <div className={`px-3 py-2 rounded-xl flex items-center gap-1.5 ${msgAiBg}`}>
-            {[0,1,2].map(i => (
+            {[0, 1, 2].map(i => (
               <div
                 key={i}
                 className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-sage/60' : 'bg-forest/40'}`}
@@ -946,7 +917,7 @@ export function SpotlightSearch({
             {/* 6-dot grip icon */}
             <svg className={`w-3 h-3 shrink-0 ${handleGrip}`} viewBox="0 0 12 12" fill="currentColor" aria-hidden>
               <circle cx="3" cy="2.5" r="1.1" /><circle cx="9" cy="2.5" r="1.1" />
-              <circle cx="3" cy="6"   r="1.1" /><circle cx="9" cy="6"   r="1.1" />
+              <circle cx="3" cy="6" r="1.1" /><circle cx="9" cy="6" r="1.1" />
               <circle cx="3" cy="9.5" r="1.1" /><circle cx="9" cy="9.5" r="1.1" />
             </svg>
             <span className={`font-[family-name:var(--font-display)] text-[22px] leading-none ${handleLabel}`}>
@@ -1104,8 +1075,8 @@ export function SpotlightSearch({
         >
           <svg className={`w-2.5 h-2.5 ${mutedText}`} viewBox="0 0 10 10" fill="currentColor" aria-hidden>
             <circle cx="8.5" cy="8.5" r="1" />
-            <circle cx="5"   cy="8.5" r="1" />
-            <circle cx="8.5" cy="5"   r="1" />
+            <circle cx="5" cy="8.5" r="1" />
+            <circle cx="8.5" cy="5" r="1" />
           </svg>
         </div>
       </div>
