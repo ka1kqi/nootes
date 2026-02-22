@@ -505,23 +505,15 @@ export default function App() {
     question: string,
     ancestors: TaskItem[],
   ): Promise<string> => {
-    const allMessages = historyRef.current
-    const userMessages = allMessages.filter(m => m.role === 'user')
+    const userMessages = historyRef.current.filter(m => m.role === 'user')
     const topLevelPrompt = userMessages[0]?.content ?? ''
-    const followUpPrompts = userMessages.slice(1).map(m => m.content)
 
-    let context = `other context: Overall goal: ${topLevelPrompt}`
-
-    if (followUpPrompts.length > 0) {
-      context += `\n\nother context: Follow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
-    }
-
+    let context = `Topic: ${topLevelPrompt}`
     if (ancestors.length > 0) {
-      context += `\n\nother context: Task hierarchy (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
+      context += `\nPath: ${ancestors.map(a => a.name).join(' → ')}`
     }
-
-    context += `\n\ncurrent node title: ${item.name}: ${item.text}`
-    context += `\n\nother context: ${question}`
+    context += `\nNode: ${item.name} — ${item.text}`
+    if (question) context += `\nQuestion: ${question}`
 
     const res = await fetch(API_URL, {
       method: 'POST',

@@ -10,6 +10,7 @@ import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
 import { supabase } from '../lib/supabase'
+import { parseWriteResponse, normalizeBlocks, titleFromBlocks } from '../lib/writeToEditor'
 
 interface AttachedFile {
   name: string
@@ -87,29 +88,6 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
   return parseTextFormat(content)
 }
 
-function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
-  if (!content.trimStart().startsWith('[WRITE_TO_EDITOR]')) return null
-  try {
-    const body = content.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/, '')
-    const rawStart = body.indexOf('[')
-    if (rawStart === -1) return null
-    const afterBracket = body.slice(rawStart + 1).trimStart()
-    const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
-    const end   = body.lastIndexOf(']')
-    if (start === -1 || end === -1 || end <= start) return null
-    const parsed = JSON.parse(body.slice(start, end + 1))
-    if (!Array.isArray(parsed) || parsed.length === 0 || typeof parsed[0].type !== 'string') return null
-    const TYPE_MAP: Record<string, string> = {
-      ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
-      list: 'bullet_list', numbered_list: 'ordered_list',
-    }
-    const blocks = parsed.map((b: BlockSpec) => ({ ...b, type: (TYPE_MAP[b.type] ?? b.type) as BlockSpec['type'] }))
-    const confirmation = body.slice(end + 1).trim() || `Wrote ${blocks.length} block(s) to your notes.`
-    return { blocks, confirmation }
-  } catch {
-    return null
-  }
-}
 
 function escHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
@@ -410,12 +388,12 @@ export function SpotlightSearch({
   const queryNode: QueryFn = useCallback(async (item, question, ancestors) => {
     const userMessages = historyRef.current.filter(m => m.role === 'user')
     const topLevelPrompt = userMessages[0]?.content ?? ''
-    let context = `other context: Overall goal: ${topLevelPrompt}`
+    let context = `Topic: ${topLevelPrompt}`
     if (ancestors.length > 0) {
-      context += `\n\nother context: Task hierarchy:\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
+      context += `\nPath: ${ancestors.map(a => a.name).join(' → ')}`
     }
-    context += `\n\ncurrent node title: ${item.name}: ${item.text}`
-    context += `\n\nother context: ${question}`
+    context += `\nNode: ${item.name} — ${item.text}`
+    if (question) context += `\nQuestion: ${question}`
 
     const res = await fetch(GRAPH_API_URL, {
       method: 'POST',
