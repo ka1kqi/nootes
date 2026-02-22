@@ -40,6 +40,11 @@ class Block(BaseModel):
     meta: Optional[dict[str, Any]] = None
 
 
+class UpdateDocRequest(BaseModel):
+    blocks: Optional[list[Block]] = None
+    title: Optional[str] = None
+
+
 class MergeRequest(BaseModel):
     master_blocks: list[dict[str, Any]]
     fork_blocks: list[dict[str, Any]]
@@ -534,6 +539,7 @@ async def merge_documents_direct(body: MergeRequest):
 
 
 
+def _bump_version(version: str) -> str:
     """Increment the patch version: 1.0.0 → 1.0.1."""
     try:
         parts = version.split(".")
