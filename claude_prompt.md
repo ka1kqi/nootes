@@ -1,50 +1,78 @@
-Make the Profile page (`Frontend/src/pages/Profile.tsx`) load the user's data dynamically from Supabase instead of using hardcoded mock data. Keep the exact same visual design and layout — only change where the data comes from.
+We are integrating NVIDIA Nemotron models into our Nootes backend using self-hosted NIM containers on NVIDIA Brev (GPU rental). All NIM endpoints use the OpenAI-compatible API format (`/v1/chat/completions`, `/v1/embeddings`).
 
-## What to change
+## Current State
 
-### 1. Profile card (left column)
-- Load the current user's profile from the `profiles` table using `useAuth()` from `Frontend/src/contexts/AuthContext.tsx` (it already provides `user` and `profile`)
-- Display: `display_name`, `avatar_url`, `email`, `aura`, `tier`, `badges`
-- The `profile` object has this shape (see `Frontend/src/lib/supabase.ts`):
-  ```ts
-  interface Profile {
-    id: string
-    display_name: string
-    avatar_url: string | null
-    email: string | null
-    aura: number
-    tier: 'seedling' | 'sprout' | 'sapling' | 'grove' | 'ancient-oak'
-    badges: string[]
-    created_at: string
-    updated_at: string
-  }
-  ```
-- For "Organization", "Field", and "Year" — these are not in the profiles table yet. Show them as editable text fields that the user can fill in, OR remove them from the profile card for now. Prefer removing them for now to keep it simple.
-- Show a loading spinner while `profile` is null.
+The backend is at `Backend/main.py` (FastAPI). We've already partially scaffolded:
+- `Backend/nim_client.py` — shared async NIM client (wraps httpx, configurable `NVIDIA_NIM_BASE_URL`)
+- `Backend/main.py` — has endpoints for moderation (`/api/moderate`), embedding (`/api/embed`), and merge (`/api/repos/{repo_id}/merge`) using nim_client
+- `gpt_prompts/merge_prompt.txt` — merge system prompt
+- `Frontend/.env` — has `NVIDIA_NIM_BASE_URL` and `NVIDIA_NIM_API_KEY` placeholders
+- `supabase/embeddings_migration.sql` — pgvector migration for embedding storage
 
-### 2. Stats grid
-- **Aura**: from `profile.aura`
-- **Noots**: query `documents` table: `SELECT count(*) FROM documents WHERE user_id = auth.uid()`
-- **Merges**: query `merge_requests` table: `SELECT count(*) FROM merge_requests WHERE user_id = auth.uid() AND status = 'merged'`
-- **Nootbooks**: query `repository_contributors` table: `SELECT count(*) FROM repository_contributors WHERE user_id = auth.uid()`
-- These can all be fetched in a single `useEffect` on mount. Show "—" while loading.
+## What needs to be done
 
-### 3. Top Noots section (currently "Pinned Notes")
-- These should be the user's most engaged-with noots, ranked by total engagement (stars + comments).
-- For now, since the documents/stars/comments tables aren't fully wired yet, **keep this as placeholder data**. Add a `// TODO: fetch top noots by engagement (stars + comments) once the star/comment system is built` comment.
+### 1. Add graph model to nim_client.py
 
-### 4. Activity Feed section
-- This should show the user's most recently updated documents.
-- Query: `SELECT * FROM documents WHERE user_id = auth.uid() ORDER BY updated_at DESC LIMIT 10`
-- For each document, also join the repository title: `SELECT d.*, r.title as repo_title FROM documents d JOIN repositories r ON d.repo_id = r.id WHERE d.user_id = auth.uid() ORDER BY d.updated_at DESC LIMIT 10`
-- If empty, show a friendly empty state like "No activity yet — start writing your first noot!"
+Add a `GRAPH_MODEL` config to `nim_client.py`:
+```
+GRAPH_MODEL = os.environ.get("NIM_GRAPH_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
+```
 
-### 5. Contribution graph
-- Leave as random/mock data for now. Add a `// TODO: populate from real document update timestamps` comment.
+Add a `nim_graph()` helper function that calls `nim_chat()` with the graph model, `temperature=0.7`, and `max_tokens=4096`.
 
-## Important
-- Use the existing `supabase` client from `Frontend/src/lib/supabase.ts`
-- Use the existing `useAuth()` hook from `Frontend/src/hooks/useAuth.ts`
-- Keep the same Tailwind classes and overall component structure — this is a data source change, not a redesign
-- Handle loading and error states gracefully
-- Do NOT change the Navbar, KaTeX, or other imported components
+### 2. Replace `/api/prompt` with NIM-backed graph endpoint
+
+Currently `/api/prompt` proxies to OpenAI GPT-4o for graph task generation. Replace this:
+
+- Keep the existing `/api/prompt` endpoint signature (accepts `PromptRequest` with `messages` list)
+- Instead of calling `_openai_chat()` with the OpenAI API, call `nim_graph()` from nim_client
+- Load the system prompt from `gpt_prompts/gpt_prompt.txt` (already exists)
+- The graph system prompt should be prepended to the messages if not already present
+- Remove the `_openai_chat()` function and the `OPENAI_API` dependency entirely — we're fully migrating off OpenAI
+- Remove the `httpx` import if it's no longer used elsewhere
+- Remove `os.environ.get("OPENAI_API")` references
+
+### 3. Add `.env` variable for graph model
+
+Add to `Frontend/.env`:
+```
+# NIM_GRAPH_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1
+```
+
+### 4. Clean up old OpenAI references
+
+- Remove `OPENAI_API` and `VITE_OPENAI_API` from `.env` (we no longer use OpenAI)
+- Remove `VITE_API_URL` from `.env` (was pointing to the old OpenAI proxy)
+- Remove the `_openai_chat()` helper function from main.py
+- Remove any dead imports (`httpx` if unused)
+
+### 5. Update nim_client.py model configs
+
+Make sure these model identifiers are configurable via env vars:
+- `NIM_EMBED_MODEL` — default: `nvidia/llama-nemotron-embed-vl-1b-v2`
+- `NIM_MODERATE_MODEL` — default: `nvidia/nemotron-content-safety-reasoning-4b`
+- `NIM_MERGE_MODEL` — default: `nvidia/llama-3.1-nemotron-nano-8b-v1`
+- `NIM_GRAPH_MODEL` — default: `nvidia/llama-3.3-nemotron-super-49b-v1`
+
+All four share the same `NVIDIA_NIM_BASE_URL` and `NVIDIA_NIM_API_KEY`.
+
+## Architecture Summary
+
+We are running 4 Nemotron models on NVIDIA Brev GPU instances:
+
+| Endpoint | Model | Use Case |
+|----------|-------|----------|
+| `POST /api/moderate` | nemotron-content-safety-reasoning-4b | Chat message safety classification |
+| `POST /api/embed` | llama-nemotron-embed-vl-1b-v2 | Embed noots as 2048-dim vectors |
+| `POST /api/repos/{repo_id}/merge` | llama-3.1-nemotron-nano-8b-v1 | Merge user forks into master document |
+| `POST /api/prompt` | llama-3.3-nemotron-super-49b-v1 | Graph task flow generation (JSON DAGs) |
+
+Auto-embed also fires on document save (`PUT /api/repos/{repo_id}/personal/{user_id}`).
+
+## Important constraints
+
+- Documents are stored as `.json` files (not `.md`), using `document_to_json` / `json_to_document` from `md_utils.py`
+- The NIM API is OpenAI-compatible: same `/v1/chat/completions` and `/v1/embeddings` format
+- All NIM calls go through the shared `nim_client.py` module
+- Keep error handling consistent: NIM failures should return 502 with descriptive messages
+- The frontend currently sends requests to `/api/prompt` with a `messages` array — the endpoint signature must stay the same so the frontend doesn't break

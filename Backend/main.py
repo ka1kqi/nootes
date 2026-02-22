@@ -9,9 +9,8 @@ import os
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-import httpx
 from md_utils import document_to_json, json_to_document, blocks_to_markdown, markdown_to_blocks
-from nim_client import nim_chat, nim_embed_single, nim_moderate
+from nim_client import nim_chat, nim_graph, nim_embed_single, nim_moderate
 
 app = FastAPI(title="Nootes API")
 
@@ -182,7 +181,17 @@ async def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
     return {"data": doc}
 
 
-# ─── AI Proxy ─────────────────────────────────────────────────────────────────
+# ─── Graph / Task Flow (Nemotron Super 49B via NIM) ──────────────────────────
+
+GRAPH_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "gpt_prompt.txt"
+
+
+def _load_graph_prompt() -> str:
+    try:
+        return GRAPH_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "You are a graph task flow generation assistant."
+
 
 class ChatMessage(BaseModel):
     role: str
@@ -191,29 +200,19 @@ class ChatMessage(BaseModel):
 
 class PromptRequest(BaseModel):
     messages: list[ChatMessage]
-    model: str = "gpt-4o"
-
-
-async def _openai_chat(api_key: str, messages: list[dict], model: str = "gpt-4o") -> str:
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-            json={"model": model, "messages": messages},
-        )
-    resp.raise_for_status()
-    return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+    model: str = "gpt-4o"  # ignored — NIM_GRAPH_MODEL is always used
 
 
 @app.post("/api/prompt")
 async def proxy_prompt(body: PromptRequest):
-    api_key = os.environ.get("OPENAI_API")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENAI_API key not configured")
+    messages = [m.model_dump() for m in body.messages]
+    # Prepend graph system prompt if not already present
+    if not messages or messages[0].get("role") != "system":
+        messages.insert(0, {"role": "system", "content": _load_graph_prompt()})
     try:
-        content = await _openai_chat(api_key, [m.model_dump() for m in body.messages], body.model)
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+        content = await nim_graph(messages)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM graph failed: {e}")
     return {"content": content}
 
 

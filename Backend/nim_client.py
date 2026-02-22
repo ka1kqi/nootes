@@ -2,12 +2,13 @@
 NIM API client for Nootes — wraps NVIDIA NIM inference endpoints.
 
 All NIM containers (on Brev or elsewhere) expose an OpenAI-compatible API.
-This module provides typed helpers for the three models we use:
+This module provides typed helpers for the four models we use:
   1. Embeddings  — llama-nemotron-embed-vl-1b-v2
   2. Moderation  — nemotron-content-safety-reasoning-4b
   3. Merge / Chat — llama-3.1-nemotron-nano-8b-v1
+  4. Graph / Tasks — llama-3.3-nemotron-super-49b-v1
 
-Set NVIDIA_NIM_BASE_URL and NVIDIA_NIM_API_KEY in .env.
+Set NVIDIA_NIM_BASE_URL and NVIDIA_NIM_API_KEY in the Railway environment.
 """
 
 from __future__ import annotations
@@ -30,29 +31,43 @@ logger = logging.getLogger(__name__)
 NIM_BASE_URL = os.environ.get("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com")
 NIM_API_KEY = os.environ.get("NVIDIA_NIM_API_KEY", "")
 
+# Graph model can run on a separate NIM instance (e.g. a larger GPU).
+# Falls back to the shared URL/key when not set.
+GRAPH_BASE_URL = os.environ.get("NIM_GRAPH_BASE_URL", NIM_BASE_URL)
+GRAPH_API_KEY = os.environ.get("NIM_GRAPH_API_KEY", NIM_API_KEY)
+
 # Model identifiers — override via env if deploying custom model names
 EMBED_MODEL = os.environ.get("NIM_EMBED_MODEL", "nvidia/llama-nemotron-embed-vl-1b-v2")
 MODERATE_MODEL = os.environ.get("NIM_MODERATE_MODEL", "nvidia/nemotron-content-safety-reasoning-4b")
 MERGE_MODEL = os.environ.get("NIM_MERGE_MODEL", "nvidia/llama-3.1-nemotron-nano-8b-v1")
+GRAPH_MODEL = os.environ.get("NIM_GRAPH_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
 
-# Shared timeout (merge can be slow for large documents)
+# Shared timeout (merge/graph can be slow for large inputs)
 TIMEOUT = float(os.environ.get("NIM_TIMEOUT", "120"))
 
 
 # ─── Internal client ────────────────────────────────────────────────────────
 
-def _headers() -> dict[str, str]:
+def _headers(api_key: str | None = None) -> dict[str, str]:
+    key = api_key if api_key is not None else NIM_API_KEY
     h = {"Content-Type": "application/json"}
-    if NIM_API_KEY:
-        h["Authorization"] = f"Bearer {NIM_API_KEY}"
+    if key:
+        h["Authorization"] = f"Bearer {key}"
     return h
 
 
-async def _post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def _post(
+    path: str,
+    payload: dict[str, Any],
+    *,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
     """POST to a NIM endpoint and return the parsed JSON response."""
-    url = f"{NIM_BASE_URL.rstrip('/')}{path}"
+    root = (base_url or NIM_BASE_URL).rstrip("/")
+    url = f"{root}{path}"
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.post(url, headers=_headers(), json=payload)
+        resp = await client.post(url, headers=_headers(api_key), json=payload)
     resp.raise_for_status()
     return resp.json()
 
@@ -64,6 +79,9 @@ async def nim_chat(
     model: str | None = None,
     temperature: float = 0.3,
     max_tokens: int = 8192,
+    *,
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """
     Call /v1/chat/completions on the NIM endpoint.
@@ -76,11 +94,32 @@ async def nim_chat(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    data = await _post("/v1/chat/completions", body)
+    data = await _post("/v1/chat/completions", body, base_url=base_url, api_key=api_key)
     return (
         data.get("choices", [{}])[0]
         .get("message", {})
         .get("content", "")
+    )
+
+
+# ─── Graph / Task Flow (Nemotron Super 49B) ──────────────────────────────────
+
+async def nim_graph(
+    messages: list[dict[str, str]],
+) -> str:
+    """
+    Call the graph/task-flow model (Nemotron Super 49B).
+
+    Higher temperature and lower max_tokens than merge — optimised for
+    structured JSON DAG generation rather than long-form document synthesis.
+    """
+    return await nim_chat(
+        messages=messages,
+        model=GRAPH_MODEL,
+        temperature=0.7,
+        max_tokens=4096,
+        base_url=GRAPH_BASE_URL,
+        api_key=GRAPH_API_KEY,
     )
 
 
