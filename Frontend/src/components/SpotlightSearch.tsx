@@ -6,10 +6,15 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rawGraphPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
+import { useNavigate } from 'react-router-dom'
 import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
 import { supabase } from '../lib/supabase'
+<<<<<<< HEAD
+=======
+import { createDocument } from '../hooks/useMyRepos'
+>>>>>>> 8eb6a7e (git agentic)
 
 interface AttachedFile {
   name: string
@@ -111,6 +116,40 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
   }
 }
 
+function parseNavigateResponse(content: string): { route: string; message: string } | null {
+  if (!content.trimStart().startsWith('[NAVIGATE]')) return null
+  try {
+    const body = content.replace(/^\s*\[NAVIGATE\]\s*/, '')
+    const parsed = JSON.parse(body.trim())
+    if (typeof parsed.route !== 'string') return null
+    return { route: parsed.route, message: parsed.message || 'Navigating…' }
+  } catch {
+    return null
+  }
+}
+
+function parseCreateRepoResponse(content: string): {
+  title: string; description?: string; visibility?: string
+  tags?: string[]; initial_blocks?: BlockSpec[]; message: string
+} | null {
+  if (!content.trimStart().startsWith('[CREATE_REPO]')) return null
+  try {
+    const body = content.replace(/^\s*\[CREATE_REPO\]\s*/, '')
+    const parsed = JSON.parse(body.trim())
+    if (typeof parsed.title !== 'string') return null
+    return {
+      title: parsed.title,
+      description: parsed.description,
+      visibility: parsed.visibility || 'private',
+      tags: parsed.tags || [],
+      initial_blocks: parsed.initial_blocks,
+      message: parsed.message || `Created "${parsed.title}"!`,
+    }
+  } catch {
+    return null
+  }
+}
+
 function escHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
@@ -192,6 +231,10 @@ async function copyAsText(messages: ChatMessage[]): Promise<boolean> {
       })
       if (msg.graphData.summary) lines.push('', `  Summary: ${msg.graphData.summary}`)
       lines.push('')
+    } else if (msg.navigateData) {
+      lines.push(`▸ Noot [Navigate]: ${msg.navigateData.message}`, '')
+    } else if (msg.createRepoData) {
+      lines.push(`▸ Noot [Create Nootbook]: ${msg.createRepoData.message}`, '')
     } else if (msg.writeData) {
       lines.push('▸ Noot [Written to Editor]:')
       msg.writeData.blocks.forEach((b, i) => {
@@ -211,6 +254,8 @@ interface ChatMessage {
   content: string
   graphData?: { items: TaskItem[]; summary: string } | null
   writeData?: { blocks: BlockSpec[]; confirmation: string } | null
+  navigateData?: { route: string; message: string } | null
+  createRepoData?: { title: string; message: string; repoId?: string } | null
 }
 
 const SUGGESTIONS = [
@@ -246,6 +291,8 @@ export function SpotlightSearch({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const history = useGraphHistory()
   const editorBridge = useEditorBridge()
   const { user } = useAuth()
@@ -303,6 +350,7 @@ export function SpotlightSearch({
       const content: string = data.content ?? ''
       historyRef.current = [...historyRef.current, { role: 'assistant', content }]
 
+<<<<<<< HEAD
       // Check for write-to-editor response
       const writeData = parseWriteResponse(content)
       if (writeData) {
@@ -356,15 +404,109 @@ export function SpotlightSearch({
               writeData,
             }])
           }
+=======
+      // ── Check for navigate response
+      const navData = parseNavigateResponse(content)
+      if (navData) {
+        let resolvedRoute = navData.route
+        let navMessage = navData.message
+        const searchMatch = resolvedRoute.match(/__SEARCH:(.+?)__/)
+        if (searchMatch && user) {
+          const searchTitle = searchMatch[1]
+          const { data: found } = await supabase
+            .from('documents')
+            .select('id')
+            .eq('owner_user_id', user.id)
+            .ilike('title', `%${searchTitle}%`)
+            .limit(1)
+            .single()
+          if (found) {
+            resolvedRoute = `/editor/${found.id}`
+          } else {
+            navMessage += `\n\n⚠ Couldn't find a nootbook matching "${searchTitle}".`
+            resolvedRoute = ''
+          }
+        } else if (searchMatch) {
+          navMessage += '\n\n⚠ Sign in to search your nootbooks.'
+          resolvedRoute = ''
+>>>>>>> 8eb6a7e (git agentic)
         }
-      } else {
-        const graphData = parseGraphResponse(content)
         setMessages(prev => [...prev, {
-          id: id + '-r',
-          role: 'assistant',
-          content,
-          graphData,
+          id: id + '-r', role: 'assistant', content: navMessage,
+          navigateData: { route: resolvedRoute, message: navMessage },
         }])
+        if (resolvedRoute) navigate(resolvedRoute)
+
+      // ── Check for create-repo response
+      } else {
+        const repoData = parseCreateRepoResponse(content)
+        if (repoData) {
+          let repoMessage = repoData.message
+          let createdId: string | undefined
+          if (user) {
+            const { docId, error } = await createDocument(user, {
+              title: repoData.title,
+              tags: repoData.tags ?? [],
+            })
+            if (error) {
+              repoMessage += `\n\n⚠ ${error}`
+            } else if (docId) {
+              createdId = docId
+              if (repoData.initial_blocks?.length) {
+                const blocksWithIds = repoData.initial_blocks.map((b, i) => ({
+                  id: `init-${Date.now()}-${i}`,
+                  type: b.type,
+                  content: b.content,
+                  ...(b.meta ? { meta: b.meta } : {}),
+                }))
+                await fetch(`${API_BASE}/api/repos/${docId}/personal/${user.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ blocks: blocksWithIds, title: repoData.title }),
+                }).catch(() => {
+                  repoMessage += '\n\n⚠ Nootbook created but initial content could not be saved.'
+                })
+              }
+              navigate(`/editor/${docId}`)
+            }
+          } else {
+            repoMessage += '\n\n⚠ You need to be signed in to create a nootbook.'
+          }
+          setMessages(prev => [...prev, {
+            id: id + '-r', role: 'assistant', content: repoMessage,
+            createRepoData: { title: repoData.title, message: repoMessage, repoId: createdId },
+          }])
+
+        // ── Check for write-to-editor response
+        } else {
+          const writeData = parseWriteResponse(content)
+          if (writeData) {
+            if (editorBridge.isEditorActive) {
+              editorBridge.insertBlocks(writeData.blocks)
+              setMessages(prev => [...prev, {
+                id: id + '-r',
+                role: 'assistant',
+                content: writeData.confirmation,
+                writeData,
+              }])
+            } else {
+              setMessages(prev => [...prev, {
+                id: id + '-r',
+                role: 'assistant',
+                content: writeData.confirmation + '\n\n⚠ Open a document in the editor first so I can write to it.',
+                writeData,
+              }])
+            }
+          } else {
+            const graphData = parseGraphResponse(content)
+            setMessages(prev => [...prev, {
+              id: id + '-r',
+              role: 'assistant',
+              content,
+              graphData,
+            }])
+          }
+        }
       }
     } catch (err) {
       setMessages(prev => [...prev, {
@@ -375,7 +517,7 @@ export function SpotlightSearch({
     } finally {
       setLoading(false)
     }
-  }, [input, loading])
+  }, [input, loading, navigate, user, editorBridge])
 
   // ── Expand a graph node into subtasks ──────────────────────────────
   const expandTask: ExpandFn = useCallback(async (item, context, ancestors) => {
@@ -643,6 +785,45 @@ export function SpotlightSearch({
                   {msg.graphData.summary}
                 </div>
               )}
+            </div>
+          ) : msg.navigateData ? (
+            /* ── Navigate response ── */
+            <div
+              className={`max-w-[85%] px-3 py-2 text-xs leading-relaxed rounded-xl font-[family-name:var(--font-body)] ${msgAiBg}`}
+              style={{ animation: 'fade-up 0.2s ease-out' }}
+            >
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <svg className={`w-3.5 h-3.5 ${isDark ? 'text-sage/70' : 'text-sage'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                </svg>
+                <span className={`font-mono text-[9px] uppercase tracking-widest ${isDark ? 'text-sage/50' : 'text-forest/40'}`}>
+                  navigated
+                </span>
+              </div>
+              <div className={`text-[11px] ${isDark ? 'text-parchment/70' : 'text-forest/65'}`}>
+                {msg.navigateData.message}
+              </div>
+            </div>
+          ) : msg.createRepoData ? (
+            /* ── Create repo response ── */
+            <div
+              className={`max-w-[85%] px-3 py-2 text-xs leading-relaxed rounded-xl font-[family-name:var(--font-body)] ${msgAiBg}`}
+              style={{ animation: 'fade-up 0.2s ease-out' }}
+            >
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <svg className={`w-3.5 h-3.5 ${msg.createRepoData.repoId ? 'text-green-500' : (isDark ? 'text-amber-400' : 'text-amber-600')}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  {msg.createRepoData.repoId
+                    ? <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    : <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  }
+                </svg>
+                <span className={`font-mono text-[9px] uppercase tracking-widest ${isDark ? 'text-sage/50' : 'text-forest/40'}`}>
+                  {msg.createRepoData.repoId ? 'nootbook created' : 'creation failed'}
+                </span>
+              </div>
+              <div className={`text-[11px] ${isDark ? 'text-parchment/70' : 'text-forest/65'}`}>
+                {msg.createRepoData.message}
+              </div>
             </div>
           ) : msg.writeData ? (
             /* ── Write-to-editor response ── */
