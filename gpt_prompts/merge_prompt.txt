@@ -42,3 +42,4 @@ Then write a concise summary (3-10 bullet points) describing what changed:
 - What was corrected
 - What was reorganized
 - Any conflicts that were resolved and how
+- If no changes were made, just return in the summary that no changes were made

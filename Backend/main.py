@@ -532,9 +532,12 @@ async def merge_documents_direct(body: MergeRequest):
 
     merged_blocks, summary = _parse_merge_result(result)
 
+    logger.info("Merge result: %d blocks, raw[:120]=%s", len(merged_blocks), repr(result[:120]))
+
     return {
         "merged_blocks": merged_blocks,
         "summary": summary,
+        "raw_preview": result[:300] if not merged_blocks else None,
     }
 
 

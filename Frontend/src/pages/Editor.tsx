@@ -168,11 +168,14 @@ export default function Design1() {
         return
       }
 
-      // 3. Call merge endpoint — derive base the same way useChat does
+      // 3. Call merge endpoint via Vite proxy (local) or absolute URL (production)
       const apiBase = (() => {
         const url = import.meta.env.VITE_API_URL as string | undefined
         if (!url) return '/api'
-        return url.replace(/\/[^/]+$/, '') // strip last segment (/prompt) → keeps /api
+        // In production the env var points to the real backend; strip last segment
+        // In dev the Vite proxy handles /api/* → localhost:3001
+        if (url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
+        return url.replace(/\/[^/]+$/, '')
       })()
       const res = await fetch(`${apiBase}/merge`, {
         method: 'POST',
@@ -191,10 +194,12 @@ export default function Design1() {
         return
       }
 
-      const { merged_blocks, summary } = await res.json()
+      const mergeData = await res.json()
+      const { merged_blocks, summary, raw_preview } = mergeData
 
       if (!merged_blocks?.length) {
-        setMergeError('Merge engine returned no blocks. Try again.')
+        // Model found no differences — treat as success, not error
+        setMergeResult({ summary: summary || 'No changes were made — the fork is already in sync with the master.' })
         return
       }
 
@@ -607,7 +612,10 @@ export default function Design1() {
                       {merging ? 'Merging…' : 'Submit for Merge'}
                     </button>
                     {mergeResult && (
-                      <span className="font-mono text-[10px] text-sage/70 max-w-[280px] text-right leading-tight">✓ Merged — {mergeResult.summary}</span>
+                      <div className="mt-3 w-full bg-sage/[0.07] border border-sage/20 squircle-sm px-4 py-3">
+                        <p className="font-[family-name:var(--font-body)] text-[10px] text-sage tracking-widest uppercase mb-2">Merge Summary</p>
+                        <div className="font-mono text-[11px] text-forest/60 leading-relaxed whitespace-pre-wrap">{mergeResult.summary}</div>
+                      </div>
                     )}
                     {mergeError && (
                       <span className="font-mono text-[10px] text-red-500/70 max-w-[280px] text-right leading-tight">{mergeError}</span>
