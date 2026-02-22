@@ -89,9 +89,9 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
 }
 
 function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
-  if (!content.trimStart().startsWith('[WRITE_TO_EDITOR]')) return null
+  if (!/^\s*\[WRITE_TO_EDITOR\]/i.test(content)) return null
   try {
-    const body = content.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/, '')
+    const body = content.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/i, '')
     const rawStart = body.indexOf('[')
     if (rawStart === -1) return null
     const afterBracket = body.slice(rawStart + 1).trimStart()
@@ -113,9 +113,9 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
 }
 
 function parseNavigateResponse(content: string): { route: string; message: string } | null {
-  if (!content.trimStart().startsWith('[NAVIGATE]')) return null
+  if (!/^\s*\[NAVIGATE\]/i.test(content)) return null
   try {
-    const body = content.replace(/^\s*\[NAVIGATE\]\s*/, '')
+    const body = content.replace(/^\s*\[NAVIGATE\]\s*/i, '')
     const parsed = JSON.parse(body.trim())
     if (typeof parsed.route !== 'string') return null
     return { route: parsed.route, message: parsed.message || 'Navigating…' }
@@ -128,9 +128,9 @@ function parseCreateRepoResponse(content: string): {
   title: string; description?: string; visibility?: string
   tags?: string[]; initial_blocks?: BlockSpec[]; message: string
 } | null {
-  if (!content.trimStart().startsWith('[CREATE_REPO]')) return null
+  if (!/^\s*\[CREATE_REPO\]/i.test(content)) return null
   try {
-    const body = content.replace(/^\s*\[CREATE_REPO\]\s*/, '')
+    const body = content.replace(/^\s*\[CREATE_REPO\]\s*/i, '')
     const parsed = JSON.parse(body.trim())
     if (typeof parsed.title !== 'string') return null
     return {
