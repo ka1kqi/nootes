@@ -536,12 +536,23 @@ const CARD_ROWS: NootCardData[][] = (() => {
 
 // ── Home ──────────────────────────────────────────────────────────────
 
+interface ChatMessage { role: 'user' | 'assistant'; content: string }
+
+function apiBase(): string {
+  const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+  if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
+  return url.replace(/\/[^/]+$/, '')
+}
+
 export default function Home() {
   const { profile } = useAuth()
   const [input, setInput]           = useState('')
   const [activeMode, setActiveMode] = useState<AIMode>('Write')
   const [isExpanded, setIsExpanded] = useState(false)
   const [selectedCard, setSelectedCard] = useState<NootCardData | null>(null)
+  const [messages, setMessages]     = useState<ChatMessage[]>([])
+  const [aiLoading, setAiLoading]   = useState(false)
+  const messagesEndRef              = useRef<HTMLDivElement>(null)
 
   // DOM refs
   const contentRef     = useRef<HTMLDivElement>(null)
@@ -640,12 +651,47 @@ export default function Home() {
 
   // ── AI submit ─────────────────────────────────────────────────────
 
-  const submitQuery = useCallback(() => {
+  const submitQuery = useCallback(async () => {
     const q = input.trim()
-    if (!q) return
-    console.log('AI query:', q, '| mode:', activeMode)
+    if (!q || aiLoading) return
     setInput('')
-  }, [input, activeMode])
+
+    const userMsg: ChatMessage = { role: 'user', content: q }
+    const next = [...messages, userMsg]
+    setMessages(next)
+    setAiLoading(true)
+
+    const scrollToBottom = () => {
+      const el = messagesEndRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    }
+    setTimeout(scrollToBottom, 50)
+
+    try {
+      const modeHint = activeMode !== 'Write'
+        ? `[Respond in ${activeMode} style] `
+        : ''
+      const payload = next.map(m =>
+        m.role === 'user' ? { ...m, content: modeHint + m.content } : m
+      )
+      const res = await fetch(`${apiBase()}/noot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: payload }),
+      })
+      const data = await res.json()
+      const reply = data.content ?? data.detail ?? 'No response.'
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Failed to reach the AI. Check your connection.' }])
+    } finally {
+      setAiLoading(false)
+      setTimeout(() => {
+        const el = messagesEndRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      }, 50)
+    }
+  }, [input, activeMode, messages, aiLoading])
 
   const firstName = profile?.display_name?.split(' ')[0] ?? 'you'
 
@@ -656,17 +702,53 @@ export default function Home() {
       {/* ── Content area ─────────────────────────────────────────────── */}
       <div ref={contentRef} className="flex-1 relative overflow-hidden">
 
-        {/* ── Chatbox section — pinned in background, centred ─────────── */}
-        <div
-          className="absolute inset-0 flex flex-col items-center px-6 pointer-events-none"
-          style={{ paddingTop: 'max(72px, calc(33vh - 56px))' }}
-        >
-          <div className="pointer-events-auto flex flex-col items-center w-full max-w-2xl">
+        {/* ── Chatbox section — fills content area ─────────────────────── */}
+        <div className="absolute inset-0 flex flex-col items-center px-6 pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-2xl h-full flex flex-col">
 
-            {/* Greeting */}
-            <p className="font-[family-name:var(--font-display)] text-[1.65rem] text-forest/45 mb-6 tracking-tight text-center leading-snug select-none">
-              What should we explore today?
-            </p>
+            {/* Empty state spacer + greeting */}
+            {messages.length === 0 && (
+              <>
+                <div style={{ flex: '0 0 max(72px, calc(33vh - 56px))' }} />
+                <p className="font-[family-name:var(--font-display)] text-[1.65rem] text-forest/45 mb-6 tracking-tight text-center leading-snug select-none">
+                  What should we explore today?
+                </p>
+              </>
+            )}
+
+            {/* Message thread — scrollable, grows to fill space */}
+            {messages.length > 0 && (
+              <div
+                ref={messagesEndRef}
+                className="flex-1 overflow-y-auto pt-6 pb-2 flex flex-col gap-3"
+              >
+                <div className="mt-auto flex flex-col gap-3">
+                  {messages.map((m, i) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] px-4 py-2.5 squircle-xl font-[family-name:var(--font-body)] text-sm leading-relaxed whitespace-pre-wrap ${
+                        m.role === 'user'
+                          ? 'bg-forest text-parchment'
+                          : 'bg-parchment border border-forest/10 text-forest'
+                      }`}>
+                        {m.content}
+                      </div>
+                    </div>
+                  ))}
+                  {aiLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-parchment border border-forest/10 squircle-xl px-4 py-3 flex items-center gap-1.5">
+                        {[0, 1, 2].map(i => (
+                          <span key={i} className="w-1.5 h-1.5 rounded-full bg-sage/50 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Input area — always pinned at bottom */}
+            <div className="shrink-0 pb-6">
 
             {/* AI Chatbox */}
             <div className="w-full bg-parchment border border-forest/[0.12] squircle-xl px-4 py-3 flex items-center gap-3 shadow-[0_4px_32px_-10px_rgba(38,70,53,0.08)] focus-within:border-sage/40 focus-within:shadow-[0_6px_32px_-10px_rgba(138,155,117,0.16)] transition-all">
@@ -705,7 +787,7 @@ export default function Home() {
               {/* Send */}
               <button
                 onClick={submitQuery}
-                disabled={!input.trim()}
+                disabled={!input.trim() || aiLoading}
                 className="shrink-0 w-9 h-9 bg-forest squircle-sm flex items-center justify-center text-parchment hover:bg-forest-deep transition-colors disabled:opacity-20 cursor-pointer"
                 aria-label="Send"
               >
@@ -732,16 +814,19 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Stats strip */}
-            <div className="flex items-center gap-2 mt-3">
-              {STATS.map((s, i) => (
-                <span key={s.label} className="flex items-center gap-2">
-                  {i > 0 && <span className="text-forest/10 font-mono text-xs select-none">·</span>}
-                  <span className="font-mono text-[9px] text-forest/28 tracking-wider">
-                    <span className="text-forest/40">{s.value}</span> {s.label}
+            {/* Stats strip — hide during conversation */}
+            {messages.length === 0 && (
+              <div className="flex items-center gap-2 mt-3">
+                {STATS.map((s, i) => (
+                  <span key={s.label} className="flex items-center gap-2">
+                    {i > 0 && <span className="text-forest/10 font-mono text-xs select-none">·</span>}
+                    <span className="font-mono text-[9px] text-forest/28 tracking-wider">
+                      <span className="text-forest/40">{s.value}</span> {s.label}
+                    </span>
                   </span>
-                </span>
-              ))}
+                ))}
+              </div>
+            )}
             </div>
           </div>
         </div>
@@ -749,8 +834,8 @@ export default function Home() {
         {/* ── Nootes Drawer ────────────────────────────────────────────── */}
         <div
           ref={drawerRef}
-          className="absolute inset-x-0 z-20"
-          style={{ top: 0, bottom: 0, transform: 'translateY(100%)' }}
+          className="absolute inset-x-0 z-20 transition-opacity duration-300"
+          style={{ top: 0, bottom: 0, transform: 'translateY(100%)', opacity: messages.length > 0 ? 0 : 1, pointerEvents: messages.length > 0 ? 'none' : 'auto' }}
         >
 
           {/* ── Marquee keyframes ──────────────────────────────────────── */}
