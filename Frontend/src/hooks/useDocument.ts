@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { blocksToMarkdown, markdownToBlocks } from '../lib/markdown'
+import { blocksToJson, jsonToBlocks } from '../lib/markdown'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ export function newBlock(type: BlockType): Block {
 const DEBOUNCE_MS = 1200
 const SCRATCH_KEY = (uid: string) => `nootes-scratch-${uid}`
 const BUCKET = 'documents'
-const storagePath = (uid: string, rid: string) => `${uid}/${rid}.md`
+const storagePath = (uid: string, rid: string) => `${uid}/${rid}.json`
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -97,17 +97,17 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
 
           if (cancelled) return
 
-          let markdown = ''
+          let json = ''
           if (!downloadErr && fileData) {
-            markdown = await fileData.text()
+            json = await fileData.text()
             // Keep localStorage in sync for instant offline reads
-            if (markdown) localStorage.setItem(SCRATCH_KEY(userId), markdown)
+            if (json) localStorage.setItem(SCRATCH_KEY(userId), json)
           } else {
             // File not found or network error — fall back to localStorage
-            markdown = localStorage.getItem(SCRATCH_KEY(userId)) ?? ''
+            json = localStorage.getItem(SCRATCH_KEY(userId)) ?? ''
           }
 
-          const blocks = markdown ? markdownToBlocks(markdown) : [newBlock('paragraph')]
+          const blocks = json ? jsonToBlocks(json) : [newBlock('paragraph')]
           const loaded: Document = {
             id: 'scratch',
             repoId: 'scratch',
@@ -121,41 +121,29 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           historyRef.current = [blocks]
           historyIndexRef.current = 0
         } else {
-          // 1. Download the .md file from Storage (404 = first visit, not an error)
-          const { data: fileData, error: downloadErr } = await supabase.storage
-            .from(BUCKET)
-            .download(storagePath(userId, repoId))
-
-          if (cancelled) return
-
-          // Treat 404 / object-not-found as empty doc
-          if (downloadErr && !downloadErr.message.includes('Object not found') && !downloadErr.message.includes('404')) {
-            throw downloadErr
+          // Load from backend master for local testing
+          let blocks: Block[] = [newBlock('paragraph')]
+          try {
+            const res = await fetch(`http://localhost:3001/api/repos/${repoId}/master`)
+            if (res.ok) {
+              const { data } = await res.json()
+              if (data?.blocks) blocks = data.blocks as Block[]
+            }
+          } catch {
+            // Backend unreachable
           }
 
-          const markdown = fileData ? await fileData.text() : ''
-          const blocks = markdown ? markdownToBlocks(markdown) : [newBlock('paragraph')]
-
-          // 2. Fetch metadata row (title, version, tags) — may not exist on first visit
-          const { data: meta, error: metaErr } = await supabase
-            .from('documents')
-            .select('id, title, version, tags, updated_at')
-            .eq('repo_id', repoId)
-            .eq('user_id', userId)
-            .maybeSingle()
-
           if (cancelled) return
-          if (metaErr) throw metaErr
 
           const loaded: Document = {
-            id: meta?.id ?? crypto.randomUUID(),
+            id: crypto.randomUUID(),
             repoId,
             userId,
-            title: meta?.title || repoTitle || 'My Notes',
-            version: meta?.version ?? '1.0.0',
-            tags: meta?.tags ?? [],
+            title: repoTitle || 'My Notes',
+            version: '1.0.0',
+            tags: [],
             blocks,
-            updatedAt: meta?.updated_at ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           }
           setDoc(loaded)
           docRef.current = loaded
@@ -167,7 +155,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
         if (isScratch) {
           // Network failure for scratch — use localStorage as full fallback
           const stored = localStorage.getItem(SCRATCH_KEY(userId))
-          const blocks = stored ? markdownToBlocks(stored) : [newBlock('paragraph')]
+          const blocks = stored ? jsonToBlocks(stored) : [newBlock('paragraph')]
           const fallback: Document = {
             id: 'scratch',
             repoId: 'scratch',
@@ -211,17 +199,17 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
 
     if (isScratch) {
       try {
-        const markdown = blocksToMarkdown(blocks)
+        const json = blocksToJson(blocks)
 
         // 1. Persist to localStorage immediately (instant, works offline)
-        localStorage.setItem(SCRATCH_KEY(userId), markdown)
+        localStorage.setItem(SCRATCH_KEY(userId), json)
 
         // 2. Upload to Supabase Storage for cross-device sync
-        const blob = new Blob([markdown], { type: 'text/markdown' })
+        const blob = new Blob([json], { type: 'application/json' })
         const { error: uploadErr } = await supabase.storage
           .from(BUCKET)
           .upload(storagePath(userId, 'scratch'), blob, {
-            contentType: 'text/markdown',
+            contentType: 'application/json',
             upsert: true,
           })
         // Don't throw on upload error — localStorage save already succeeded
@@ -237,14 +225,14 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     }
 
     try {
-      const markdown = blocksToMarkdown(blocks)
-      const blob = new Blob([markdown], { type: 'text/markdown' })
+      const json = blocksToJson(blocks)
+      const blob = new Blob([json], { type: 'application/json' })
 
-      // 1. Upload .md file to Storage (upsert: true overwrites existing)
+      // 1. Upload .json file to Storage (upsert: true overwrites existing)
       const { error: uploadErr } = await supabase.storage
         .from(BUCKET)
         .upload(storagePath(userId, repoId), blob, {
-          contentType: 'text/markdown',
+          contentType: 'application/json',
           upsert: true,
         })
       if (uploadErr) throw uploadErr

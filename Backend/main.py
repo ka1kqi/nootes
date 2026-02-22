@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import httpx
-from md_utils import document_to_markdown, markdown_to_document
+from md_utils import document_to_json, json_to_document
 
 load_dotenv(Path(__file__).parent.parent / "Frontend" / ".env")
 
@@ -43,8 +43,8 @@ class UpdateDocRequest(BaseModel):
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _doc_path(repo_id: str, user_id: str) -> Path:
-    """Return the .md file path for a document."""
-    return DOCS_DIR / f"{repo_id}--{user_id}.md"
+    """Return the .json file path for a document."""
+    return DOCS_DIR / f"{repo_id}--{user_id}.json"
 
 
 def read_doc(repo_id: str, user_id: str) -> dict | None:
@@ -53,7 +53,7 @@ def read_doc(repo_id: str, user_id: str) -> dict | None:
     if not path.exists():
         return None
     text = path.read_text(encoding="utf-8")
-    doc = markdown_to_document(text, fallback_key=f"{repo_id}--{user_id}")
+    doc = json_to_document(text, fallback_key=f"{repo_id}--{user_id}")
     # Ensure repo/user fields are set
     doc.setdefault("repoId", repo_id)
     doc.setdefault("userId", user_id)
@@ -65,7 +65,7 @@ def write_doc(doc: dict):
     repo_id = doc["repoId"]
     user_id = doc["userId"]
     path = _doc_path(repo_id, user_id)
-    md = document_to_markdown(doc)
+    md = document_to_json(doc)
     path.write_text(md, encoding="utf-8")
 
 
@@ -76,7 +76,7 @@ def now_iso() -> str:
 def list_all_docs() -> list[dict]:
     """List all documents from the docs directory."""
     docs = []
-    for path in DOCS_DIR.glob("*.md"):
+    for path in DOCS_DIR.glob("*.json"):
         key = path.stem  # e.g. "cs-ua-310--master"
         parts = key.split("--", 1)
         if len(parts) != 2:
@@ -91,11 +91,11 @@ def list_all_docs() -> list[dict]:
 # ─── Seed data check ────────────────────────────────────────────────────────
 
 def check_seed_data():
-    """Ensure the docs directory contains at least one .md file."""
-    if any(DOCS_DIR.glob("*.md")):
+    """Ensure the docs directory contains at least one .json file."""
+    if any(DOCS_DIR.glob("*.json")):
         print("🌿 Seed data checked")
         return
-    print("⚠️  No .md files found in data/docs/ — the editor will start empty.")
+    print("⚠️  No .json files found in data/docs/ — the editor will start empty.")
 
 
 check_seed_data()
