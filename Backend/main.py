@@ -306,6 +306,8 @@ def _format_merge_input(master: dict, forks: list[dict]) -> str:
 
 def _parse_merge_result(result: str) -> tuple[list[dict], str]:
     """Parse merge model output into (blocks, summary)."""
+    print(f"[MERGE DEBUG] Raw result ({len(result)} chars): {result[:500]!r}")
+
     separator = "---MERGE_SUMMARY---"
     if separator in result:
         merged_raw, summary = result.split(separator, 1)
@@ -317,7 +319,16 @@ def _parse_merge_result(result: str) -> tuple[list[dict], str]:
     # Handle model wrapping JSON in ```json ... ```
     if merged_raw.startswith("```"):
         merged_raw = re.sub(r"^```\w*\n?", "", merged_raw)
-        merged_raw = re.sub(r"\n?```$", "", merged_raw)
+        merged_raw = re.sub(r"\n?```\s*$", "", merged_raw)
+
+    # Model may prefix with prose — find the first '[' for the JSON array
+    bracket_idx = merged_raw.find("[")
+    if bracket_idx > 0:
+        merged_raw = merged_raw[bracket_idx:]
+
+    if not merged_raw:
+        logger.error("Merge model returned empty content")
+        return [{"id": uuid.uuid4().hex[:8], "type": "paragraph", "content": ""}], summary.strip()
 
     blocks = json.loads(merged_raw)
     # Re-generate IDs
