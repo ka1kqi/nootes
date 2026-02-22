@@ -23,7 +23,7 @@ interface AttachedFile {
 /* ------------------------------------------------------------------ */
 
 // ─── API CONFIG ─────────────────────────────────────────────────────────
-const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api/prompt').replace(/\/api\/prompt$/, '')
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt').replace(/\/api\/prompt$/, '')
 const NOOT_API_URL  = `${API_BASE}/api/noot`
 const GRAPH_API_URL = `${API_BASE}/api/prompt`
 

@@ -190,7 +190,7 @@ export function useMessages(channelId: string | null) {
 
 const _API_BASE = (() => {
   const url = import.meta.env.VITE_API_URL as string | undefined
-  if (!url) return 'http://localhost:3001/api'
+  if (!url) return '/api'
   return url.replace(/\/[^/]+$/, '') // strip last path segment → base /api
 })()
 

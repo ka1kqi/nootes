@@ -99,7 +99,7 @@ export default function Design1() {
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
   const [masterLoading, setMasterLoading] = useState(true)
   useEffect(() => {
-    fetch(`http://localhost:3001/api/repos/${repoId}/master`)
+    fetch(`/api/repos/${repoId}/master`)
       .then(r => r.json())
       .then(({ data }) => setMasterDoc(data ? { tags: [], source_document_id: null, ...data } : null))
       .catch(() => { })
