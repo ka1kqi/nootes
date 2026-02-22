@@ -188,9 +188,13 @@ export function useMessages(channelId: string | null) {
 
 // ─── useSendMessage ───────────────────────────────────────────────────────────
 
-const MODERATE_URL = (import.meta.env.VITE_API_URL as string | undefined)
-  ? (import.meta.env.VITE_API_URL as string).replace('/api/prompt', '/api/moderate')
-  : 'http://localhost:3001/api/moderate'
+const _API_BASE = (() => {
+  const url = import.meta.env.VITE_API_URL as string | undefined
+  if (!url) return 'http://localhost:3001/api'
+  return url.replace(/\/[^/]+$/, '') // strip last path segment → base /api
+})()
+
+const MODERATE_URL = `${_API_BASE}/moderate`
 
 async function moderateMessage(content: string): Promise<'allowed' | 'blocked' | 'error'> {
   try {

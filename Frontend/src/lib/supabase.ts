@@ -81,8 +81,8 @@ export interface Repository {
   course: string | null
   professor: string | null
   semester: string | null
-  organization: string | null
-  field: string | null
+  university: string | null
+  department: string | null
   is_class: boolean
   is_public: boolean
   tags: string[]

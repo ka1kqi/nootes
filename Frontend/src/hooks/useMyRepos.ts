@@ -16,8 +16,8 @@ export interface CreateRepoInput {
   course?: string
   professor?: string
   semester?: string
-  organization?: string
-  field?: string
+  university?: string
+  department?: string
   is_class: boolean
   is_public: boolean
   tags?: string[]
@@ -84,8 +84,8 @@ export function useMyRepos() {
         course: input.course || null,
         professor: input.professor || null,
         semester: input.semester || null,
-        organization: input.organization || null,
-        field: input.field || null,
+        university: input.university || null,
+        department: input.department || null,
         is_class: input.is_class,
         is_public: input.is_public,
         tags: input.tags || [],

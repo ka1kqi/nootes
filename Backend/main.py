@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 import httpx
 from md_utils import document_to_markdown, markdown_to_document
 
-load_dotenv(Path(__file__).parent.parent / "Frontend" / ".env")
+load_dotenv(Path(__file__).parent.parent / "Frontend" / ".env", override=True)
 
 app = FastAPI(title="Nootes API")
 
