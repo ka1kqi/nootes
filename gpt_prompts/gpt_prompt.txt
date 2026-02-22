@@ -4,7 +4,8 @@ Task:
 - Read ALL user-provided input as the single source of truth.
 - Produce a series of JSON objects, each representing one subtask or component needed to implement the idea.
 - Each JSON object MUST have exactly three keys: "name", "text", and "depends_on".
-  - "name" is a short, specific label for the subtask (2–6 words).
+  - "name" is a short, specific label for the subtask (3–8 words).
+  - Make names action-oriented and unambiguous: start with a verb, include the key object/scope, and (when relevant) the platform or area (e.g., "Design Postgres Schema for Notes", "Implement Supabase RLS Policies", "Build React Editor UI"). Avoid generic labels like "Backend" or "Frontend".
   - "text" is a clear description of what to do, including any important details, assumptions, and what the output/deliverable should be.
   - "depends_on" is an array of "name" strings of tasks that directly follow from / are unblocked by this task (its children in the dependency graph). Use an empty array [] for leaf tasks that have no downstream work.
 
@@ -17,10 +18,12 @@ Output rules (STRICT):
 
 Guidelines for the breakdown:
 - IMPORTANT: Return exactly 5 to 7 items — no more, no fewer. Keep the graph focused and digestible.
-- The FIRST item in the array must be a single high-level root node that summarises the entire project in 2-5 words (e.g. "Build Todo App"). Its "depends_on" should list the top-level subtasks that branch directly from it. This root node is the centre of the graph.
+- The FIRST item in the array must be a single high-level root node that summarises the entire project in 2–6 words (e.g., "Build Notes Search App"). Its "depends_on" should list the top-level subtasks that branch directly from it. This root node is the centre of the graph.
 - All other items are subtasks or phases that radiate outward from the root. Leaf tasks use depends_on: [].
 - Start with the root, then major phases, then leaf implementation steps.
 - Prefer concrete, atomic steps that could be assigned to different people/agents.
+- Name specificity rule: each non-root task name must include (a) the action, (b) the artifact or system component, and (c) a distinguishing scope word (e.g., auth, ingestion, search, UI, infra).
+- Do not reuse near-duplicate names; every task name should be clearly distinct at a glance.
 - If the user input is vague, make reasonable assumptions but explicitly state them inside the "text" field of the relevant task(s).
 - The dependency graph MUST be a DAG (no cycles). The root node has no other task pointing to it via depends_on.
 
