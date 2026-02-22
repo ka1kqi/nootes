@@ -106,6 +106,16 @@ html.compact-mode .mb-8 { margin-bottom: 1rem; }
 }
 
 .animate-float { animation: float 4s ease-in-out infinite; }
+
+@keyframes noot-tail-sway {
+  0%, 100% { transform: rotate(0deg); }
+  35%       { transform: rotate(14deg); }
+  70%       { transform: rotate(-7deg); }
+}
+.noot-tail {
+  transform-origin: 7.8px 12.5px;
+  animation: noot-tail-sway 3s ease-in-out infinite;
+}
 .animate-fade-up { animation: fade-up 0.6s ease-out both; }
 
 @keyframes tab-enter {

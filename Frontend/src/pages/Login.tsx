@@ -35,7 +35,10 @@ export default function Login() {
   const [showEduPrompt, setShowEduPrompt] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const searchParams = new URLSearchParams(location.search)
+  const [mode, setMode] = useState<'signin' | 'signup'>(
+    searchParams.get('mode') === 'signup' ? 'signup' : 'signin'
+  )
 
   async function handleGoogleSignIn() {
     setAuthError(null)
@@ -122,29 +125,17 @@ export default function Login() {
           {/* Testimonial card */}
           <div className="bg-parchment/[0.06] border border-parchment/[0.08] squircle-xl p-5">
             <p className="font-[family-name:var(--font-display)] text-lg text-parchment/40 leading-relaxed mb-4">
-              "I used to spend hours writing notes that disappeared after the semester. Now they compound."
+              "Finally — notes that don't die at the end of the semester. My whole class builds on the same foundation now."
             </p>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-sage/30 flex items-center justify-center text-[10px] text-parchment font-medium">PK</div>
+              <div className="w-8 h-8 rounded-full bg-forest/60 border border-parchment/10 flex items-center justify-center overflow-hidden">
+                <span className="font-[family-name:var(--font-display)] text-sm text-parchment">K</span>
+              </div>
               <div>
-                <span className="font-[family-name:var(--font-body)] text-xs text-parchment/60 block">Priya K.</span>
-                <span className="font-mono text-[9px] text-sage/40">NYU · CS · 1,240 aura</span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-parchment/60 block">Kevin D.</span>
+                <span className="font-mono text-[9px] text-sage/40">NYU · CS</span>
               </div>
             </div>
-          </div>
-
-          {/* Stats */}
-          <div className="flex items-center gap-6 mt-8">
-            {[
-              { value: '3.2k', label: 'contributors' },
-              { value: '487', label: 'nootbooks' },
-              { value: '98%', label: 'merge rate' },
-            ].map((s, i) => (
-              <div key={i} className="text-center">
-                <span className="font-[family-name:var(--font-display)] text-2xl text-parchment/70 block">{s.value}</span>
-                <span className="font-mono text-[8px] text-sage/40 tracking-[0.2em] uppercase">{s.label}</span>
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -164,10 +155,16 @@ export default function Login() {
             </Link>
           </div>
 
-          <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">WELCOME BACK</span>
-          <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest mb-2 leading-tight">Sign in</h1>
+          <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">
+            {mode === 'signup' ? 'JOIN THE COMMUNITY' : 'WELCOME BACK'}
+          </span>
+          <h1 className="font-[family-name:var(--font-display)] text-5xl text-forest mb-2 leading-tight">
+            {mode === 'signup' ? 'Sign up' : 'Sign in'}
+          </h1>
           <p className="font-[family-name:var(--font-body)] text-sm text-forest/45 mb-10">
-            Pick up where you left off — your noots are waiting.
+            {mode === 'signup'
+              ? 'Start building the best notes your class has ever had.'
+              : 'Pick up where you left off — your noots are waiting.'}
           </p>
 
           {/* Google Sign-In button */}
@@ -252,9 +249,9 @@ export default function Login() {
           {/* Fine print */}
           <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/25 text-center mt-8 leading-relaxed">
             By signing in, you agree to our{' '}
-            <span className="underline hover:text-forest/40 cursor-pointer transition-colors">Terms of Service</span>{' '}
+            <Link to="/terms" className="underline hover:text-forest/40 transition-colors">Terms of Service</Link>{' '}
             and{' '}
-            <span className="underline hover:text-forest/40 cursor-pointer transition-colors">Privacy Policy</span>.
+            <Link to="/privacy" className="underline hover:text-forest/40 transition-colors">Privacy Policy</Link>.
           </p>
 
           {/* .edu benefits callout */}

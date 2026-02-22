@@ -1,5 +1,5 @@
 import { Link, Navigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import logoImg from '../assets/logo.png'
 import { KaTeX } from '../components/KaTeX'
 import { useAuth } from '../hooks/useAuth'
@@ -92,6 +92,41 @@ function StudyPreview() {
 export default function Landing() {
   const { user, loading } = useAuth()
   const [activeTab, setActiveTab] = useState<PreviewTab>('Write')
+  const [displayedTab, setDisplayedTab] = useState<PreviewTab>('Write')
+  const [isExiting, setIsExiting] = useState(false)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Crossfade when activeTab changes
+  useEffect(() => {
+    if (transitionRef.current) clearTimeout(transitionRef.current)
+    setIsExiting(true)
+    transitionRef.current = setTimeout(() => {
+      setDisplayedTab(activeTab)
+      setIsExiting(false)
+    }, 180)
+    return () => { if (transitionRef.current) clearTimeout(transitionRef.current) }
+  }, [activeTab])
+
+  const startRotation = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    intervalRef.current = setInterval(() => {
+      setActiveTab(prev => {
+        const idx = PREVIEW_TABS.indexOf(prev)
+        return PREVIEW_TABS[(idx + 1) % PREVIEW_TABS.length]
+      })
+    }, 3000)
+  }
+
+  useEffect(() => {
+    startRotation()
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [])
+
+  const handleTabClick = (tab: PreviewTab) => {
+    setActiveTab(tab)
+    startRotation()
+  }
 
   // Redirect authenticated users to /home
   if (!loading && user) return <Navigate to="/home" replace />
@@ -102,56 +137,54 @@ export default function Landing() {
       {/* ── Nav ─────────────────────────────────────────────────── */}
       <header className="shrink-0 bg-cream/80 backdrop-blur-sm border-b border-forest/[0.06] z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-14">
-          <Link to="/" className="logo-wave flex items-center gap-1.5">
+          <Link to="/">
             <img src={logoImg} alt="Nootes logo" style={{ width: 36, height: 36 }} />
-            <span className="font-[family-name:var(--font-display)] text-2xl text-forest flex">
-              {'nootes'.split('').map((letter, i) => (
-                <span key={i} className="wave-letter">{letter}</span>
-              ))}
-            </span>
           </Link>
           <nav className="flex items-center gap-2">
             <Link
-              to="/repos"
+              to="/explore"
               className="font-[family-name:var(--font-body)] text-sm text-forest/55 hover:text-forest transition-colors px-3 py-1.5"
             >
               Explore
             </Link>
             <Link
-              to="/diff"
+              to="/how-it-works"
               className="font-[family-name:var(--font-body)] text-sm text-forest/55 hover:text-forest transition-colors px-3 py-1.5"
             >
               How it works
             </Link>
             <div className="h-4 w-px bg-forest/15 mx-1" />
-            <Link
-              to="/login"
-              className="font-[family-name:var(--font-body)] text-sm text-forest/65 hover:text-forest transition-colors px-3 py-1.5 border border-forest/15 squircle-sm hover:border-forest/25"
-            >
-              Sign In
-            </Link>
-            <Link
-              to="/login"
-              className="font-[family-name:var(--font-body)] text-sm bg-forest text-parchment px-4 py-1.5 squircle-sm hover:bg-forest-deep transition-colors"
-            >
-              Sign Up
-            </Link>
+            <div className="flex squircle-sm overflow-hidden border border-forest/15">
+              <Link
+                to="/login?mode=signin"
+                className="font-[family-name:var(--font-body)] text-sm text-forest/65 hover:text-forest hover:bg-forest/[0.05] transition-colors px-5 py-1.5 text-center"
+              >
+                Sign In
+              </Link>
+              <div className="w-px bg-forest/15" />
+              <Link
+                to="/login?mode=signup"
+                className="font-[family-name:var(--font-body)] text-sm bg-forest text-parchment hover:bg-forest-deep transition-colors px-5 py-1.5 text-center"
+              >
+                Sign Up
+              </Link>
+            </div>
           </nav>
         </div>
       </header>
 
       {/* ── Body — two columns ───────────────────────────────────── */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 gap-8">
 
         {/* LEFT — Hero ──────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col justify-center px-12 xl:px-20 relative">
+        <div className="flex-1 flex flex-col justify-center px-8 xl:px-14 relative">
           {/* Decorative doodle */}
           <svg className="absolute bottom-12 left-8 w-36 h-36 opacity-[0.05] pointer-events-none" viewBox="0 0 150 150" fill="none">
             <path d="M20 130 Q40 20 130 50" stroke="#A3B18A" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M40 120 Q70 60 120 80" stroke="#264635" strokeWidth="1" strokeLinecap="round" />
           </svg>
 
-          <div className="relative z-10 max-w-lg">
+          <div className="relative z-10 max-w-lg ml-auto mr-6 stagger">
             <span className="font-mono text-[9px] text-sage/55 tracking-[0.4em] uppercase block mb-4">
               COLLABORATIVE KNOWLEDGE PLATFORM
             </span>
@@ -182,7 +215,7 @@ export default function Landing() {
                 </svg>
               </Link>
               <Link
-                to="/repos"
+                to="/explore"
                 className="inline-flex items-center gap-2 border border-forest/20 text-forest px-5 py-2.5 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest/[0.04] transition-colors"
               >
                 Browse Nootbooks
@@ -192,26 +225,21 @@ export default function Landing() {
         </div>
 
         {/* RIGHT — Preview card ──────────────────────────────────── */}
-        <div className="flex-1 flex items-center justify-center px-8 xl:px-12 relative">
-          {/* Decorative circle */}
-          <svg className="absolute top-8 right-8 w-48 h-48 opacity-[0.05] pointer-events-none" viewBox="0 0 200 200" fill="none">
-            <circle cx="100" cy="100" r="80" stroke="#264635" strokeWidth="1" />
-            <circle cx="100" cy="100" r="50" stroke="#A3B18A" strokeWidth="1" />
-          </svg>
+        <div className="flex-1 flex items-center justify-start px-4 xl:px-8 relative">
 
-          <div className="bg-parchment border border-forest/10 p-6 squircle-xl shadow-[0_4px_40px_-12px_rgba(38,70,53,0.09)] w-full max-w-md">
+          <div className="bg-parchment border border-forest/10 p-6 squircle-xl shadow-[0_4px_40px_-12px_rgba(38,70,53,0.09)] w-full max-w-md animate-fade-up" style={{ animationDelay: '0.35s' }}>
             {/* Card header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-sage" />
-                <span className="font-mono text-[9px] text-forest/40 tracking-wider uppercase">WHAT NOOTES CAN DO</span>
+                <span className="font-mono text-[11px] text-forest/40 tracking-wider uppercase">WHAT NOOTES CAN DO</span>
               </div>
               {/* Tab buttons */}
               <div className="flex items-center gap-1">
                 {PREVIEW_TABS.map(tab => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => handleTabClick(tab)}
                     className={`font-mono text-[8px] tracking-wider px-2 py-1 squircle-sm transition-all cursor-pointer ${
                       activeTab === tab
                         ? 'bg-forest text-parchment'
@@ -225,10 +253,14 @@ export default function Landing() {
             </div>
 
             {/* Tab content */}
-            <div key={activeTab} className="animate-tab-enter">
-              {activeTab === 'Write' && <WritePreview />}
-              {activeTab === 'Merge' && <MergePreview />}
-              {activeTab === 'Study' && <StudyPreview />}
+            <div
+              className={`transition-all duration-[180ms] ease-out ${
+                isExiting ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'
+              }`}
+            >
+              {displayedTab === 'Write' && <WritePreview />}
+              {displayedTab === 'Merge' && <MergePreview />}
+              {displayedTab === 'Study' && <StudyPreview />}
             </div>
           </div>
         </div>
@@ -243,8 +275,8 @@ export default function Landing() {
           </div>
           <p className="font-mono text-[9px] text-forest/35 tracking-wider">Built for learners, by learners.</p>
           <div className="flex items-center gap-4">
-            <Link to="/repos" className="font-mono text-[9px] text-forest/30 hover:text-forest/50 transition-colors tracking-wider">EXPLORE</Link>
-            <Link to="/diff" className="font-mono text-[9px] text-forest/30 hover:text-forest/50 transition-colors tracking-wider">HOW IT WORKS</Link>
+            <Link to="/explore" className="font-mono text-[9px] text-forest/30 hover:text-forest/50 transition-colors tracking-wider">EXPLORE</Link>
+            <Link to="/how-it-works" className="font-mono text-[9px] text-forest/30 hover:text-forest/50 transition-colors tracking-wider">HOW IT WORKS</Link>
             <Link to="/login" className="font-mono text-[9px] text-forest/30 hover:text-forest/50 transition-colors tracking-wider">SIGN IN</Link>
           </div>
         </div>
