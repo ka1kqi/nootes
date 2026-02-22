@@ -117,11 +117,11 @@ export default function Profile() {
         supabase
           .from('documents')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', user!.id),
+          .eq('owner_user_id', user!.id),
         supabase
           .from('merge_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', user!.id)
+          .eq('author_user_id', user!.id)
           .eq('status', 'merged'),
         supabase
           .from('documents')
@@ -129,8 +129,8 @@ export default function Profile() {
           .eq('owner_user_id', user!.id),
         supabase
           .from('documents')
-          .select('id, title, updated_at, created_at, repositories(title)')
-          .eq('user_id', user!.id)
+          .select('id, title, updated_at, created_at')
+          .eq('owner_user_id', user!.id)
           .order('updated_at', { ascending: false })
           .limit(10),
       ])
@@ -146,7 +146,7 @@ export default function Profile() {
         setActivity(activityRes.data.map((d: any) => ({
           id: d.id,
           title: d.title ?? '',
-          repo_title: d.repositories?.title ?? 'Unknown nootbook',
+          repo_title: d.title ?? 'Untitled',
           updated_at: d.updated_at,
           created_at: d.created_at,
         })))

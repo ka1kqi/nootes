@@ -932,7 +932,7 @@ export default function Home() {
       const [{ count: nootCount }, { count: userCount }, { count: repoCount }] = await Promise.all([
         supabase.from('documents').select('*', { count: 'exact', head: true }),
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        supabase.from('repositories').select('*', { count: 'exact', head: true }),
+        supabase.from('documents').select('*', { count: 'exact', head: true }).eq('is_public_root', true),
       ])
       setStats([
         { value: (nootCount ?? 0).toLocaleString(), label: 'nootes shared' },
