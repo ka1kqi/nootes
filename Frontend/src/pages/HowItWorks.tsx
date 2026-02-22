@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import logoImg from '../assets/logo.png'
-import { KaTeX } from '../components/KaTeX'
 
 /* ------------------------------------------------------------------ */
 /* How It Works — public marketing page                                */
@@ -9,98 +8,102 @@ import { KaTeX } from '../components/KaTeX'
 
 // ── Inline mockup components ─────────────────────────────────────────
 
-function WriteMockup() {
+function DiscoverMockup() {
+  const repos = [
+    { code: 'CS-UA 310', name: 'Intro to Algorithms', org: 'NYU', contributors: 47, notes: 23, tags: ['exam-relevant', 'midterm'], access: 'public' },
+    { code: 'MATH-UA 121', name: 'Calculus I', org: 'NYU', contributors: 31, notes: 18, tags: ['final', 'practice'], access: 'public' },
+    { code: 'CHEM-UA 125', name: 'General Chemistry', org: 'NYU', contributors: 19, notes: 11, tags: ['lab', 'midterm'], access: 'restricted' },
+  ]
   return (
     <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)]">
-      {/* editor titlebar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-forest/[0.07] bg-cream/60">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            <div className="w-2.5 h-2.5 rounded-full bg-forest/10" />
-            <div className="w-2.5 h-2.5 rounded-full bg-forest/10" />
-            <div className="w-2.5 h-2.5 rounded-full bg-forest/10" />
+      {/* search bar */}
+      <div className="px-4 py-3 border-b border-forest/[0.07] bg-cream/60 flex items-center gap-2">
+        <svg className="w-3.5 h-3.5 text-forest/25 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="m21 21-4.35-4.35"/>
+        </svg>
+        <span className="font-mono text-[10px] text-forest/30 flex-1">Search repositories…</span>
+        <span className="font-mono text-[9px] bg-forest/[0.05] text-forest/30 px-2 py-0.5 squircle-sm">NYU</span>
+      </div>
+      {/* repo list */}
+      <div className="divide-y divide-forest/[0.05]">
+        {repos.map((r, i) => (
+          <div key={i} className="px-4 py-3 hover:bg-forest/[0.02] transition-colors">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div>
+                <span className="font-mono text-[9px] text-sage/50 tracking-wider">{r.code}</span>
+                <p className="font-[family-name:var(--font-display)] text-sm text-forest leading-snug">{r.name}</p>
+              </div>
+              <span className={`font-mono text-[8px] px-1.5 py-0.5 squircle-sm border shrink-0 mt-0.5 ${r.access === 'public' ? 'text-sage/70 bg-sage/[0.08] border-sage/15' : 'text-amber-600/60 bg-amber-50/50 border-amber-200/40'}`}>
+                {r.access}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mt-1.5">
+              <span className="font-mono text-[8px] text-forest/25">{r.contributors} contributors · {r.notes} notes</span>
+              <div className="flex gap-1">
+                {r.tags.map((t, j) => (
+                  <span key={j} className="font-mono text-[7px] bg-forest/[0.04] text-forest/30 px-1.5 py-0.5 squircle-sm">{t}</span>
+                ))}
+              </div>
+            </div>
           </div>
-          <span className="font-mono text-[10px] text-forest/30 ml-2">chain-rule.md</span>
-        </div>
-        <span className="font-mono text-[9px] bg-sage/10 text-sage px-2 py-0.5 squircle-sm">main</span>
+        ))}
       </div>
-      {/* editor body */}
-      <div className="p-5 space-y-3">
-        <div>
-          <span className="font-[family-name:var(--font-display)] text-xl text-forest">The Chain Rule</span>
-        </div>
-        <div className="bg-forest/[0.03] border-l-4 border-sage p-3 squircle-sm">
-          <KaTeX math="\frac{d}{dx}[f(g(x))] = f'(g(x)) \cdot g'(x)" display />
-        </div>
-        <p className="font-[family-name:var(--font-body)] text-xs text-forest/50 leading-relaxed">
-          Apply whenever differentiating a composite function — outer first, multiply by the inner's derivative.
-        </p>
-        <div className="flex items-center gap-2 pt-1">
-          <div className="h-px flex-1 bg-forest/[0.06]" />
-          <span className="font-mono text-[9px] text-forest/20">### Example 1</span>
-          <div className="h-px flex-1 bg-forest/[0.06]" />
-        </div>
-        <p className="font-mono text-[11px] text-forest/40 leading-relaxed">
-          Find the derivative of <span className="text-sage/80">h(x) = (3x + 1)²</span>
-        </p>
-        <div className="bg-forest/[0.02] border border-forest/[0.06] squircle-sm p-2.5">
-          <KaTeX math="h'(x) = 2(3x+1) \cdot 3 = 6(3x+1)" display />
-        </div>
-      </div>
-      {/* status bar */}
-      <div className="px-4 py-2 border-t border-forest/[0.06] flex items-center gap-3 bg-cream/40">
-        <div className="w-1.5 h-1.5 rounded-full bg-sage/60" />
-        <span className="font-mono text-[9px] text-forest/25">LaTeX · Markdown · auto-save on</span>
+      <div className="px-4 py-2 border-t border-forest/[0.06] bg-cream/40 flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-sage/50" />
+        <span className="font-mono text-[9px] text-forest/25">127 public repositories · 3 universities</span>
       </div>
     </div>
   )
 }
 
-function BranchMockup() {
-  const contributors = [
-    { name: 'Alice M.', initials: 'AM', branch: 'alice/examples', color: 'bg-forest/80', offset: 'mt-0', note: 'Added worked examples with substitution steps.' },
-    { name: 'Ben K.', initials: 'BK', branch: 'ben/proofs', color: 'bg-sienna/60', offset: 'mt-6', note: 'Formal epsilon-delta proof of the chain rule.' },
-    { name: 'Cora L.', initials: 'CL', branch: 'cora/intuition', color: 'bg-moss/60', offset: 'mt-12', note: 'Added geometric intuition + visual diagram.' },
-  ]
+function ForkMockup() {
   return (
-    <div className="bg-parchment border border-forest/10 squircle-xl p-5 shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)] space-y-4">
-      <div className="flex items-center gap-2 mb-1">
-        <div className="w-1.5 h-1.5 rounded-full bg-sage" />
-        <span className="font-mono text-[10px] text-forest/35 tracking-wider uppercase">Nootbook · CS-UA 310</span>
+    <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)]">
+      {/* titlebar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-forest/[0.07] bg-cream/60">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] text-forest/30">CS-UA 310 · Algorithms</span>
+          <svg className="w-3 h-3 text-forest/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" d="M9 5l7 7-7 7"/>
+          </svg>
+          <span className="font-mono text-[10px] text-sage/60">you/week-4-notes</span>
+        </div>
+        <span className="font-mono text-[8px] bg-sage/[0.08] text-sage/60 border border-sage/15 px-2 py-0.5 squircle-sm">forked</span>
       </div>
 
-      {/* main branch line */}
-      <div className="flex items-center gap-3">
-        <div className="w-3 h-3 rounded-full bg-forest/70 shrink-0" />
-        <div className="flex-1 h-px bg-forest/20" />
-        <span className="font-mono text-[9px] text-forest/30">main</span>
-      </div>
+      {/* editor body */}
+      <div className="p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="font-[family-name:var(--font-display)] text-xl text-forest">Dynamic Programming</span>
+          <span className="font-mono text-[8px] text-sage/40 bg-sage/[0.06] px-2 py-0.5 squircle-sm ml-auto">your fork</span>
+        </div>
 
-      {/* contributor branches */}
-      <div className="pl-4 space-y-3">
-        {contributors.map((c, i) => (
-          <div key={i} className="flex items-start gap-3">
-            <div className="flex flex-col items-center gap-1 pt-1">
-              <div className="w-px h-2 bg-forest/10" />
-              <div className={`w-2 h-2 rounded-full shrink-0 ${c.color} opacity-70`} />
-            </div>
-            <div className="flex-1 bg-forest/[0.02] border border-forest/[0.07] squircle-sm p-2.5">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-4 h-4 rounded-full ${c.color} flex items-center justify-center text-[7px] text-parchment font-medium`}>{c.initials}</div>
-                  <span className="font-mono text-[9px] text-forest/40">{c.branch}</span>
-                </div>
-                <span className="font-mono text-[8px] text-sage/50 bg-sage/[0.07] px-1.5 py-0.5 squircle-sm">open</span>
-              </div>
-              <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/45 leading-snug">{c.note}</p>
-            </div>
+        {/* existing master content (dimmed) */}
+        <div className="bg-forest/[0.02] border border-forest/[0.05] squircle-sm p-3 opacity-50">
+          <span className="font-mono text-[8px] text-forest/30 tracking-wider block mb-1">FROM MASTER</span>
+          <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/40 leading-snug">
+            DP breaks problems into overlapping subproblems and stores results to avoid recomputation.
+          </p>
+        </div>
+
+        {/* new content being added */}
+        <div className="bg-sage/[0.06] border border-sage/20 squircle-sm p-3">
+          <span className="font-mono text-[8px] text-sage/50 tracking-wider block mb-1.5">YOUR ADDITION ✦</span>
+          <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/65 leading-snug">
+            Memoization vs tabulation: top-down recursion + cache vs bottom-up table fill. Both achieve O(n) on Fibonacci.
+          </p>
+          <div className="mt-2 bg-forest/[0.04] squircle-sm p-2 font-mono text-[9px] text-forest/45 leading-relaxed">
+            <span className="text-sage/60">def</span> fib(n, memo=<span className="text-sage/60">{'{}'}</span>):<br />
+            {'  '}<span className="text-sage/60">if</span> n <span className="text-sage/60">in</span> memo: <span className="text-sage/60">return</span> memo[n]
           </div>
-        ))}
+        </div>
       </div>
 
-      <div className="pt-1 border-t border-forest/[0.06] flex items-center justify-between">
-        <span className="font-mono text-[9px] text-forest/25">3 open branches · 1 nootbook</span>
-        <span className="font-mono text-[9px] text-sage/50">ready to merge ✦</span>
+      {/* status bar */}
+      <div className="px-4 py-2 border-t border-forest/[0.06] flex items-center gap-3 bg-cream/40">
+        <div className="w-1.5 h-1.5 rounded-full bg-sage/70 animate-pulse" />
+        <span className="font-mono text-[9px] text-forest/25">auto-saved · ready to submit fork</span>
+        <button className="ml-auto bg-forest text-parchment font-mono text-[8px] px-3 py-1 squircle-sm">Submit →</button>
       </div>
     </div>
   )
@@ -158,106 +161,105 @@ function MergeMockup() {
   )
 }
 
-function StudyMockup() {
+function NootMockup() {
   return (
-    <div className="bg-parchment border border-forest/10 squircle-xl p-5 shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)] space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-sage" />
-          <span className="font-mono text-[10px] text-forest/35 tracking-wider uppercase">Study Mode</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {['Flashcards', 'Quiz', 'Summary'].map((t, i) => (
-            <span key={i} className={`font-mono text-[8px] px-2 py-1 squircle-sm ${i === 0 ? 'bg-forest text-parchment' : 'text-forest/30'}`}>{t}</span>
+    <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)]">
+      {/* titlebar */}
+      <div className="px-4 py-3 border-b border-forest/[0.07] bg-cream/60 flex items-center gap-2">
+        <div className="w-5 h-5 rounded-full bg-sage/20 flex items-center justify-center text-[10px]">🐧</div>
+        <span className="font-mono text-[10px] text-forest/40">Noot · AI Study Companion</span>
+        <div className="ml-auto flex items-center gap-1">
+          {['Write', 'Graphs', 'Concise'].map((m, i) => (
+            <span key={i} className={`font-mono text-[8px] px-2 py-0.5 squircle-sm ${i === 1 ? 'bg-forest text-parchment' : 'text-forest/30'}`}>{m}</span>
           ))}
         </div>
       </div>
 
-      {/* flashcard stack */}
-      <div className="relative h-32">
-        {/* back cards */}
-        <div className="absolute inset-0 bg-forest/[0.03] border border-forest/[0.06] squircle-xl translate-y-2 translate-x-2 scale-[0.97]" />
-        <div className="absolute inset-0 bg-forest/[0.02] border border-forest/[0.04] squircle-xl translate-y-1 translate-x-1 scale-[0.985]" />
-        {/* front card */}
-        <div className="absolute inset-0 bg-parchment border border-forest/10 squircle-xl p-4 flex flex-col justify-between shadow-[0_2px_16px_-4px_rgba(38,70,53,0.08)]">
-          <div>
-            <span className="font-mono text-[8px] text-sage/50 tracking-wider uppercase block mb-2">Question 1 of 12</span>
-            <p className="font-[family-name:var(--font-body)] text-sm text-forest/80 font-medium">
-              When do you need to use the chain rule?
-            </p>
+      {/* messages */}
+      <div className="p-4 space-y-3">
+        {/* user message */}
+        <div className="flex justify-end">
+          <div className="bg-forest/[0.06] border border-forest/[0.08] squircle-sm px-3 py-2 max-w-[80%]">
+            <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/70">explain how Dijkstra's algorithm works</p>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[9px] text-forest/20">tap to reveal</span>
-            <div className="flex gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-sage" />
-              <div className="w-1.5 h-1.5 rounded-full bg-forest/15" />
-              <div className="w-1.5 h-1.5 rounded-full bg-forest/15" />
-            </div>
+        </div>
+
+        {/* noot graph response */}
+        <div className="bg-sage/[0.06] border border-sage/15 squircle-sm p-3 space-y-2">
+          <span className="font-mono text-[8px] text-sage/50 tracking-wider block">NOOT · GRAPH MODE</span>
+          {/* mini graph viz */}
+          <div className="relative h-24 bg-forest/[0.02] squircle-sm border border-forest/[0.05] overflow-hidden">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-forest text-parchment font-mono text-[8px] px-2 py-1 squircle-sm">Dijkstra's</div>
+            <div className="absolute bottom-3 left-5 bg-parchment border border-forest/15 font-mono text-[7px] text-forest/50 px-1.5 py-0.5 squircle-sm">Priority Queue</div>
+            <div className="absolute bottom-3 right-5 bg-parchment border border-forest/15 font-mono text-[7px] text-forest/50 px-1.5 py-0.5 squircle-sm">Greedy Choice</div>
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-parchment border border-forest/15 font-mono text-[7px] text-forest/50 px-1.5 py-0.5 squircle-sm">Relaxation</div>
+            {/* connecting lines */}
+            <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
+              <line x1="50%" y1="36" x2="22%" y2="76" stroke="#264635" strokeOpacity="0.1" strokeWidth="1"/>
+              <line x1="50%" y1="36" x2="50%" y2="76" stroke="#264635" strokeOpacity="0.1" strokeWidth="1"/>
+              <line x1="50%" y1="36" x2="78%" y2="76" stroke="#264635" strokeOpacity="0.1" strokeWidth="1"/>
+            </svg>
           </div>
+          <p className="font-[family-name:var(--font-body)] text-[11px] text-forest/55 leading-relaxed">
+            Dijkstra's finds shortest paths from a source using a priority queue. It greedily relaxes edges, always processing the closest unvisited node.
+          </p>
+          <button className="font-mono text-[8px] text-sage/60 border border-sage/20 px-2.5 py-1 squircle-sm hover:bg-sage/[0.08] transition-colors">
+            + Add to my notes
+          </button>
         </div>
       </div>
 
-      {/* progress + source badge */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[9px] text-forest/30">4 / 12 reviewed</span>
-          <span className="font-mono text-[9px] text-forest/25">generated from your nootbook</span>
+      {/* input bar */}
+      <div className="px-4 py-3 border-t border-forest/[0.06] flex items-center gap-2 bg-cream/40">
+        <div className="flex-1 bg-forest/[0.03] border border-forest/[0.07] squircle-sm px-3 py-1.5">
+          <span className="font-mono text-[10px] text-forest/20">Ask Noot anything…</span>
         </div>
-        <div className="h-1 bg-forest/[0.06] squircle-sm overflow-hidden">
-          <div className="h-full w-1/3 bg-sage squircle-sm" />
+        <div className="w-7 h-7 bg-forest squircle-sm flex items-center justify-center">
+          <svg className="w-3 h-3 text-parchment" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
         </div>
-      </div>
-
-      {/* exam button */}
-      <div className="grid grid-cols-2 gap-2 pt-1">
-        <button className="bg-forest/[0.04] border border-forest/10 text-forest/50 font-mono text-[9px] py-2 squircle-sm hover:bg-forest/[0.07] transition-colors">
-          Practice Exam
-        </button>
-        <button className="bg-forest text-parchment font-mono text-[9px] py-2 squircle-sm hover:bg-forest-deep transition-colors">
-          Smart Summary
-        </button>
       </div>
     </div>
   )
 }
-
 // ── Step data ─────────────────────────────────────────────────────────
 
 const steps = [
   {
     number: '01',
-    eyebrow: 'WRITE',
-    title: 'Start with a Nootbook.',
-    body: 'Create a nootbook for any course. Write in Markdown — your LaTeX math, code blocks, and diagrams render live as you type. No formatting headaches, no export required.',
-    details: ['LaTeX & chemistry notation', 'Syntax-highlighted code', 'Mermaid diagrams', 'Auto-save & version history'],
-    mockup: <WriteMockup />,
+    eyebrow: 'DISCOVER',
+    title: 'Find knowledge repositories for your courses.',
+    body: 'Browse public note repositories organized by course, university, and subject. Find the CS-UA 310 Algorithms repo, the Organic Chemistry master doc — curated, community-maintained, and ready to fork.',
+    details: ['Organized by course & university', 'Public and restricted access tiers', 'Tag-based filtering (exam-relevant, midterm…)', 'Semantic search across all repositories'],
+    mockup: <DiscoverMockup />,
     flip: false,
   },
   {
     number: '02',
-    eyebrow: 'COLLABORATE',
-    title: 'Invite classmates. Each on their own branch.',
-    body: 'Share a nootbook with your class. Every contributor works on a personal branch — their perspective, their examples, their proofs — without ever overwriting each other. Just like Git.',
-    details: ['Unlimited contributors', 'Conflict-free branching', 'Per-branch history', 'Inline comments & reviews'],
-    mockup: <BranchMockup />,
+    eyebrow: 'FORK & CONTRIBUTE',
+    title: 'Fork any repo. Add your perspective.',
+    body: 'Fork a repository into your own workspace. Write in Markdown with live LaTeX, code blocks, and diagrams — then add your examples, corrections, and insights on top of the existing master. Your fork is yours until you\'re ready to share.',
+    details: ['Full rich-text editor with LaTeX & code', 'Fork inherits master content instantly', 'Aura points for quality contributions', 'Submit fork back when ready'],
+    mockup: <ForkMockup />,
     flip: true,
   },
   {
     number: '03',
-    eyebrow: 'MERGE',
-    title: 'AI reads every branch. Writes one perfect note.',
-    body: 'When you\'re ready to consolidate, Nootes AI synthesizes every contribution. It understands concepts — not just text — and produces a merged note that captures every unique insight without redundancy.',
-    details: ['Semantic understanding', 'Conflict resolution', 'Source attribution', 'One-click merge to main'],
+    eyebrow: 'AI MERGE',
+    title: 'AI synthesizes every fork into one master.',
+    body: 'When forks come in, our AI merge engine reads every contribution — resolving conflicts, preserving LaTeX and code exactly, and prioritizing pedagogical quality over recency. The result is a single, authoritative master document that gets better with every contributor.',
+    details: ['Multi-document reasoning, not just text diff', 'Preserves LaTeX, code, and callout blocks', 'Resolves contradictions by correctness', 'Clean output — no merge annotations'],
     mockup: <MergeMockup />,
     flip: false,
   },
   {
     number: '04',
-    eyebrow: 'STUDY',
-    title: 'Turn your notes into exam prep — instantly.',
-    body: 'Nootes generates flashcards, practice exams, and smart summaries directly from your merged nootbook. Study material built on your class\'s collective understanding, not generic content.',
-    details: ['AI-generated flashcards', 'Practice exam questions', 'Concept summaries', 'Spaced repetition'],
-    mockup: <StudyMockup />,
+    eyebrow: 'LEARN WITH NOOT',
+    title: 'Your AI study companion lives in the editor.',
+    body: 'Ask Noot anything from inside your notes. It answers with live knowledge graphs, writes structured content blocks directly into your document, or gives concise explanations — whatever helps you understand best. Not a chatbot in a tab. A collaborator in your editor.',
+    details: ['Knowledge graph generation', 'Writes directly into your notes', 'Concept breakdowns & deep analysis', 'Context-aware of your open document'],
+    mockup: <NootMockup />,
     flip: true,
   },
 ]
@@ -271,8 +273,13 @@ export default function HowItWorks() {
       {/* ── Nav ──────────────────────────────────────────────────── */}
       <header className="shrink-0 bg-cream/80 backdrop-blur-sm border-b border-forest/[0.06] sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-14">
-          <Link to="/">
+          <Link to="/" className="logo-wave flex items-center gap-1 hover:opacity-80 transition-opacity">
             <img src={logoImg} alt="Nootes logo" style={{ width: 36, height: 36 }} />
+            <span className="font-[family-name:var(--font-display)] text-2xl text-forest flex">
+              {'nootes'.split('').map((letter, i) => (
+                <span key={i} className="wave-letter">{letter}</span>
+              ))}
+            </span>
           </Link>
           <nav className="flex items-center gap-2">
             <Link to="/explore" className="font-[family-name:var(--font-body)] text-sm text-forest/55 hover:text-forest transition-colors px-3 py-1.5">
@@ -303,10 +310,10 @@ export default function HowItWorks() {
             HOW IT WORKS
           </span>
           <h1 className="font-[family-name:var(--font-display)] text-[4.5rem] leading-[0.88] text-forest tracking-tight mb-6">
-            Notes, evolved.
+            Knowledge, together.
           </h1>
           <p className="font-[family-name:var(--font-body)] text-lg text-forest/55 leading-relaxed max-w-xl mx-auto mb-8">
-            Nootes works like Git — but for knowledge. Contribute, branch, merge, and study. Four steps to the best notes your class has ever produced.
+            Nootes is a living knowledge platform — discover course repositories, fork and contribute your insights, let AI synthesize the best of everyone's work, and learn with an AI companion built into your editor.
           </p>
           {/* step pills */}
           <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -375,10 +382,10 @@ export default function HowItWorks() {
             </span>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               {[
-                { icon: '⌘', title: 'Spotlight Search', desc: 'Jump to any note, branch, or contributor instantly.' },
-                { icon: '◎', title: 'Knowledge Graph', desc: 'See how your notes connect as an interactive graph.' },
-                { icon: '✦', title: 'Aura & Themes', desc: 'Personalise your editor with themes and flair.' },
-                { icon: '⎋', title: 'Export anywhere', desc: 'PDF, Markdown, LaTeX — one click, any format.' },
+                { icon: '⌘', title: 'Spotlight Search', desc: 'Jump to any repo, note, or contributor instantly across the whole network.' },
+                { icon: '◎', title: 'Knowledge Graphs', desc: 'Visualize how concepts branch and connect as an interactive graph.' },
+                { icon: '✦', title: 'Aura', desc: 'Earn reputation for every quality contribution. The more you give, the more you grow.' },
+                { icon: '⎋', title: 'Rich Editor', desc: 'LaTeX, code blocks, Mermaid diagrams, callouts — everything renders live as you write.' },
               ].map((f, i) => (
                 <div key={i} className="text-center">
                   <span className="text-2xl text-forest/20 block mb-3">{f.icon}</span>
@@ -394,10 +401,10 @@ export default function HowItWorks() {
         <section className="max-w-2xl mx-auto px-6 py-24 text-center stagger">
           <span className="font-mono text-[9px] text-sage/45 tracking-[0.4em] uppercase block mb-5">GET STARTED</span>
           <h2 className="font-[family-name:var(--font-display)] text-5xl text-forest leading-[0.9] mb-5">
-            Ready to take better notes?
+            Start learning with your community.
           </h2>
           <p className="font-[family-name:var(--font-body)] text-base text-forest/50 leading-relaxed mb-8 max-w-md mx-auto">
-            Join classmates already building the best study resources together.
+            Join classmates already building the best course knowledge repositories together.
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <Link
@@ -413,7 +420,7 @@ export default function HowItWorks() {
               to="/explore"
               className="inline-flex items-center gap-2 border border-forest/20 text-forest px-6 py-3 squircle font-[family-name:var(--font-body)] text-sm hover:bg-forest/[0.04] transition-colors"
             >
-              Browse Nootbooks
+              Browse Repositories
             </Link>
           </div>
         </section>

@@ -11,7 +11,7 @@ import { CodeBlock } from './CodeBlock'
 import { Mermaid } from './Mermaid'
 import { newBlock } from '../hooks/useDocument'
 import type { Block, BlockType } from '../hooks/useDocument'
-
+// minor fix
 // ─── Public handle exposed via ref ───────────────────────────────────────────
 
 export type BlockEditorHandle = {

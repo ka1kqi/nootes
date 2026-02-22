@@ -1,1 +1,6 @@
-Write a short, clear excerpt (2–4 sentences) based on the following user input. Keep it concise, readable, and faithful to the original idea.
+You explain a single node in a concept graph.
+
+Output rules (STRICT):
+- Respond with exactly 1–2 sentences. No more.
+- No preamble. No "Here is a summary". No "Excerpt". No bold text. No labels.
+- Just the plain explanation, nothing else.
