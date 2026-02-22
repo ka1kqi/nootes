@@ -362,7 +362,7 @@ export default function Chat() {
         </aside>
 
         {/* Main chat area */}
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Channel header */}
           <div className="border-b border-forest/[0.08] bg-cream px-6 py-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
@@ -596,7 +596,7 @@ export default function Chat() {
           </div>
 
           {/* Message input */}
-          <div className="border-t border-forest/[0.08] bg-cream px-6 py-4">
+          <div className="border-t border-forest/[0.08] bg-cream px-6 py-4 shrink-0">
             {/* Warning banner */}
             {sendWarning && (
               <div className="flex items-center gap-2.5 mb-3 px-3 py-2 bg-sienna/[0.08] border border-sienna/20 squircle-sm">
