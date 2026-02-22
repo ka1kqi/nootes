@@ -447,3 +447,88 @@ CREATE POLICY "merge_requests: users manage own"
    CREATE POLICY "graph_heads: users manage own"
      ON graph_heads FOR ALL TO authenticated
      USING (graph_id IN (SELECT id FROM graphs WHERE owner_id = auth.uid()));
+
+  -- ============================================================
+   -- Nootes — Conversation History
+   -- Reuses existing graphs / graph_versions for graph rendering
+   -- ============================================================
+
+   create table if not exists conversations (
+     id              uuid        primary key default gen_random_uuid(),
+     user_id         uuid        not null references auth.users(id) on delete cascade,
+
+     -- optional scope: tie a convo to a document or channel
+     document_id     uuid        references documents(id) on delete set null,
+     channel_id      uuid        references channels(id) on delete set null,
+
+     context_type    text        not null default 'home'
+                                 check (context_type in ('home', 'editor', 'channel')),
+
+     title           text,           -- auto-generated summary title
+     system_prompt   text,           -- persona / context injected at conversation start
+
+     created_at      timestamptz not null default now(),
+     updated_at      timestamptz not null default now()
+   );
+
+   create index if not exists idx_conversations_user    on conversations(user_id);
+   create index if not exists idx_conversations_doc     on conversations(document_id);
+   create index if not exists idx_conversations_channel on conversations(channel_id);
+
+   create table if not exists conversation_turns (
+     id                  uuid        primary key default gen_random_uuid(),
+     conversation_id     uuid        not null references conversations(id) on delete cascade,
+
+     role                text        not null check (role in ('user', 'assistant', 'system')),
+     content             text        not null,
+
+     -- rendering hints (read by frontend to pick correct renderer)
+     render_mode         text        not null default 'markdown'
+                                     check (render_mode in ('markdown', 'latex', 'code', 'graph', 'mixed')),
+
+     -- if this turn produced / references a graph, point to the version
+     graph_version_id    uuid        references graph_versions(id) on delete set null,
+
+     turn_index          integer     not null,   -- ordering within conversation
+     prompt_tokens       integer,
+     completion_tokens   integer,
+
+     created_at          timestamptz not null default now(),
+
+     unique (conversation_id, turn_index)
+   );
+
+   create index if not exists idx_turns_conversation on conversation_turns(conversation_id, turn_index);
+
+   -- ============================================================
+   -- Triggers / RLS
+   -- ============================================================
+
+   drop trigger if exists trg_conversations_updated_at on conversations;
+   create trigger trg_conversations_updated_at
+   before update on conversations
+   for each row execute function set_updated_at();
+
+   alter table conversations        enable row level security;
+   alter table conversation_turns   enable row level security;
+
+   create policy "conversations: users manage own"
+     on conversations for all to authenticated
+     using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+   create policy "conversation_turns: users manage own"
+     on conversation_turns for all to authenticated
+     using (
+       exists (
+         select 1 from conversations c
+         where c.id = conversation_id and c.user_id = auth.uid()
+       )
+     )
+     with check (
+       exists (
+         select 1 from conversations c
+         where c.id = conversation_id and c.user_id = auth.uid()
+       )
+     );
+
+   alter publication supabase_realtime add table conversation_turns;
