@@ -17,6 +17,7 @@ import {
   type NodeProps,
   type NodeTypes,
   type EdgeTypes,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -487,6 +488,7 @@ interface PanelState {
 export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: { items: TaskItem[]; onExpand: ExpandFn; onQuery: QueryFn; onGraphChanged?: GraphChangedFn }) {
   const [panel, setPanel] = useState<PanelState | null>(null)
   const expCounter = useRef(0)
+  const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
   const { nodes: initNodes, edges: initEdges } = useMemo(
     () => buildCircularLayout(items),
@@ -507,6 +509,13 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
     setNodes(initNodes)
     setEdges(initEdges)
   }, [initNodes, initEdges, setNodes, setEdges])
+
+  // Re-fit after the parent container animation completes (e.g. spotlight-expand starts
+  // at max-height:0 so ReactFlow measures 0 dimensions on first mount).
+  useEffect(() => {
+    const t = setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.18 }), 350)
+    return () => clearTimeout(t)
+  }, [initNodes, initEdges])
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     const d = node.data as CircleNodeData
@@ -757,6 +766,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodeClick={onNodeClick}
+        onInit={instance => { rfInstanceRef.current = instance }}
         fitView
         fitViewOptions={{ padding: 0.18 }}
         style={{ background: 'transparent' }}

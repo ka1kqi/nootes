@@ -68,7 +68,9 @@ function normaliseContent(raw: string): { body: string; suffix: string } {
 }
 
 function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
-  const { body, suffix } = normaliseContent(content)
+  // Strip optional [GRAPH] marker before parsing
+  const stripped = content.replace(/^\s*\[GRAPH\]\s*/i, '')
+  const { body, suffix } = normaliseContent(stripped)
   try {
     const rawStart = body.indexOf('[')
     if (rawStart !== -1) {
@@ -85,7 +87,7 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
       }
     }
   } catch { /* fall through */ }
-  return parseTextFormat(content)
+  return parseTextFormat(stripped)
 }
 
 /** Fix unescaped backslashes that break JSON.parse (common with LaTeX output) */
