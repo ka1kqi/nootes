@@ -71,7 +71,7 @@ export default function Profile() {
   const [editVisible, setEditVisible] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [draft, setDraft] = useState({ display_name: '', username: '', school: '' })
+  const [draft, setDraft] = useState({ full_name: '', display_name: '', organization: '' })
 
   // Animate in when editing opens, animate out before closing
   function openEdit() {
@@ -88,9 +88,9 @@ export default function Profile() {
   useEffect(() => {
     if (profile && editing && editVisible) {
       setDraft({
+        full_name:    profile.full_name    ?? '',
         display_name: profile.display_name ?? '',
-        username: profile.username ?? '',
-        school: profile.school ?? '',
+        organization: profile.organization ?? '',
       })
     }
   }, [editing, profile])
@@ -110,9 +110,9 @@ export default function Profile() {
           .eq('user_id', user!.id)
           .eq('status', 'merged'),
         supabase
-          .from('repository_contributors')
+          .from('documents')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', user!.id),
+          .eq('owner_user_id', user!.id),
         supabase
           .from('documents')
           .select('id, title, updated_at, created_at, repositories(title)')
@@ -149,28 +149,19 @@ export default function Profile() {
     setSaving(true)
     setSaveError(null)
 
-    // Always save display_name — it definitely exists
-    const { error: nameError } = await supabase
+    const { error } = await supabase
       .from('profiles')
-      .update({ display_name: draft.display_name.trim() || profile?.display_name })
+      .update({
+        full_name:    draft.full_name.trim()    || profile?.full_name,
+        display_name: draft.display_name.trim() || profile?.display_name,
+        organization: draft.organization.trim() || null,
+      })
       .eq('id', user.id)
 
-    if (nameError) {
+    if (error) {
       setSaving(false)
-      setSaveError(nameError.message)
+      setSaveError(error.message)
       return
-    }
-
-    // Attempt username + school — these columns may not exist yet; ignore if they fail
-    if (draft.username.trim() !== (profile?.username ?? '') || draft.school.trim() !== (profile?.school ?? '')) {
-      await supabase
-        .from('profiles')
-        .update({
-          username: draft.username.trim() || null,
-          school: draft.school.trim() || null,
-        })
-        .eq('id', user.id)
-      // silently ignore errors (columns may not exist in the table yet)
     }
 
     setSaving(false)
@@ -209,12 +200,12 @@ export default function Profile() {
                       <h2 className="font-[family-name:var(--font-display)] text-lg text-forest">Edit Profile</h2>
 
                       <div className="flex flex-col gap-1">
-                        <label className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">Name</label>
+                        <label className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">Full Name</label>
                         <input
                           type="text"
-                          value={draft.display_name}
-                          onChange={e => setDraft(d => ({ ...d, display_name: e.target.value }))}
-                          placeholder="Your name"
+                          value={draft.full_name}
+                          onChange={e => setDraft(d => ({ ...d, full_name: e.target.value }))}
+                          placeholder="Your full name"
                           className="bg-cream border border-forest/15 squircle-sm px-3 py-2 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-forest/35 transition-colors"
                         />
                       </div>
@@ -223,19 +214,19 @@ export default function Profile() {
                         <label className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">Username</label>
                         <input
                           type="text"
-                          value={draft.username}
-                          onChange={e => setDraft(d => ({ ...d, username: e.target.value }))}
+                          value={draft.display_name}
+                          onChange={e => setDraft(d => ({ ...d, display_name: e.target.value }))}
                           placeholder="@handle"
                           className="bg-cream border border-forest/15 squircle-sm px-3 py-2 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-forest/35 transition-colors"
                         />
                       </div>
 
                       <div className="flex flex-col gap-1">
-                        <label className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">School</label>
+                        <label className="font-mono text-[10px] text-forest/40 tracking-wider uppercase">School / University</label>
                         <input
                           type="text"
-                          value={draft.school}
-                          onChange={e => setDraft(d => ({ ...d, school: e.target.value }))}
+                          value={draft.organization}
+                          onChange={e => setDraft(d => ({ ...d, organization: e.target.value }))}
                           placeholder="e.g. NYU"
                           className="bg-cream border border-forest/15 squircle-sm px-3 py-2 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/25 outline-none focus:border-forest/35 transition-colors"
                         />
@@ -269,18 +260,16 @@ export default function Profile() {
                         {profile.avatar_url ? (
                           <img
                             src={profile.avatar_url}
-                            alt={profile.display_name}
+                            alt={profile.full_name ?? profile.display_name}
                             className="w-24 h-24 rounded-full object-cover border-4 border-cream shadow-lg mb-4"
                           />
                         ) : (
                           <div className="w-24 h-24 rounded-full bg-forest flex items-center justify-center text-3xl font-medium text-parchment border-4 border-cream shadow-lg mb-4">
-                            {getInitials(profile.display_name)}
+                            {getInitials(profile.full_name ?? profile.display_name)}
                           </div>
                         )}
-                        <h1 className="font-[family-name:var(--font-display)] text-3xl text-forest">{profile.display_name}</h1>
-                        {profile.username && (
-                          <span className="font-mono text-xs text-forest/35 mt-0.5">@{profile.username}</span>
-                        )}
+                        <h1 className="font-[family-name:var(--font-display)] text-3xl text-forest">{profile.full_name ?? profile.display_name}</h1>
+                        <span className="font-mono text-xs text-forest/35 mt-0.5">@{profile.display_name}</span>
                         {profile.email && (
                           <span className="font-mono text-xs text-forest/25 mt-0.5">{profile.email}</span>
                         )}
@@ -289,7 +278,7 @@ export default function Profile() {
                       {/* Meta */}
                       <div className="space-y-2 mb-6">
                         {[
-                          profile.school ? { label: 'School', value: profile.school } : null,
+                          profile.organization ? { label: 'School', value: profile.organization } : null,
                           { label: 'Tier', value: profile.tier },
                           { label: 'Joined', value: formatJoinDate(profile.created_at) },
                         ].filter(Boolean).map(m => (

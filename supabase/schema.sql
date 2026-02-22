@@ -1,6 +1,8 @@
 create table if not exists profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   display_name text        not null default 'Student',
+  full_name    text        not null default EMPTY,
+  organization text        not null default EMPTY,
   avatar_url   text,
   email        text,
   aura         integer     not null default 0 check (aura >= 0),

@@ -82,9 +82,9 @@ export default function Settings() {
   const { themeId, setThemeId, fontScale, setFontScale, compactMode, setCompactMode, latexPreview, setLatexPreview } = useTheme()
 
   // Account
-  const [displayName, setDisplayName] = useState(profile?.display_name ?? '')
-  const [handle, setHandle] = useState(profile?.username ?? '')
-  const [school, setSchool] = useState(profile?.school ?? '')
+  const [fullName, setFullName] = useState(profile?.full_name ?? '')
+  const [handle, setHandle] = useState(profile?.display_name ?? '')
+  const [school, setSchool] = useState(profile?.organization ?? '')
   const [savingProfile, setSavingProfile] = useState(false)
   const [saveProfileMsg, setSaveProfileMsg] = useState<string | null>(null)
 
@@ -111,9 +111,9 @@ export default function Settings() {
   // Sync profile fields when profile loads
   useEffect(() => {
     if (profile) {
-      setDisplayName(profile.display_name ?? '')
-      setHandle(profile.username ?? '')
-      setSchool(profile.school ?? '')
+      setFullName(profile.full_name ?? '')
+      setHandle(profile.display_name ?? '')
+      setSchool(profile.organization ?? '')
     }
   }, [profile])
 
@@ -136,7 +136,7 @@ export default function Settings() {
     setSaveProfileMsg(null)
     const { error } = await supabase
       .from('profiles')
-      .update({ display_name: displayName, username: handle, school })
+      .update({ full_name: fullName, display_name: handle, organization: school })
       .eq('id', user.id)
     setSavingProfile(false)
     setSaveProfileMsg(error ? `Error: ${error.message}` : 'Changes saved.')
@@ -168,7 +168,7 @@ export default function Settings() {
   }
 
   // Avatar initials
-  const initials = (displayName || profile?.display_name || user?.email || 'U')
+  const initials = (fullName || profile?.display_name || user?.email || 'U')
     .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
@@ -242,11 +242,11 @@ export default function Settings() {
                     {/* Fields */}
                     <div className="space-y-4">
                       <div>
-                        <label className="font-mono text-[10px] text-forest/30 tracking-wider uppercase block mb-1.5">Display name</label>
+                        <label className="font-mono text-[10px] text-forest/30 tracking-wider uppercase block mb-1.5">Full name</label>
                         <input
                           type="text"
-                          value={displayName}
-                          onChange={e => setDisplayName(e.target.value)}
+                          value={fullName}
+                          onChange={e => setFullName(e.target.value)}
                           className="w-full bg-cream border border-forest/10 squircle-sm px-3 py-2 text-sm text-forest/80 font-[family-name:var(--font-body)] focus:outline-none focus:border-sage/50 transition-colors"
                         />
                       </div>
