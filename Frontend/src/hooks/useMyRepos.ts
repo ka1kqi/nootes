@@ -46,12 +46,12 @@ export async function createDocument(
 // ─── useUserDocuments ─────────────────────────────────────────────────────────
 
 export function useUserDocuments() {
-  const { user } = useAuth()
+  const { user, sessionReady } = useAuth()
   const [docs, setDocs] = useState<UserDocument[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchDocs = useCallback(async () => {
-    if (!user) { setDocs([]); setLoading(false); return }
+    if (!user || !sessionReady) { setDocs([]); setLoading(true); return }
     setLoading(true)
     const { data } = await supabase
       .from('documents')
@@ -60,7 +60,7 @@ export function useUserDocuments() {
       .order('created_at', { ascending: false })
     setDocs((data as unknown as UserDocument[]) ?? [])
     setLoading(false)
-  }, [user])
+  }, [user, sessionReady])
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { blocksToJson, jsonToBlocks } from '../lib/markdown'
+import { useAuth } from './useAuth'
 
 // ─── Embed helper (fire-and-forget) ──────────────────────────────────────────
 
@@ -104,6 +105,7 @@ const storagePath = (uid: string, rid: string) => `${uid}/${rid}.json`
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useDocument(repoId: string, userId: string, repoTitle?: string) {
+  const { sessionReady } = useAuth()
   // ── Cache lookup ───────────────────────────────────────────────────────────
   const cacheKey = userId && repoId ? `${userId}:${repoId}` : ''
   const cachedDoc = cacheKey ? documentCache.get(cacheKey) : undefined
@@ -134,7 +136,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
   // Fetch on mount — Supabase Storage for both scratch and real repos
   // Scratch additionally falls back to localStorage when offline
   useEffect(() => {
-    if (!userId) return
+    if (!userId || !sessionReady) return
     // Skip network fetch when we already have this document cached
     if (cacheKey && documentCache.has(cacheKey)) return
 
@@ -271,7 +273,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     })()
 
     return () => { cancelled = true }
-  }, [repoId, userId, isScratch])
+  }, [repoId, userId, isScratch, sessionReady])
 
   // Persist — localStorage for scratch, Supabase for real repos
   const persist = useCallback(async (blocks: Block[]) => {

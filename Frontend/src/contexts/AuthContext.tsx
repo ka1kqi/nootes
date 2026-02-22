@@ -10,6 +10,7 @@ interface AuthContextValue {
   profile: Profile | null
   session: Session | null
   loading: boolean
+  sessionReady: boolean
   signInWithGoogle: () => Promise<void>
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>
   signUp: (email: string, password: string) => Promise<{ error: string | null }>
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sessionReady, setSessionReady] = useState(false)
 
   // Load session on mount + subscribe to auth changes
   useEffect(() => {
@@ -76,11 +78,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // syncing user/session — before any async profile work — so the
     // ProtectedRoute unblocks as soon as auth state is known.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         setSession(session)
         setUser(session?.user ?? null)
         // Unblock rendering immediately — profile loads in the background
         setLoading(false)
+
+        // sessionReady gates data-fetching hooks to prevent stale-token queries.
+        // If there's no session, or a fresh token just arrived, mark ready immediately.
+        if (!session || event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+          setSessionReady(true)
+        } else if (event === 'INITIAL_SESSION' && session) {
+          // Token may be expired — only mark ready if it's still valid.
+          // If expired, Supabase auto-refreshes and fires TOKEN_REFRESHED.
+          const expiresAt = session.expires_at ?? 0
+          const isValid = expiresAt > Math.floor(Date.now() / 1000) + 5
+          if (isValid) setSessionReady(true)
+          // else: wait for TOKEN_REFRESHED to set sessionReady
+        }
 
         if (session?.user) {
           try {
@@ -127,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       session,
       loading,
+      sessionReady,
       signInWithGoogle,
       signInWithEmail,
       signUp,

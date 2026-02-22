@@ -580,7 +580,7 @@ function apiBase(): string {
 }
 
 export default function Home() {
-  const { profile, user } = useAuth()
+  const { profile, user, sessionReady } = useAuth()
   const editorBridge = useEditorBridge()
   const navigate = useNavigate()
   const [input, setInput]           = useState('')
@@ -928,6 +928,7 @@ export default function Home() {
   ])
 
   useEffect(() => {
+    if (!sessionReady) return
     async function loadStats() {
       const [{ count: nootCount }, { count: userCount }, { count: repoCount }] = await Promise.all([
         supabase.from('documents').select('*', { count: 'exact', head: true }),
@@ -941,7 +942,7 @@ export default function Home() {
       ])
     }
     loadStats()
-  }, [])
+  }, [sessionReady])
 
   return (
     <div className="h-screen bg-cream flex flex-col overflow-hidden">

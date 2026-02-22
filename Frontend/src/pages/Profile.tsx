@@ -62,7 +62,7 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 export default function Profile() {
-  const { profile, user } = useAuth()
+  const { profile, user, sessionReady } = useAuth()
   const [counts, setCounts] = useState<CountStats | null>(null)
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
 
@@ -110,7 +110,7 @@ export default function Profile() {
   }, [editing, profile])
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !sessionReady) return
 
     async function loadData() {
       const [nootsRes, mergesRes, nootbooksRes, activityRes] = await Promise.all([
@@ -156,7 +156,7 @@ export default function Profile() {
     }
 
     loadData()
-  }, [user])
+  }, [user, sessionReady])
 
   async function handleSave() {
     if (!user) return
