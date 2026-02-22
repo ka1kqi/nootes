@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude doctor)",
+      "Bash(npm i -g @anthropic-ai/claude-code)",
+      "Bash(git pull)",
+      "Bash(git push origin HEAD:kevin)",
+      "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nConvert document storage from markdown to JSON format\n\n- Update backend to use JSON file format instead of markdown\n- Change import from document_to_markdown/markdown_to_document to document_to_json/json_to_document\n- Update file extension from .md to .json in paths and glob patterns\n- Remove old markdown document files\n- Add example JSON document format\n- Update frontend hooks and markdown utilities to work with new format\n\nCo-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
