@@ -116,18 +116,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Force a session refresh every time the tab becomes visible so that
-  // TOKEN_REFRESHED always fires on tab restore, incrementing sessionReady
-  // and causing all data hooks to re-fetch with a guaranteed fresh token.
+  // Force a session refresh every time the tab becomes visible or window regains focus.
+  // Awaiting refreshSession() ensures the Supabase client has a fresh token
+  // before sessionReady increments and triggers all data hooks to re-fetch.
+  // Both visibilitychange and window focus are handled: visibilitychange covers
+  // browser tab switching; window focus covers alt-tab / window switching.
   useEffect(() => {
+    const refresh = async () => {
+      await supabase.auth.refreshSession()
+      setSessionReady(v => v + 1)
+    }
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        supabase.auth.refreshSession()
-        setSessionReady(v => v + 1)
-      }
+      if (document.visibilityState === 'visible') refresh()
     }
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', refresh)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', refresh)
+    }
   }, [])
 
   const signInWithGoogle = useCallback(async () => {
