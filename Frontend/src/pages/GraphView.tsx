@@ -28,8 +28,9 @@ export interface TaskItem {
   depends_on?: string[]
 }
 
-export type ExpandFn = (item: TaskItem, context: string, ancestors: TaskItem[]) => Promise<{ items: TaskItem[]; summary: string }>
-export type QueryFn  = (item: TaskItem, question: string, ancestors: TaskItem[]) => Promise<string>
+export type ExpandFn       = (item: TaskItem, context: string, ancestors: TaskItem[]) => Promise<{ items: TaskItem[]; summary: string }>
+export type QueryFn        = (item: TaskItem, question: string, ancestors: TaskItem[]) => Promise<string>
+export type GraphChangedFn = (nodes: Node[], edges: Edge[]) => void
 type CircleNodeData = {
   label: string
   text: string
@@ -37,7 +38,10 @@ type CircleNodeData = {
   total: number
   isRoot: boolean
   isExpanded?: boolean
+  isGenerating?: boolean  // true while children are being fetched
   ancestors?: TaskItem[]
+  depth: number       // BFS depth from root (0 = center)
+  animDelay: number   // ms delay for staggered entrance animation
 }
 type CircleNodeType = Node<CircleNodeData, 'circle'>
 
@@ -57,56 +61,95 @@ const CurvedEdge = ({
 const edgeTypes: EdgeTypes = { curved: CurvedEdge }
 
 // ─── DIMENSIONS ──────────────────────────────────────────────────────────────
-const D  = 80
-const NW = 120
-const NH = D + 8 + 40
+// All nodes share one bounding box (NODE_W × NODE_H) so handles & edge routing
+// are consistent. Only the visual circle diameter varies by depth.
+const NODE_W = 160
+const NODE_H = 160
+const circleD = (depth: number) => depth === 0 ? 120 : depth === 1 ? 82 : 66
 
-// Handles pinned to circle centre so edges route at any angle
+// Handles pinned to bounding-box centre so edges route at any angle
 const HS = {
-  left: NW / 2, top: D / 2, bottom: 'auto', right: 'auto',
+  left: NODE_W / 2, top: NODE_H / 2, bottom: 'auto', right: 'auto',
   transform: 'translate(-50%, -50%)',
   opacity: 0, width: 1, height: 1,
 }
 
 // ─── CIRCLE NODE ─────────────────────────────────────────────────────────────
 const CircleNode = ({ data, selected }: NodeProps<CircleNodeType>) => {
-  const acc = '#A3B18A'
-  const bg  = selected ? '#264635' : '#E9E4D4'
+  const acc  = '#A3B18A'
+  const bg   = selected ? '#264635' : '#E9E4D4'
+  const depth = data.depth ?? 1
+  const D    = circleD(depth)
+  const delay = (data.animDelay ?? 0) / 1000
+
+  // Centre the circle vertically within the fixed NODE_H bounding box
+  const circlePaddingTop = (NODE_H - D - 8 - 36) / 2
+
+  // Bottom of visible content — root has no label rendered, others have circle + gap + label
+  const contentBottom = depth === 0
+    ? circlePaddingTop + D
+    : circlePaddingTop + D + 8 + 36
 
   return (
     <>
       <Handle type="target" position={Position.Top}    style={HS} />
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: NW }}>
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.55, delay, ease: [0.34, 1.56, 0.64, 1] }}
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          width: NODE_W, height: NODE_H, paddingTop: circlePaddingTop,
+          transformOrigin: 'center center',
+        }}
+      >
         <div style={{
           width: D, height: D, borderRadius: '50%',
           background: bg,
-          border: `2px solid ${data.isExpanded ? acc : '#264635'}`,
+          border: `${depth === 0 ? 3 : 2}px solid ${data.isExpanded ? acc : '#264635'}`,
           boxShadow: selected
             ? `0 0 0 4px ${acc}, 0 0 0 8px rgba(38,70,53,0.10)`
-            : data.isExpanded
-              ? `0 0 0 2px ${acc}`
-              : '2px 2px 0 rgba(38,70,53,0.14)',
+            : depth === 0
+              ? `0 0 0 8px rgba(163,177,138,0.18), 4px 4px 0 rgba(38,70,53,0.14)`
+              : data.isExpanded
+                ? `0 0 0 2px ${acc}`
+                : '2px 2px 0 rgba(38,70,53,0.14)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
           transition: 'background 0.2s, box-shadow 0.2s, border-color 0.2s',
           position: 'relative', overflow: 'hidden',
+          flexShrink: 0,
         }}>
           {/* Dashed inner ring */}
           <div style={{
-            position: 'absolute', inset: 7, borderRadius: '50%',
+            position: 'absolute', inset: depth === 0 ? 10 : 7, borderRadius: '50%',
             border: `1px dashed ${selected ? acc : '#264635'}`,
             opacity: 0.2,
           }} />
 
-          {data.isRoot ? (
+          {depth === 0 ? (
+            // Root node: show label text inside the circle
             <div style={{
-              width: 16, height: 16, background: selected ? acc : '#264635',
-              transform: 'rotate(45deg)', opacity: 0.85,
-            }} />
+              fontFamily: "'Gamja Flower', cursive",
+              fontSize: 12, fontWeight: 400,
+              color: selected ? '#E9E4D4' : '#264635',
+              textAlign: 'center',
+              padding: '0 12px',
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              lineHeight: 1.3,
+            }}>
+              {data.label}
+            </div>
           ) : (
             <span style={{
               fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 11, fontWeight: 700, color: acc, letterSpacing: '0.04em',
+              fontSize: depth === 1 ? 11 : 9,
+              fontWeight: 700,
+              color: acc,
+              letterSpacing: '0.04em',
             }}>
               {String(data.index + 1).padStart(2, '0')}
             </span>
@@ -123,16 +166,86 @@ const CircleNode = ({ data, selected }: NodeProps<CircleNodeType>) => {
         </div>
 
         <div style={{
-          marginTop: 8, width: NW, textAlign: 'center',
+          marginTop: 8, width: NODE_W, textAlign: 'center',
           fontFamily: "'Gamja Flower', cursive",
-          fontSize: data.isRoot ? 13 : 11,
+          fontSize: depth === 0 ? 12 : depth === 1 ? 11 : 10,
           color: '#264635', lineHeight: 1.3,
-          display: '-webkit-box',
+          display: depth === 0 ? 'none' : '-webkit-box',
           WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>
           {data.label}
         </div>
-      </div>
+      </motion.div>
+
+      {/* ── Generating animation — appears below the node while children load ── */}
+      <AnimatePresence>
+        {data.isGenerating && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            style={{
+              position: 'absolute',
+              top: contentBottom + 8,
+              left: 0,
+              width: NODE_W,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 6,
+              pointerEvents: 'none',
+            }}
+          >
+            {/* Dashed spoke lines radiating from below */}
+            <div style={{ position: 'relative', width: 60, height: 28 }}>
+              {[- 40, 0, 40].map((deg, i) => (
+                <motion.div
+                  key={i}
+                  style={{
+                    position: 'absolute',
+                    left: '50%', top: 0,
+                    width: 28, height: 1.5,
+                    background: 'linear-gradient(90deg, #A3B18A, transparent)',
+                    transformOrigin: 'left center',
+                    transform: `rotate(${deg}deg)`,
+                    marginTop: 0,
+                  }}
+                  animate={{ opacity: [0.2, 0.8, 0.2], scaleX: [0.6, 1, 0.6] }}
+                  transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.22, ease: 'easeInOut' }}
+                />
+              ))}
+            </div>
+
+            {/* Three bouncing dots */}
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {[0, 1, 2].map(i => (
+                <motion.div
+                  key={i}
+                  style={{
+                    width: 5, height: 5, borderRadius: '50%',
+                    background: '#A3B18A',
+                    flexShrink: 0,
+                  }}
+                  animate={{ y: [0, -7, 0], opacity: [0.35, 1, 0.35] }}
+                  transition={{ duration: 0.85, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
+                />
+              ))}
+            </div>
+
+            {/* "generating" label */}
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 8, letterSpacing: '0.12em',
+              color: '#A3B18A', textTransform: 'uppercase',
+              opacity: 0.7,
+            }}>
+              generating
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Handle type="source" position={Position.Bottom} style={HS} />
     </>
   )
@@ -140,7 +253,10 @@ const CircleNode = ({ data, selected }: NodeProps<CircleNodeType>) => {
 
 const nodeTypes: NodeTypes = { circle: CircleNode }
 
-// ─── CIRCULAR LAYOUT ─────────────────────────────────────────────────────────
+// ─── HUB-AND-SPOKE LAYOUT ────────────────────────────────────────────────────
+// Root node(s) sit at the centre; children radiate outward in concentric rings.
+// Nodes at depth ≥ 2 are clustered near their parent's angular position so the
+// graph reads as a true spoke/wheel rather than concentric circles.
 function buildCircularLayout(items: TaskItem[]) {
   const n = items.length
   if (n === 0) return { nodes: [], edges: [] }
@@ -161,6 +277,7 @@ function buildCircularLayout(items: TaskItem[]) {
     })
   })
 
+  // Fallback chain if no edges declared
   if (edgeSet.size === 0) {
     for (let i = 0; i < n - 1; i++) {
       edgeSet.add(`${i}→${i + 1}`)
@@ -169,52 +286,102 @@ function buildCircularLayout(items: TaskItem[]) {
     }
   }
 
-  // Topological sort → clockwise order
-  const inDeg = parentsOf.map(p => p.length)
-  const order: number[] = []
-  const queue = items.map((_, i) => i).filter(i => inDeg[i] === 0)
+  // ── BFS to assign depths and animation order ──────────────────────────────
+  const roots = items.map((_, i) => i).filter(i => parentsOf[i].length === 0)
+  const depth: number[] = new Array(n).fill(-1)
+  const bfsOrder: number[] = []
+  const queue = [...roots]
+  roots.forEach(r => { depth[r] = 0 })
+
   while (queue.length) {
     const cur = queue.shift()!
-    order.push(cur)
-    for (const c of childrenOf[cur]) { if (--inDeg[c] === 0) queue.push(c) }
+    bfsOrder.push(cur)
+    for (const child of childrenOf[cur]) {
+      if (depth[child] === -1) {
+        depth[child] = depth[cur] + 1
+        queue.push(child)
+      }
+    }
   }
-  const orderedSet = new Set(order)
-  items.forEach((_, i) => { if (!orderedSet.has(i)) order.push(i) })
+  // Cycle members / disconnected nodes get depth 1
+  items.forEach((_, i) => { if (depth[i] === -1) { depth[i] = 1; bfsOrder.push(i) } })
 
-  const MIN_ARC = Math.max(NW, NH) + 30
-  const RADIUS  = Math.max((n * MIN_ARC) / (2 * Math.PI), 240)
-
-  const pos: { x: number; y: number }[] = new Array(n)
-  const posIdx = new Map<number, number>()
-  order.forEach((origIdx, ringPos) => {
-    posIdx.set(origIdx, ringPos)
-    const angle = (2 * Math.PI * ringPos) / n - Math.PI / 2
-    pos[origIdx] = { x: RADIUS * Math.cos(angle), y: RADIUS * Math.sin(angle) }
+  // ── Group by depth ────────────────────────────────────────────────────────
+  const byDepth = new Map<number, number[]>()
+  items.forEach((_, i) => {
+    if (!byDepth.has(depth[i])) byDepth.set(depth[i], [])
+    byDepth.get(depth[i])!.push(i)
   })
 
-  const roots = items.map((_, i) => i).filter(i => parentsOf[i].length === 0)
+  const RING_RADIUS = 180
+  const pos: { x: number; y: number }[] = new Array(n)
+
+  byDepth.forEach((idxs, d) => {
+    if (d === 0) {
+      // Root(s) at centre
+      idxs.forEach(i => { pos[i] = { x: 0, y: 0 } })
+      return
+    }
+
+    const r = d * RING_RADIUS
+
+    if (d === 1) {
+      // Depth-1: evenly spaced around root
+      const cnt = idxs.length
+      idxs.forEach((i, j) => {
+        const angle = (2 * Math.PI * j / cnt) - Math.PI / 2
+        pos[i] = { x: r * Math.cos(angle), y: r * Math.sin(angle) }
+      })
+      return
+    }
+
+    // Depth ≥ 2: cluster children near parent's angular direction
+    const byParent = new Map<number, number[]>()
+    idxs.forEach(i => {
+      const parent = parentsOf[i][0] ?? -1
+      if (!byParent.has(parent)) byParent.set(parent, [])
+      byParent.get(parent)!.push(i)
+    })
+
+    byParent.forEach((children, parentIdx) => {
+      const pPos = pos[parentIdx] ?? { x: 0, y: 0 }
+      const parentAngle = Math.atan2(pPos.y, pPos.x)
+      const spread = Math.PI / 2.5  // ~72° arc per parent
+      const cnt = children.length
+      children.forEach((i, j) => {
+        const offset = cnt === 1 ? 0 : (j / (cnt - 1) - 0.5) * spread
+        const angle = parentAngle + offset
+        pos[i] = { x: r * Math.cos(angle), y: r * Math.sin(angle) }
+      })
+    })
+  })
+
+  // animDelay: BFS order × 150 ms
+  const animDelayArr = new Array(n).fill(0)
+  bfsOrder.forEach((idx, order) => { animDelayArr[idx] = order * 150 })
 
   const rfNodes: Node[] = items.map((item, idx) => ({
     id: `n${idx}`,
     type: 'circle' as const,
-    position: { x: pos[idx].x - NW / 2, y: pos[idx].y - NH / 2 },
-    data: { label: item.name, text: item.text, index: idx, total: n, isRoot: roots.includes(idx), ancestors: [] },
+    position: { x: pos[idx].x - NODE_W / 2, y: pos[idx].y - NODE_H / 2 },
+    data: {
+      label: item.name, text: item.text, index: idx, total: n,
+      isRoot: depth[idx] === 0,
+      depth: depth[idx],
+      animDelay: animDelayArr[idx],
+      ancestors: [],
+    },
   }))
 
   const rfEdges: Edge[] = [...edgeSet].map(s => {
     const [src, tgt] = s.split('→').map(Number)
-    const sp = posIdx.get(src) ?? 0
-    const tp = posIdx.get(tgt) ?? 0
-    const steps = Math.abs(tp - sp)
-    const wrap  = Math.min(steps, n - steps)
-    const curvature = 0.1 + (wrap / n) * 0.8
     return {
       id: `e${src}-${tgt}`,
       source: `n${src}`, target: `n${tgt}`,
       type: 'curved',
-      style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.7 },
-      markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
-      data: { curvature },
+      style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.75 },
+      markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 10, height: 10 },
+      data: { curvature: 0.2 },
     }
   })
 
@@ -262,16 +429,16 @@ function getExpansionCircularPositions(
   const orderedSet = new Set(order)
   items.forEach(it => { if (!orderedSet.has(it.name)) order.push(it.name) })
 
-  const MIN_ARC = Math.max(NW, NH) + 30
-  const RADIUS  = Math.max((n * MIN_ARC) / (2 * Math.PI), 240)
+  const MIN_ARC = Math.max(NODE_W, NODE_H) + 10
+  const RADIUS  = Math.max((n * MIN_ARC) / (2 * Math.PI), 160)
 
   // Offset the ring centre outward so the nearest child is ~1.5×RADIUS from
   // the parent, giving clear visual separation between parent and child ring.
   const mag = Math.sqrt(parentCx ** 2 + parentCy ** 2) || 1
   const ux = parentCx / mag
   const uy = parentCy / mag
-  const cx = parentCx + ux * RADIUS * 1.8
-  const cy = parentCy + uy * RADIUS * 1.8
+  const cx = parentCx + ux * RADIUS * 1.4
+  const cy = parentCy + uy * RADIUS * 1.4
 
   const positions = new Map<string, { x: number; y: number }>()
   order.forEach((name, ringPos) => {
@@ -309,7 +476,7 @@ interface PanelState {
 }
 
 // ─── GRAPH VIEW ──────────────────────────────────────────────────────────────
-export default function GraphView({ items, onExpand, onQuery }: { items: TaskItem[]; onExpand: ExpandFn; onQuery: QueryFn }) {
+export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: { items: TaskItem[]; onExpand: ExpandFn; onQuery: QueryFn; onGraphChanged?: GraphChangedFn }) {
   const [panel, setPanel] = useState<PanelState | null>(null)
   const expCounter = useRef(0)
 
@@ -320,6 +487,12 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
+
+  // Refs so async callbacks can read current state without stale closures
+  const nodesRef = useRef<Node[]>(nodes)
+  const edgesRef = useRef<Edge[]>(edges)
+  useEffect(() => { nodesRef.current = nodes }, [nodes])
+  useEffect(() => { edgesRef.current = edges }, [edges])
 
   // Sync ReactFlow state when items reference changes (e.g. new graph with same length)
   useEffect(() => {
@@ -335,8 +508,8 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
         : {
             item: { name: d.label, text: d.text },
             nodeId: node.id,
-            cx: node.position.x + NW / 2,
-            cy: node.position.y + NH / 2,
+            cx: node.position.x + NODE_W / 2,
+            cy: node.position.y + NODE_H / 2,
             context: '',
             loading: false,
             summary: null,
@@ -356,103 +529,155 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
     if (!panel || panel.loading) return
     setPanel(p => p ? { ...p, loading: true, error: null } : null)
 
+    // Mark the parent node as "generating" so it shows the loading animation
+    setNodes(prev => prev.map(nd =>
+      nd.id === panel.nodeId
+        ? { ...nd, data: { ...nd.data, isGenerating: true } }
+        : nd
+    ))
+
     try {
       const { items: newItems, summary } = await onExpand(panel.item, panel.context, panel.ancestors)
       const counter = expCounter.current++
 
-      setNodes(nds => {
-        const existingByLabel = new Map(nds.map(nd => [(nd.data as CircleNodeData).label, nd.id]))
-        const existingNames = new Set(existingByLabel.keys())
-        const dagPositions = getExpansionCircularPositions(panel!.cx, panel!.cy, newItems, existingNames)
+      // Read current state from refs so we can compute final state synchronously
+      const nds = nodesRef.current
+      const eds = edgesRef.current
 
-        let brandNewIdx = 0
-        const nameToId = new Map<string, string>()
-        newItems.forEach(item => {
-          if (existingByLabel.has(item.name)) {
-            nameToId.set(item.name, existingByLabel.get(item.name)!)
-          } else {
-            nameToId.set(item.name, `exp-${counter}-${brandNewIdx++}`)
-          }
-        })
+      const existingByLabel = new Map(nds.map(nd => [(nd.data as CircleNodeData).label, nd.id]))
+      const existingNames = new Set(existingByLabel.keys())
+      const dagPositions = getExpansionCircularPositions(panel.cx, panel.cy, newItems, existingNames)
 
-        const brandNewItems = newItems.filter(it => !existingNames.has(it.name))
-        const newNodes: Node[] = brandNewItems.map(item => {
-          const id = nameToId.get(item.name)!
-          const pos = dagPositions.get(item.name)!
-          return {
-            id,
-            type: 'circle' as const,
-            position: { x: pos.x - NW / 2, y: pos.y - NH / 2 },
-            data: { label: item.name, text: item.text, index: 0, total: brandNewItems.length, isRoot: false, ancestors: [...(panel!.ancestors ?? []), { name: panel!.item.name, text: panel!.item.text }] },
-          }
-        })
-
-        // Compute edges here so we don't nest setState calls
-        const existingEdgeSet = new Set<string>()
-        const edgesToAdd: Edge[] = []
-        const sourceOutCount = new Map<string, number>()
-        const getNextCurvature = (src: string) => {
-          const n = sourceOutCount.get(src) ?? 0
-          sourceOutCount.set(src, n + 1)
-          const side = n % 2 === 0 ? 1 : -1
-          return side * (0.2 + Math.floor(n / 2) * 0.15)
+      let brandNewIdx = 0
+      const nameToId = new Map<string, string>()
+      newItems.forEach(item => {
+        if (existingByLabel.has(item.name)) {
+          nameToId.set(item.name, existingByLabel.get(item.name)!)
+        } else {
+          nameToId.set(item.name, `exp-${counter}-${brandNewIdx++}`)
         }
-        const addEdge = (src: string, tgt: string, idx: number): Edge | null => {
-          const key = `${src}→${tgt}`
-          if (existingEdgeSet.has(key)) return null
-          existingEdgeSet.add(key)
-          return {
-            id: `exp-edge-${counter}-${idx}`,
-            source: src, target: tgt,
-            type: 'curved',
-            style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.6, strokeDasharray: '5 3' },
-            markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
-            data: { curvature: getNextCurvature(src) },
-          }
-        }
-        let edgeIdx = 0
-        const newNameSet = new Set(newItems.map(it => it.name))
-        newItems.forEach(item => {
-          if (!Array.isArray(item.depends_on)) return
-          item.depends_on.forEach(dep => {
-            const srcId = newNameSet.has(dep) ? nameToId.get(dep) : existingByLabel.get(dep)
-            const tgtId = nameToId.get(item.name)
-            if (srcId && tgtId) { const e = addEdge(srcId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
-          })
-        })
-        const hasInternalParent = new Set(
-          newItems.flatMap(it => (it.depends_on ?? []).filter(d => newNameSet.has(d)).map(() => it.name))
-        )
-        newItems.forEach(item => {
-          if (!hasInternalParent.has(item.name)) {
-            const tgtId = nameToId.get(item.name)
-            if (tgtId) { const e = addEdge(panel!.nodeId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
-          }
-        })
-
-        // Apply edges outside this updater to avoid nested setState
-        setTimeout(() => setEdges(eds => {
-          const existingKeys = new Set(eds.map(e => `${e.source}→${e.target}`))
-          return [...eds, ...edgesToAdd.filter(e => !existingKeys.has(`${e.source}→${e.target}`))]
-        }), 0)
-
-        return [
-          ...nds.map(nd =>
-            nd.id === panel!.nodeId
-              ? { ...nd, data: { ...nd.data, isExpanded: true } }
-              : nd
-          ),
-          ...newNodes,
-        ]
       })
-      setPanel(p => p ? { ...p, loading: false, summary, context: '' } : null)
+
+      const brandNewItems = newItems.filter(it => !existingNames.has(it.name))
+      const parentDepth = (nds.find(nd => nd.id === panel.nodeId)?.data as CircleNodeData)?.depth ?? 0
+      const newNodes: Node[] = brandNewItems.map((item, itemIdx) => {
+        const id  = nameToId.get(item.name)!
+        const pos = dagPositions.get(item.name)!
+        return {
+          id,
+          type: 'circle' as const,
+          position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
+          data: {
+            label: item.name, text: item.text, index: itemIdx,
+            total: brandNewItems.length, isRoot: false,
+            depth: parentDepth + 1,
+            animDelay: itemIdx * 120,
+            ancestors: [...(panel.ancestors ?? []), { name: panel.item.name, text: panel.item.text }],
+          },
+        }
+      })
+
+      const existingEdgeSet = new Set<string>()
+      const edgesToAdd: Edge[] = []
+      const sourceOutCount = new Map<string, number>()
+      const getNextCurvature = (src: string) => {
+        const n = sourceOutCount.get(src) ?? 0
+        sourceOutCount.set(src, n + 1)
+        const side = n % 2 === 0 ? 1 : -1
+        return side * (0.2 + Math.floor(n / 2) * 0.15)
+      }
+      const addEdge = (src: string, tgt: string, idx: number): Edge | null => {
+        const key = `${src}→${tgt}`
+        if (existingEdgeSet.has(key)) return null
+        existingEdgeSet.add(key)
+        return {
+          id: `exp-edge-${counter}-${idx}`,
+          source: src, target: tgt,
+          type: 'curved',
+          style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.6, strokeDasharray: '5 3' },
+          markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
+          data: { curvature: getNextCurvature(src) },
+        }
+      }
+      let edgeIdx = 0
+      const newNameSet = new Set(newItems.map(it => it.name))
+      newItems.forEach(item => {
+        if (!Array.isArray(item.depends_on)) return
+        item.depends_on.forEach(dep => {
+          const srcId = newNameSet.has(dep) ? nameToId.get(dep) : existingByLabel.get(dep)
+          const tgtId = nameToId.get(item.name)
+          if (srcId && tgtId) { const e = addEdge(srcId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
+        })
+      })
+      const hasInternalParent = new Set(
+        newItems.flatMap(it => (it.depends_on ?? []).filter(d => newNameSet.has(d)).map(() => it.name))
+      )
+      newItems.forEach(item => {
+        if (!hasInternalParent.has(item.name)) {
+          const tgtId = nameToId.get(item.name)
+          if (tgtId) { const e = addEdge(panel.nodeId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
+        }
+      })
+
+      const baseNodes: Node[] = nds.map(nd =>
+        nd.id === panel.nodeId
+          ? { ...nd, data: { ...nd.data, isExpanded: true, isGenerating: false } }
+          : nd
+      )
+      const existingEdgeKeys = new Set(eds.map(e => `${e.source}→${e.target}`))
+      const dedupedEdgesToAdd = edgesToAdd.filter(e => !existingEdgeKeys.has(`${e.source}→${e.target}`))
+
+      // Pre-compute the complete final state (needed for onGraphChanged callback)
+      const finalNodes: Node[] = [...baseNodes, ...newNodes]
+      const finalEdges: Edge[] = [...eds, ...dedupedEdgesToAdd]
+
+      if (newNodes.length === 0) {
+        // Nothing new to add — just update parent + edges immediately
+        setNodes(baseNodes)
+        setEdges(finalEdges)
+        onGraphChanged?.(finalNodes, finalEdges)
+        setPanel(p => p ? { ...p, loading: false, summary, context: '' } : null)
+        return
+      }
+
+      // Mark parent as expanded immediately, then reveal each child one by one
+      setNodes(baseNodes)
+
+      const STAGGER_MS = 200
+      newNodes.forEach((node, i) => {
+        setTimeout(() => {
+          // Each node mounts fresh → framer-motion plays scale 0→1 from animDelay=0
+          setNodes(prev => [...prev, { ...node, data: { ...node.data, animDelay: 0 } }])
+          // Reveal the edge(s) targeting this node at the same moment
+          const nodeEdges = dedupedEdgesToAdd.filter(e => e.target === node.id)
+          if (nodeEdges.length > 0) {
+            setEdges(prev => {
+              const seen = new Set(prev.map(e => `${e.source}→${e.target}`))
+              const fresh = nodeEdges.filter(e => !seen.has(`${e.source}→${e.target}`))
+              return fresh.length > 0 ? [...prev, ...fresh] : prev
+            })
+          }
+        }, (i + 1) * STAGGER_MS)
+      })
+
+      // Notify persistence after all nodes have appeared
+      setTimeout(() => {
+        onGraphChanged?.(finalNodes, finalEdges)
+        setPanel(p => p ? { ...p, loading: false, summary, context: '' } : null)
+      }, (newNodes.length + 1) * STAGGER_MS + 50)
     } catch (err) {
       setPanel(p => p
         ? { ...p, loading: false, error: err instanceof Error ? err.message : 'Failed to expand' }
         : null
       )
+      // Clear the generating animation on error
+      setNodes(prev => prev.map(nd =>
+        nd.id === panel.nodeId
+          ? { ...nd, data: { ...nd.data, isGenerating: false } }
+          : nd
+      ))
     }
-  }, [panel, onExpand, setNodes, setEdges])
+  }, [panel, onExpand, onGraphChanged, setNodes, setEdges])
 
   const handleQuery = useCallback(async () => {
     if (!panel || panel.queryLoading || !panel.query.trim()) return
@@ -476,34 +701,40 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
     const text = panel.newNodeText.trim()
     const id = `manual-${manualCounter.current++}`
 
-    // Place new node offset below-right of parent
+    // Place new node offset from parent
     const angle = Math.random() * Math.PI * 2
-    const dist = 220
-    const nx = panel.cx + Math.cos(angle) * dist - NW / 2
-    const ny = panel.cy + Math.sin(angle) * dist - NH / 2
+    const dist = 250
+    const nx = panel.cx + Math.cos(angle) * dist - NODE_W / 2
+    const ny = panel.cy + Math.sin(angle) * dist - NODE_H / 2
 
+    const parentDepth = (nodesRef.current.find(nd => nd.id === panel.nodeId)?.data as CircleNodeData)?.depth ?? 0
     const newNode: Node = {
       id,
       type: 'circle' as const,
       position: { x: nx, y: ny },
-      data: { label: name, text: text || name, index: 0, total: 1, isRoot: false, ancestors: [...(panel!.ancestors ?? []), { name: panel!.item.name, text: panel!.item.text }] },
+      data: {
+        label: name, text: text || name, index: 0, total: 1, isRoot: false,
+        depth: parentDepth + 1, animDelay: 0,
+        ancestors: [...(panel.ancestors ?? []), { name: panel.item.name, text: panel.item.text }],
+      },
+    }
+    const newEdge: Edge = {
+      id: `manual-edge-${id}`,
+      source: panel.nodeId,
+      target: id,
+      type: 'curved',
+      style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.7, strokeDasharray: '4 3' },
+      markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
+      data: { curvature: 0.25 },
     }
 
-    setNodes(nds => [...nds, newNode])
-    setEdges(eds => [
-      ...eds,
-      {
-        id: `manual-edge-${id}`,
-        source: panel.nodeId,
-        target: id,
-        type: 'curved',
-        style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.7, strokeDasharray: '4 3' },
-        markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 9, height: 9 },
-        data: { curvature: 0.25 },
-      },
-    ])
+    const finalNodes = [...nodesRef.current, newNode]
+    const finalEdges = [...edgesRef.current, newEdge]
+    setNodes(finalNodes)
+    setEdges(finalEdges)
+    onGraphChanged?.(finalNodes, finalEdges)
     setPanel(p => p ? { ...p, newNodeName: '', newNodeText: '' } : null)
-  }, [panel, setNodes, setEdges])
+  }, [panel, onGraphChanged, setNodes, setEdges])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -518,8 +749,8 @@ export default function GraphView({ items, onExpand, onQuery }: { items: TaskIte
         fitView
         fitViewOptions={{ padding: 0.18 }}
         style={{ background: 'transparent' }}
-        minZoom={0.5}
-        maxZoom={2.5}
+        minZoom={0.1}
+        maxZoom={10}
       >
         <Background variant={BackgroundVariant.Dots} gap={28} size={1.2} color="rgba(38,70,53,0.1)" />
         <Controls
