@@ -4,6 +4,7 @@ import { Navbar } from '../components/Navbar'
 import { BlockEditor, type BlockEditorHandle } from '../components/BlockEditor'
 import { useDocument, type BlockType } from '../hooks/useDocument'
 import { useAuth } from '../hooks/useAuth'
+import { useEditorBridge } from '../contexts/EditorBridgeContext'
 
 /* ------------------------------------------------------------------ */
 /* Design 1 — "The Zen Canvas" (refined)                              */
@@ -81,6 +82,18 @@ export default function Design1() {
 
   // ── Document sync (Personal fork for this repo) ──────────────────────────
   const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
+
+  // ── Register with EditorBridge so Noot can insert blocks ─────────────────
+  const bridge = useEditorBridge()
+  const blocksRef = useRef(doc?.blocks ?? [])
+  useEffect(() => { blocksRef.current = doc?.blocks ?? [] }, [doc?.blocks])
+  useEffect(() => {
+    bridge.register({
+      getBlocks: () => blocksRef.current,
+      setBlocks: (blocks) => updateBlocks(blocks),
+    })
+    return () => bridge.unregister()
+  }, [bridge, updateBlocks])
 
   // ── Master document (read-only) ─────────────────────────────────────────
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)

@@ -276,7 +276,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-screen bg-cream flex flex-col animate-fade-up overflow-hidden">
+    <div className="h-screen bg-cream flex flex-col overflow-hidden">
       <Navbar variant="light" />
 
       <div className="flex flex-1 overflow-hidden">

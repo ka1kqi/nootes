@@ -7,6 +7,7 @@ import rawGraphPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
 import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { useAuth } from '../hooks/useAuth'
+import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
 
 interface AttachedFile {
   name: string
@@ -41,6 +42,22 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
     ) return null
     const summary = content.slice(end + 1).trim()
     return { items: parsed as TaskItem[], summary }
+  } catch {
+    return null
+  }
+}
+
+function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
+  if (!content.trimStart().startsWith('[WRITE_TO_EDITOR]')) return null
+  try {
+    const body = content.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/, '')
+    const start = body.indexOf('[')
+    const end   = body.lastIndexOf(']')
+    if (start === -1 || end === -1) return null
+    const parsed = JSON.parse(body.slice(start, end + 1))
+    if (!Array.isArray(parsed) || parsed.length === 0 || typeof parsed[0].type !== 'string') return null
+    const confirmation = body.slice(end + 1).trim() || `Wrote ${parsed.length} block(s) to your notes.`
+    return { blocks: parsed as BlockSpec[], confirmation }
   } catch {
     return null
   }
@@ -127,6 +144,12 @@ async function copyAsText(messages: ChatMessage[]): Promise<boolean> {
       })
       if (msg.graphData.summary) lines.push('', `  Summary: ${msg.graphData.summary}`)
       lines.push('')
+    } else if (msg.writeData) {
+      lines.push('▸ Noot [Written to Editor]:')
+      msg.writeData.blocks.forEach((b, i) => {
+        lines.push(`  ${i + 1}. [${b.type}] ${b.content}`)
+      })
+      lines.push('', `  ${msg.writeData.confirmation}`, '')
     } else {
       lines.push(`▸ Noot: ${msg.content}`, '')
     }
@@ -139,6 +162,7 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   graphData?: { items: TaskItem[]; summary: string } | null
+  writeData?: { blocks: BlockSpec[]; confirmation: string } | null
 }
 
 const SUGGESTIONS = [
@@ -175,6 +199,7 @@ export function SpotlightSearch({
   const [copied, setCopied] = useState(false)
 
   const history = useGraphHistory()
+  const editorBridge = useEditorBridge()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -227,13 +252,35 @@ export function SpotlightSearch({
       const data = await res.json()
       const content: string = data.content ?? ''
       historyRef.current = [...historyRef.current, { role: 'assistant', content }]
-      const graphData = parseGraphResponse(content)
-      setMessages(prev => [...prev, {
-        id: id + '-r',
-        role: 'assistant',
-        content,
-        graphData,
-      }])
+
+      // Check for write-to-editor response
+      const writeData = parseWriteResponse(content)
+      if (writeData) {
+        if (editorBridge.isEditorActive) {
+          editorBridge.insertBlocks(writeData.blocks)
+          setMessages(prev => [...prev, {
+            id: id + '-r',
+            role: 'assistant',
+            content: writeData.confirmation,
+            writeData,
+          }])
+        } else {
+          setMessages(prev => [...prev, {
+            id: id + '-r',
+            role: 'assistant',
+            content: writeData.confirmation + '\n\n⚠ Open a document in the editor first so I can write to it.',
+            writeData,
+          }])
+        }
+      } else {
+        const graphData = parseGraphResponse(content)
+        setMessages(prev => [...prev, {
+          id: id + '-r',
+          role: 'assistant',
+          content,
+          graphData,
+        }])
+      }
     } catch (err) {
       setMessages(prev => [...prev, {
         id: id + '-r',
@@ -510,6 +557,64 @@ export function SpotlightSearch({
                   <span className={`font-mono text-[9px] uppercase tracking-widest mr-1.5 ${isDark ? 'text-sage/40' : 'text-forest/30'}`}>summary</span>
                   {msg.graphData.summary}
                 </div>
+              )}
+            </div>
+          ) : msg.writeData ? (
+            /* ── Write-to-editor response ── */
+            <div
+              className={`max-w-[85%] px-3 py-2 text-xs leading-relaxed rounded-xl font-[family-name:var(--font-body)] ${msgAiBg}`}
+              style={{ animation: 'fade-up 0.2s ease-out' }}
+            >
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <svg className={`w-3.5 h-3.5 ${editorBridge.isEditorActive ? 'text-green-500' : (isDark ? 'text-amber-400' : 'text-amber-600')}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  {editorBridge.isEditorActive
+                    ? <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    : <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  }
+                </svg>
+                <span className={`font-mono text-[9px] uppercase tracking-widest ${isDark ? 'text-sage/50' : 'text-forest/40'}`}>
+                  {editorBridge.isEditorActive ? 'written to editor' : 'editor not open'}
+                </span>
+              </div>
+              <div className={`text-[11px] ${isDark ? 'text-parchment/70' : 'text-forest/65'}`}>
+                {msg.writeData.confirmation}
+              </div>
+              {/* Preview the blocks that were (or would be) inserted */}
+              <div className={`mt-2 pt-2 border-t ${isDark ? 'border-sage/10' : 'border-forest/8'} space-y-1`}>
+                {msg.writeData.blocks.slice(0, 4).map((b, i) => (
+                  <div key={i} className={`flex items-center gap-1.5 text-[10px] ${isDark ? 'text-sage/45' : 'text-forest/35'}`}>
+                    <span className="font-mono uppercase tracking-wider w-12 shrink-0 text-[8px]">{b.type}</span>
+                    <span className="truncate">{b.content || '—'}</span>
+                  </div>
+                ))}
+                {msg.writeData.blocks.length > 4 && (
+                  <div className={`text-[10px] ${isDark ? 'text-sage/35' : 'text-forest/25'}`}>
+                    +{msg.writeData.blocks.length - 4} more…
+                  </div>
+                )}
+              </div>
+              {/* Manual insert button when not on editor page */}
+              {!editorBridge.isEditorActive && msg.writeData && (
+                <button
+                  onClick={() => {
+                    const text = msg.writeData!.blocks.map(b => {
+                      if (b.type === 'h1') return `# ${b.content}`
+                      if (b.type === 'h2') return `## ${b.content}`
+                      if (b.type === 'h3') return `### ${b.content}`
+                      if (b.type === 'latex') return `$$${b.content}$$`
+                      if (b.type === 'code') return `\`\`\`${(b.meta as Record<string,string>)?.language ?? ''}\n${b.content}\n\`\`\``
+                      if (b.type === 'quote') return `> ${b.content}`
+                      if (b.type === 'divider') return '---'
+                      return b.content
+                    }).join('\n\n')
+                    navigator.clipboard.writeText(text)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  }}
+                  className={`mt-2 text-[10px] px-2 py-1 rounded-md border cursor-pointer transition-colors ${isDark ? 'border-sage/20 text-sage/60 hover:bg-sage/10' : 'border-forest/15 text-forest/50 hover:bg-forest/5'}`}
+                >
+                  {copied ? '✓ Copied' : 'Copy as markdown'}
+                </button>
               )}
             </div>
           ) : (
