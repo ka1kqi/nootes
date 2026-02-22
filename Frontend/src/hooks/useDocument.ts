@@ -397,7 +397,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       return updated
     })
 
-    if (isScratch) return // scratch has no documents row
+    if (isScratch) return // scratch has no documents row; promotion is handled via promoteScratch
 
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current)
     titleTimerRef.current = setTimeout(async () => {
@@ -405,6 +405,44 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       await supabase.from('documents').update({ title }).eq('id', repoId)
     }, 800)
   }, [repoId, isScratch])
+
+  // Promote a scratch document to a real document in the `documents` table.
+  // Returns the new document ID on success, null on failure or if conditions aren't met.
+  const promoteScratch = useCallback(async (title: string): Promise<string | null> => {
+    const trimmed = title.trim()
+    if (!isScratch || !userId || !docRef.current || !trimmed || trimmed === 'Quick Notes') return null
+
+    const blocks = docRef.current.blocks
+
+    const { data, error } = await supabase
+      .from('documents')
+      .insert({
+        owner_user_id: userId,
+        title: trimmed,
+        blocks,
+        access_level: 'private',
+        is_public_root: false,
+      })
+      .select('id')
+      .single()
+
+    if (error || !data?.id) {
+      console.error('Failed to promote scratch:', error?.message)
+      return null
+    }
+
+    // Clear scratch from localStorage and Storage so next visit gets a fresh pad
+    localStorage.removeItem(SCRATCH_KEY(userId))
+    supabase.storage.from(BUCKET).remove([storagePath(userId, 'scratch')]).catch(() => {})
+
+    // Evict from in-memory cache
+    if (cacheKey) documentCache.delete(cacheKey)
+
+    // Fire-and-forget embedding
+    _embedAndStore(data.id, blocks, trimmed)
+
+    return data.id
+  }, [isScratch, userId, cacheKey])
 
   // Update tags in local state and persist immediately to Supabase
   const updateTags = useCallback(async (tags: string[]) => {
@@ -455,5 +493,5 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       .eq('id', repoId)
   }, [repoId, isScratch])
 
-  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy }
+  return { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy, promoteScratch, isScratch }
 }

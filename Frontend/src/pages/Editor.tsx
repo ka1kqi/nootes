@@ -85,7 +85,7 @@ export default function Design1() {
   const repoMeta = location.state as { name?: string; code?: string; org?: string; field?: string; description?: string } | null
 
   // ── Document sync (Personal fork for this repo) ──────────────────────────
-  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
+  const { doc, loading, saveStatus, updateBlocks, saveNow, undo, redo, updateTitle, updateTags, updateVisibility, updateMergePolicy, promoteScratch, isScratch } = useDocument(repoId, user?.id ?? '', repoMeta?.name)
 
   // ── Ownership: can the current user edit this document? ─────────────────
   // For scratch, always owner. For real docs, compare owner_user_id.
@@ -593,11 +593,28 @@ export default function Design1() {
                     type="text"
                     value={doc?.title ?? ''}
                     onChange={e => isOwner && updateTitle(e.target.value)}
-                    onBlur={e => { if (isOwner && !e.target.value.trim()) updateTitle('My Noots') }}
+                    onBlur={e => {
+                      if (!isOwner) return
+                      const val = e.target.value.trim()
+                      if (isScratch) {
+                        if (val && val !== 'Quick Notes') {
+                          promoteScratch(val).then(newId => {
+                            if (newId) navigate(`/editor/${newId}`, { replace: true, state: { name: val } })
+                          })
+                        }
+                        return
+                      }
+                      if (!val) updateTitle('My Noots')
+                    }}
                     placeholder="Untitled"
                     readOnly={!isOwner}
-                    className={`font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-6 bg-transparent w-full outline-none border-b-2 border-transparent transition-colors placeholder-forest/20 caret-forest/40 ${isOwner ? 'focus:border-forest/20 hover:border-forest/10' : 'cursor-default opacity-60'}`}
+                    className={`font-[family-name:var(--font-display)] text-7xl text-forest leading-[0.9] mb-2 bg-transparent w-full outline-none border-b-2 border-transparent transition-colors placeholder-forest/20 caret-forest/40 ${isOwner ? 'focus:border-forest/20 hover:border-forest/10' : 'cursor-default opacity-60'}`}
                   />
+                  {isScratch && (doc?.title === 'Quick Notes' || !doc?.title) && (
+                    <span className="font-mono text-[9px] text-forest/25 block mb-4">
+                      give this a title to save it as a nootbook
+                    </span>
+                  )}
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
                       {doc?.version ?? '…'}
