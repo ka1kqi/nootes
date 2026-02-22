@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from './GraphView'
 import type { Node, Edge } from '@xyflow/react'
@@ -13,6 +14,7 @@ import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
 import { useAuth } from '../hooks/useAuth'
 import { useGraphPersistence } from '../hooks/useGraphPersistence'
 import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
+import { supabase } from '../lib/supabase'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api/prompt'
@@ -312,236 +314,7 @@ export const GraphMessage = ({ msg, items, summary, onExpand, onQuery }: { msg: 
   </motion.div>
 )
 
-// ─── EXPORT TO PDF ───────────────────────────────────────────────────────────
-function exportToPDF(messages: Message[]) {
-  const userMessages  = messages.filter(m => m.role === 'user')
-  const mainPrompt    = userMessages[0]?.content ?? 'Nootes'
-  const generatedAt   = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
-  // Build content sections in conversation order, skipping the first user msg (used as title)
-  let bodyHtml = ''
-  let graphIndex = 0
-
-  for (let i = 1; i < messages.length; i++) {
-    const msg = messages[i]
-    if (msg.role === 'user') {
-      bodyHtml += `<div class="followup-prompt"><span class="label">follow-up</span>${escHtml(msg.content)}</div>`
-      continue
-    }
-    if (msg.role !== 'assistant') continue
-
-    const parsed = parseGraphResponse(msg.content)
-    if (parsed) {
-      graphIndex++
-      bodyHtml += `<section class="graph-section">`
-      if (parsed.items.length > 0) {
-        bodyHtml += `<h2 class="section-title">Tasks · group ${graphIndex}</h2>`
-        bodyHtml += `<ul class="task-list">`
-        parsed.items.forEach(item => {
-          bodyHtml += `
-            <li class="task-item">
-              <div class="task-name">${escHtml(item.name)}</div>
-              <div class="task-text">${escHtml(item.text)}</div>
-            </li>`
-        })
-        bodyHtml += `</ul>`
-      }
-      if (parsed.summary) {
-        bodyHtml += `<div class="summary-block"><span class="label">summary</span>${escHtml(parsed.summary)}</div>`
-      }
-      bodyHtml += `</section>`
-    } else {
-      // Plain text assistant message
-      bodyHtml += `<div class="text-response">${escHtml(msg.content)}</div>`
-    }
-  }
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <title>${escHtml(mainPrompt)}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Gamja+Flower&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: #E9E4D4;
-      color: #1A1A18;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 11pt;
-      line-height: 1.7;
-      padding: 48pt 56pt;
-      max-width: 760pt;
-      margin: 0 auto;
-    }
-
-    /* ── Cover / Header ── */
-    .cover {
-      border-bottom: 3px solid #264635;
-      padding-bottom: 28pt;
-      margin-bottom: 36pt;
-    }
-    .brand {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 8pt;
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-      color: #A3B18A;
-      margin-bottom: 14pt;
-      display: flex;
-      align-items: center;
-      gap: 8pt;
-    }
-    .brand::before {
-      content: '';
-      display: inline-block;
-      width: 8pt; height: 8pt;
-      background: #264635;
-      clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-    }
-    .main-title {
-      font-family: 'Gamja Flower', cursive;
-      font-size: 30pt;
-      color: #264635;
-      line-height: 1.25;
-      margin-bottom: 10pt;
-    }
-    .meta {
-      font-size: 8pt;
-      color: #A3B18A;
-      letter-spacing: 0.08em;
-    }
-
-    /* ── Sections ── */
-    .graph-section {
-      margin-bottom: 36pt;
-      padding-bottom: 28pt;
-      border-bottom: 1px solid rgba(38,70,53,0.15);
-    }
-    .graph-section:last-child { border-bottom: none; }
-
-    .section-title {
-      font-family: 'Gamja Flower', cursive;
-      font-size: 16pt;
-      color: #264635;
-      margin-bottom: 14pt;
-      display: flex;
-      align-items: center;
-      gap: 8pt;
-    }
-    .section-title::before {
-      content: '';
-      display: inline-block;
-      width: 10pt; height: 10pt;
-      border: 1.5pt solid #A3B18A;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    /* ── Task list ── */
-    .task-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 10pt;
-      margin-bottom: 18pt;
-    }
-    .task-item {
-      padding: 10pt 14pt;
-      border-left: 3pt solid #264635;
-      background: rgba(255,255,255,0.55);
-    }
-    .task-name {
-      font-family: 'Gamja Flower', cursive;
-      font-size: 13pt;
-      color: #264635;
-      margin-bottom: 3pt;
-    }
-    .task-text {
-      font-size: 9.5pt;
-      color: #3A3A38;
-      line-height: 1.65;
-    }
-
-    /* ── Summary ── */
-    .summary-block {
-      background: rgba(163,177,138,0.15);
-      border-left: 3pt solid #A3B18A;
-      padding: 10pt 14pt;
-      font-size: 9.5pt;
-      color: #1A1A18;
-      line-height: 1.7;
-    }
-
-    /* ── Follow-up prompts ── */
-    .followup-prompt {
-      margin: 24pt 0 12pt;
-      padding: 8pt 14pt;
-      background: #264635;
-      color: #E9E4D4;
-      font-size: 9.5pt;
-      line-height: 1.6;
-    }
-
-    /* ── Plain text responses ── */
-    .text-response {
-      margin-bottom: 24pt;
-      padding: 12pt 14pt;
-      border: 1.5pt solid rgba(38,70,53,0.2);
-      font-size: 9.5pt;
-      line-height: 1.7;
-      white-space: pre-wrap;
-    }
-
-    /* ── Label pill ── */
-    .label {
-      display: inline-block;
-      font-size: 7pt;
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-      color: #A3B18A;
-      border: 1pt solid #A3B18A;
-      padding: 1pt 5pt;
-      margin-right: 8pt;
-      vertical-align: middle;
-    }
-
-    /* ── Print tweaks ── */
-    @media print {
-      body { background: #E9E4D4; padding: 0; }
-      .graph-section { page-break-inside: avoid; }
-      .task-item     { page-break-inside: avoid; }
-    }
-  </style>
-</head>
-<body>
-  <div class="cover">
-    <div class="brand">nootes · ai study companion</div>
-    <h1 class="main-title">${escHtml(mainPrompt)}</h1>
-    <div class="meta">generated ${generatedAt}</div>
-  </div>
-  ${bodyHtml}
-</body>
-</html>`
-
-  const win = window.open('', '_blank')
-  if (!win) return
-  win.document.write(html)
-  // Assign onload before close() to avoid race condition where load fires synchronously
-  win.onload = () => setTimeout(() => win.print(), 600)
-  win.document.close()
-}
-
-function escHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
 
 /** Produce a compact, varied blurb for an assistant message in the conversation drawer.
  *  Falls back gracefully when the message isn't a graph response. */
@@ -587,12 +360,14 @@ const EXAMPLES = [
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 export default function App() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const persistence = useGraphPersistence()
   const history = useGraphHistory()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [pendingCenter, setPendingCenter] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'new' | 'history'>('new')
@@ -815,6 +590,47 @@ export default function App() {
     return null
   }, [messages])
 
+  // ── Export graph as a new personal note ────────────────────────────────────
+  const exportToNote = useCallback(async () => {
+    if (!user) return
+    setExporting(true)
+    try {
+      const userPrompt = messages.find(m => m.role === 'user')?.content ?? 'Graph Notes'
+      const firstGraph = messages.find(m => m.role === 'assistant' && parseGraphResponse(m.content) !== null)
+      const title = (firstGraph ? parseGraphResponse(firstGraph.content)?.summary : null) || userPrompt
+      const blocks: { id: string; type: string; content: string; meta?: Record<string, unknown> }[] = []
+
+      for (const msg of messages) {
+        if (msg.role !== 'assistant') continue
+        const parsed = parseGraphResponse(msg.content)
+        if (!parsed) continue
+
+        if (parsed.summary) {
+          blocks.push({ id: crypto.randomUUID(), type: 'callout', content: parsed.summary, meta: { calloutType: 'info' } })
+        }
+        for (const item of parsed.items) {
+          blocks.push({ id: crypto.randomUUID(), type: 'h2', content: item.name })
+          if (item.text) {
+            blocks.push({ id: crypto.randomUUID(), type: 'paragraph', content: item.text })
+          }
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('documents')
+        .insert({ owner_user_id: user.id, title, blocks, access_level: 'private', is_public_root: false })
+        .select('id')
+        .single()
+
+      if (error) throw error
+      navigate(`/editor/${data.id}`, { state: { name: title } })
+    } catch (e) {
+      console.error('Export failed:', e)
+    } finally {
+      setExporting(false)
+    }
+  }, [messages, user, navigate])
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-cream">
       {/* ── Navbar ─────────────────────────────────────────────────────────── */}
@@ -827,9 +643,9 @@ export default function App() {
           <span className="font-mono text-[10px] text-forest/30 tracking-wider">gpt-4o</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => exportToPDF(messages)} disabled={isEmpty}
+          <button onClick={exportToNote} disabled={isEmpty || exporting}
             className="font-mono text-[10px] px-3 py-1.5 squircle-sm border border-forest/15 text-forest/40 hover:text-forest hover:border-forest/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5">
-            ↓ export pdf
+            {exporting ? '…' : '↓'} export as note
           </button>
           <button onClick={() => { setMessages([]); historyRef.current = []; persistence.reset(); history.refresh(); setActiveTab('history') }} disabled={isEmpty}
             className="font-mono text-[10px] px-3 py-1.5 squircle-sm border border-forest/15 text-forest/40 hover:text-forest hover:border-forest/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer">
