@@ -32,6 +32,7 @@ export interface Profile {
   aura: number
   tier: 'seedling' | 'sprout' | 'sapling' | 'grove' | 'ancient-oak'
   badges: string[]
+  tags: string[]
   created_at: string
   updated_at: string
 }
