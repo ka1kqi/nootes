@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from '../pages/GraphView'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
@@ -8,6 +9,7 @@ import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
 import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
+import { supabase } from '../lib/supabase'
 
 interface AttachedFile {
   name: string
@@ -28,36 +30,82 @@ const NOOT_API_URL  = `${API_BASE}/api/noot`
 const GRAPH_API_URL = `${API_BASE}/api/prompt`
 
 // ─── PARSE GRAPH RESPONSE ──────────────────────────────────────────────
-function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
-  try {
-    const start = content.indexOf('[')
-    const end   = content.lastIndexOf(']')
-    if (start === -1 || end === -1) return null
-    const parsed = JSON.parse(content.slice(start, end + 1))
-    if (
-      !Array.isArray(parsed) ||
-      parsed.length === 0 ||
-      typeof parsed[0].name !== 'string' ||
-      typeof parsed[0].text !== 'string'
-    ) return null
-    const summary = content.slice(end + 1).trim()
-    return { items: parsed as TaskItem[], summary }
-  } catch {
-    return null
+function dedupeItems(parsed: TaskItem[]): TaskItem[] {
+  const seen = new Set<string>()
+  return parsed.filter(it => {
+    if (typeof it.name !== 'string' || seen.has(it.name)) return false
+    seen.add(it.name)
+    return true
+  })
+}
+
+function parseTextFormat(content: string): { items: TaskItem[]; summary: string } | null {
+  const re = /^(.+?)\s+text:\s+"((?:[^"\\]|\\.)*)"\s+depends_on:\s+(\[[^\]]*\])/gm
+  const items: TaskItem[] = []
+  let match: RegExpExecArray | null
+  while ((match = re.exec(content)) !== null) {
+    try {
+      const deps = JSON.parse(match[3]) as string[]
+      items.push({ name: match[1].trim(), text: match[2], depends_on: deps })
+    } catch { /* skip */ }
   }
+  if (items.length === 0) return null
+  const summaryLines: string[] = []
+  content.split(/\n+/).forEach(line => { const t = line.trim(); if (t && !re.test(t)) summaryLines.push(t) })
+  return { items: dedupeItems(items), summary: summaryLines.join(' ').trim() }
+}
+
+function normaliseContent(raw: string): { body: string; suffix: string } {
+  const stripped = raw.replace(/^\s*\[[A-Z_a-z\s]+\]\s*/g, '').trim()
+  if (stripped.startsWith('{')) {
+    const lastBrace = stripped.lastIndexOf('}')
+    if (lastBrace !== -1) {
+      return { body: '[' + stripped.slice(0, lastBrace + 1) + ']', suffix: stripped.slice(lastBrace + 1).trim() }
+    }
+  }
+  return { body: stripped, suffix: '' }
+}
+
+function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
+  const { body, suffix } = normaliseContent(content)
+  try {
+    const rawStart = body.indexOf('[')
+    if (rawStart !== -1) {
+      const afterBracket = body.slice(rawStart + 1).trimStart()
+      const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
+      const end   = body.lastIndexOf(']')
+      if (start !== -1 && end !== -1 && end >= start) {
+        const jsonStr = body.slice(start, end + 1).replace(/\/\/[^\n\r]*/g, '')
+        const parsed = JSON.parse(jsonStr)
+        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0].name === 'string' && typeof parsed[0].text === 'string') {
+          const items = dedupeItems(parsed as TaskItem[])
+          if (items.length > 0) return { items, summary: (suffix || body.slice(end + 1)).trim() }
+        }
+      }
+    }
+  } catch { /* fall through */ }
+  return parseTextFormat(content)
 }
 
 function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
   if (!content.trimStart().startsWith('[WRITE_TO_EDITOR]')) return null
   try {
     const body = content.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/, '')
-    const start = body.indexOf('[')
+    const rawStart = body.indexOf('[')
+    if (rawStart === -1) return null
+    const afterBracket = body.slice(rawStart + 1).trimStart()
+    const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
     const end   = body.lastIndexOf(']')
-    if (start === -1 || end === -1) return null
+    if (start === -1 || end === -1 || end <= start) return null
     const parsed = JSON.parse(body.slice(start, end + 1))
     if (!Array.isArray(parsed) || parsed.length === 0 || typeof parsed[0].type !== 'string') return null
-    const confirmation = body.slice(end + 1).trim() || `Wrote ${parsed.length} block(s) to your notes.`
-    return { blocks: parsed as BlockSpec[], confirmation }
+    const TYPE_MAP: Record<string, string> = {
+      ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
+      list: 'bullet_list', numbered_list: 'ordered_list',
+    }
+    const blocks = parsed.map((b: BlockSpec) => ({ ...b, type: (TYPE_MAP[b.type] ?? b.type) as BlockSpec['type'] }))
+    const confirmation = body.slice(end + 1).trim() || `Wrote ${blocks.length} block(s) to your notes.`
+    return { blocks, confirmation }
   } catch {
     return null
   }
@@ -200,6 +248,8 @@ export function SpotlightSearch({
 
   const history = useGraphHistory()
   const editorBridge = useEditorBridge()
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -265,12 +315,47 @@ export function SpotlightSearch({
             writeData,
           }])
         } else {
-          setMessages(prev => [...prev, {
-            id: id + '-r',
-            role: 'assistant',
-            content: writeData.confirmation + '\n\n⚠ Open a document in the editor first so I can write to it.',
-            writeData,
-          }])
+          // No editor open — create a new document and navigate to it
+          // Use the h1 block content as the title, fall back to prompt text
+          const blocks = writeData.blocks.map(b => ({ ...b, id: crypto.randomUUID() }))
+          const h1Block = blocks.find(b => b.type === 'h1')
+          const rawTitle = (h1Block?.content as string | undefined) || text
+          const title = rawTitle.length > 80 ? rawTitle.slice(0, 77) + '…' : rawTitle
+          let docId: string | null = null
+          if (user) {
+            try {
+              const { data, error } = await supabase
+                .from('documents')
+                .insert({
+                  owner_user_id: user.id,
+                  title,
+                  blocks,
+                  access_level: 'private',
+                  is_public_root: false,
+                })
+                .select('id')
+                .single()
+              if (!error && data?.id) docId = data.id
+            } catch { /* fall through to warning */ }
+          }
+
+          if (docId) {
+            setMessages(prev => [...prev, {
+              id: id + '-r',
+              role: 'assistant',
+              content: `Created note "${title}" — opening editor…`,
+              writeData,
+            }])
+            onClose?.()
+            navigate(`/editor/${docId}`, { state: { name: title } })
+          } else {
+            setMessages(prev => [...prev, {
+              id: id + '-r',
+              role: 'assistant',
+              content: writeData.confirmation + '\n\n⚠ Could not create note — are you signed in?',
+              writeData,
+            }])
+          }
         }
       } else {
         const graphData = parseGraphResponse(content)

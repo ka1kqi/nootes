@@ -236,12 +236,36 @@ export default function Design1() {
   const [masterDoc, setMasterDoc] = useState<import('../hooks/useDocument').Document | null>(null)
   const [masterLoading, setMasterLoading] = useState(true)
   useEffect(() => {
-    fetch(`/api/repos/${repoId}/master`)
-      .then(r => r.json())
-      .then(({ data }) => setMasterDoc(data ? { tags: [], source_document_id: null, ...data } : null))
-      .catch(() => { })
-      .finally(() => setMasterLoading(false))
-  }, [])
+    if (!doc) return
+    ;(async () => {
+      try {
+        // For forks: master is source_document_id. For public roots: master is self. Otherwise: none.
+        const masterId = doc.source_document_id ?? (doc.is_public_root ? repoId : null)
+        if (!masterId) { setMasterDoc(null); setMasterLoading(false); return }
+        const { data } = await supabase
+          .from('documents')
+          .select('id, title, version, tags, blocks, source_document_id, access_level, is_public_root, merge_policy, owner_user_id, updated_at')
+          .eq('id', masterId)
+          .maybeSingle()
+        setMasterDoc(data ? {
+          repoId: data.id,
+          userId: data.owner_user_id ?? '',
+          id: data.id,
+          title: data.title,
+          version: data.version ?? null,
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          blocks: Array.isArray(data.blocks) ? data.blocks : [],
+          source_document_id: data.source_document_id ?? null,
+          access_level: data.access_level ?? 'public',
+          is_public_root: data.is_public_root ?? false,
+          merge_policy: data.merge_policy ?? 'invite_only',
+          owner_user_id: data.owner_user_id ?? null,
+          updatedAt: data.updated_at ?? '',
+        } as Document : null)
+      } catch { setMasterDoc(null) }
+      finally { setMasterLoading(false) }
+    })()
+  }, [doc?.source_document_id, doc?.is_public_root, repoId])
 
   // ── Source document author ──────────────────────────────────────────────
   const [sourceAuthor, setSourceAuthor] = useState<{ display_name: string; avatar_url: string | null } | null>(null)

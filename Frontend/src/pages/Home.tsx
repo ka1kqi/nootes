@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Navbar } from '../components/Navbar'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from './GraphView'
 import { parseGraphResponse } from './Graph_Creation'
 import { NootMarkdown } from '../components/NootMarkdown'
+import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
 
 /* ------------------------------------------------------------------ */
 /* Home — AI chatbox centred in generous whitespace                    */
@@ -569,6 +571,7 @@ function getTimeGreeting(name: string): string {
 // ── Home ──────────────────────────────────────────────────────────────
 
 interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string }
+interface ConversationSummary { id: string; title: string | null; created_at: string; preview: string }
 
 function apiBase(): string {
   const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
@@ -577,14 +580,21 @@ function apiBase(): string {
 }
 
 export default function Home() {
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
+  const editorBridge = useEditorBridge()
+  const navigate = useNavigate()
   const [input, setInput]           = useState('')
   const [activeMode, setActiveMode] = useState<AIMode>('Write')
   const [isExpanded, setIsExpanded] = useState(false)
   const [selectedCard, setSelectedCard] = useState<NootCardData | null>(null)
-  const [messages, setMessages]     = useState<ChatMessage[]>([])
-  const [aiLoading, setAiLoading]   = useState(false)
-  const messagesEndRef              = useRef<HTMLDivElement>(null)
+  const [messages, setMessages]       = useState<ChatMessage[]>([])
+  const [aiLoading, setAiLoading]     = useState(false)
+  const messagesEndRef                = useRef<HTMLDivElement>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyList, setHistoryList] = useState<ConversationSummary[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const turnIndexRef                  = useRef(0)
 
   // DOM refs
   const contentRef     = useRef<HTMLDivElement>(null)
@@ -689,6 +699,84 @@ export default function Home() {
 
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
 
+  // ── Conversation persistence ───────────────────────────────────────
+
+  const ensureConversation = useCallback(async (): Promise<string> => {
+    if (conversationId) return conversationId
+    const { data } = await supabase
+      .from('conversations')
+      .insert({ user_id: profile?.id, context_type: 'home' })
+      .select('id')
+      .single()
+    const newId = data?.id ?? crypto.randomUUID()
+    setConversationId(newId)
+    return newId
+  }, [conversationId, profile?.id])
+
+  const saveTurn = useCallback(async (
+    convId: string, role: 'user' | 'assistant', content: string, index: number
+  ) => {
+    await supabase.from('conversation_turns').insert({
+      conversation_id: convId,
+      role,
+      content,
+      turn_index: index,
+      render_mode: role === 'assistant' && parseGraphResponse(content) ? 'graph' : 'markdown',
+    })
+  }, [])
+
+  const loadHistory = useCallback(async () => {
+    if (!profile?.id) return
+    setHistoryLoading(true)
+    const { data: convs } = await supabase
+      .from('conversations')
+      .select('id, title, created_at')
+      .eq('user_id', profile.id)
+      .eq('context_type', 'home')
+      .order('created_at', { ascending: false })
+      .limit(40)
+    if (!convs?.length) { setHistoryList([]); setHistoryLoading(false); return }
+    const { data: turns } = await supabase
+      .from('conversation_turns')
+      .select('conversation_id, content')
+      .in('conversation_id', convs.map(c => c.id))
+      .eq('role', 'user')
+      .eq('turn_index', 0)
+    const previewMap = Object.fromEntries((turns ?? []).map(t => [t.conversation_id, t.content]))
+    setHistoryList(convs.map(c => ({
+      id: c.id, title: c.title, created_at: c.created_at,
+      preview: previewMap[c.id] ?? '…',
+    })))
+    setHistoryLoading(false)
+  }, [profile?.id])
+
+  const loadConversation = useCallback(async (convId: string) => {
+    const { data } = await supabase
+      .from('conversation_turns')
+      .select('*')
+      .eq('conversation_id', convId)
+      .order('turn_index', { ascending: true })
+    const msgs: ChatMessage[] = (data ?? [])
+      .filter((t: any) => t.role === 'user' || t.role === 'assistant')
+      .map((t: any) => ({ id: t.id, role: t.role as 'user' | 'assistant', content: t.content }))
+    setMessages(msgs)
+    setConversationId(convId)
+    turnIndexRef.current = data?.length ?? 0
+    historyRef.current = msgs.map(m => ({ role: m.role, content: m.content }))
+    setShowHistory(false)
+    setTimeout(() => {
+      const el = messagesEndRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    }, 80)
+  }, [])
+
+  const newConversation = useCallback(() => {
+    setMessages([])
+    setConversationId(null)
+    turnIndexRef.current = 0
+    historyRef.current = []
+  }, [])
+
   const expandTask: ExpandFn = useCallback(async (item, context, ancestors) => {
     const topPrompt = historyRef.current.find(m => m.role === 'user')?.content ?? ''
     let prompt = `Top-level goal: ${topPrompt}\n\nExpand this concept into 5–7 connected sub-concepts as a graph:\n${item.name}: ${item.text}`
@@ -738,6 +826,11 @@ export default function Home() {
     }
     setTimeout(scrollToBottom, 50)
 
+    // Persist conversation + user turn
+    const convId = await ensureConversation()
+    const userTurnIdx = turnIndexRef.current++
+    saveTurn(convId, 'user', q, userTurnIdx)
+
     try {
       const modeHints: Record<AIMode, string> = {
         'Write':         '',
@@ -758,8 +851,61 @@ export default function Home() {
       })
       const data = await res.json()
       const reply = data.content ?? data.detail ?? 'No response.'
+
+      // Handle WRITE_TO_EDITOR mode
+      if (reply.trimStart().startsWith('[WRITE_TO_EDITOR]')) {
+        try {
+          const body = reply.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/, '')
+          const rawStart = body.indexOf('[')
+          const afterBracket = rawStart !== -1 ? body.slice(rawStart + 1).trimStart() : ''
+          const arrStart = (rawStart !== -1 && afterBracket.startsWith('{')) ? rawStart : body.indexOf('[{')
+          const arrEnd   = body.lastIndexOf(']')
+          if (arrStart !== -1 && arrEnd > arrStart) {
+            const TYPE_MAP: Record<string, string> = {
+              ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
+              list: 'bullet_list', numbered_list: 'ordered_list',
+            }
+            const raw = JSON.parse(body.slice(arrStart, arrEnd + 1))
+            if (Array.isArray(raw) && raw.length > 0) {
+              const blocks = raw.map((b: { type: string; content: unknown; meta?: unknown }) => ({
+                ...b,
+                id: crypto.randomUUID(),
+                type: TYPE_MAP[b.type] ?? b.type,
+              })) as BlockSpec[]
+              if (editorBridge.isEditorActive) {
+                editorBridge.insertBlocks(blocks)
+              } else if (user) {
+                // No editor open — create a new note and navigate to it
+                // Use h1 block content as title, fall back to prompt text
+                const h1Block = blocks.find((b: { type: string; content: unknown }) => b.type === 'h1')
+                const rawTitle = (h1Block?.content as string | undefined) || q
+                const title = rawTitle.length > 80 ? rawTitle.slice(0, 77) + '…' : rawTitle
+                const { data, error } = await supabase
+                  .from('documents')
+                  .insert({ owner_user_id: user.id, title, blocks, access_level: 'private', is_public_root: false })
+                  .select('id')
+                  .single()
+                if (!error && data?.id) {
+                  historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
+                  setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Created note "${title}" — opening editor…` }])
+                  saveTurn(convId, 'assistant', reply, turnIndexRef.current++)
+                  navigate(`/editor/${data.id}`, { state: { name: title } })
+                  return
+                }
+              }
+            }
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
       historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: reply }])
+      // Persist assistant turn (fire-and-forget)
+      saveTurn(convId, 'assistant', reply, turnIndexRef.current++)
+      // Auto-title conversation from first user message
+      if (userTurnIdx === 0) {
+        supabase.from('conversations').update({ title: q.slice(0, 80) }).eq('id', convId)
+      }
     } catch {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Failed to reach the AI. Check your connection.' }])
     } finally {
@@ -769,7 +915,7 @@ export default function Home() {
         if (el) el.scrollTop = el.scrollHeight
       }, 50)
     }
-  }, [input, activeMode, messages, aiLoading])
+  }, [input, activeMode, messages, aiLoading, ensureConversation, saveTurn, editorBridge, user, navigate])
 
   const firstName = profile?.display_name?.split(' ')[0] ?? 'you'
   const greeting  = useMemo(() => getTimeGreeting(firstName), [firstName])
@@ -810,6 +956,67 @@ export default function Home() {
       {/* ── Content area ─────────────────────────────────────────────── */}
       <div ref={contentRef} className="flex-1 relative overflow-hidden">
 
+        {/* ── History panel — slides in from left ──────────────────────── */}
+        <div
+          className="absolute inset-y-0 left-0 z-20 flex pointer-events-none"
+          style={{ transition: 'opacity 0.25s ease' }}
+        >
+          {/* Backdrop */}
+          {showHistory && (
+            <div
+              className="fixed inset-0 z-10 pointer-events-auto"
+              onClick={() => setShowHistory(false)}
+            />
+          )}
+          <div
+            className="relative z-20 pointer-events-auto h-full flex flex-col bg-parchment border-r border-forest/10 shadow-[4px_0_32px_-8px_rgba(38,70,53,0.12)]"
+            style={{
+              width: 300,
+              transform: showHistory ? 'translateX(0)' : 'translateX(-300px)',
+              transition: 'transform 0.35s cubic-bezier(0.16,1,0.3,1)',
+            }}
+          >
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-forest/8">
+              <span className="font-[family-name:var(--font-display)] text-sm text-forest/70">history</span>
+              <button
+                onClick={newConversation}
+                className="text-[10px] font-[family-name:var(--font-body)] text-sage/60 hover:text-forest/70 transition-colors border border-forest/10 hover:border-forest/20 px-2 py-1 squircle cursor-pointer"
+              >
+                + new
+              </button>
+            </div>
+
+            {/* Conversation list */}
+            <div className="flex-1 overflow-y-auto py-2">
+              {historyLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <span className="w-4 h-4 border-2 border-sage/30 border-t-sage rounded-full animate-spin" />
+                </div>
+              )}
+              {!historyLoading && historyList.length === 0 && (
+                <p className="text-xs text-forest/30 font-[family-name:var(--font-body)] text-center py-8 px-4">no conversations yet</p>
+              )}
+              {!historyLoading && historyList.map(conv => (
+                <button
+                  key={conv.id}
+                  onClick={() => loadConversation(conv.id)}
+                  className={`w-full text-left px-4 py-3 hover:bg-forest/[0.04] transition-colors border-b border-forest/[0.05] group cursor-pointer ${
+                    conversationId === conv.id ? 'bg-forest/[0.06]' : ''
+                  }`}
+                >
+                  <p className="text-xs font-[family-name:var(--font-body)] text-forest/75 leading-snug line-clamp-2 group-hover:text-forest transition-colors">
+                    {conv.title ?? conv.preview}
+                  </p>
+                  <p className="text-[10px] text-forest/30 mt-1 font-[family-name:var(--font-body)]">
+                    {new Date(conv.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* ── Chatbox section — fills content area ─────────────────────── */}
         <div className="absolute inset-0 flex flex-col items-center px-6 pointer-events-none">
           <div className="pointer-events-auto w-full max-w-2xl h-full flex flex-col">
@@ -843,6 +1050,22 @@ export default function Home() {
                 <div className="mt-auto flex flex-col gap-3">
                   {messages.map((m) => {
                     if (m.role === 'assistant') {
+                      // WRITE_TO_EDITOR response — show confirmation, not raw JSON
+                      if (m.content.trimStart().startsWith('[WRITE_TO_EDITOR]')) {
+                        const confirmation = m.content.split('\n').filter(l =>
+                          !l.trimStart().startsWith('[WRITE_TO_EDITOR]') && !l.trimStart().startsWith('[')
+                        ).join(' ').trim() || 'Wrote blocks to your notes.'
+                        return (
+                          <div key={m.id} className="flex justify-start" style={{ animation: 'home-fade-up 0.4s ease both' }}>
+                            <div className="max-w-[85%] px-4 py-2.5 squircle-xl bg-parchment border border-sage/30 text-forest font-[family-name:var(--font-body)] text-sm leading-relaxed flex items-center gap-2">
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
+                                <path d="M2 7.5L5.5 11L12 4" stroke="#3D6B4F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                              <span>{confirmation}</span>
+                            </div>
+                          </div>
+                        )
+                      }
                       const parsed = parseGraphResponse(m.content)
                       if (parsed) {
                         return (
@@ -900,11 +1123,44 @@ export default function Home() {
             {/* Input area — always pinned at bottom */}
             <div className="shrink-0 pb-6">
 
+            {/* History / New chat controls — appear when conversation is active */}
+            {messages.length > 0 && (
+              <div className="flex items-center gap-2 mb-2" style={{ animation: 'home-fade-up 0.3s ease both' }}>
+                <button
+                  onClick={() => { setShowHistory(h => { if (!h) loadHistory(); return !h }) }}
+                  className="flex items-center gap-1.5 text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  history
+                </button>
+                <span className="text-forest/15 text-xs">·</span>
+                <button
+                  onClick={newConversation}
+                  className="text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+                >
+                  + new chat
+                </button>
+              </div>
+            )}
+
             {/* AI Chatbox */}
             <div
               className="w-full bg-parchment border border-forest/[0.12] squircle-xl px-4 py-3 flex items-center gap-3 shadow-[0_4px_32px_-10px_rgba(38,70,53,0.08)] focus-within:border-sage/40 focus-within:shadow-[0_6px_32px_-10px_rgba(138,155,117,0.16)] transition-all"
               style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 80ms both' }}
             >
+
+              {/* History toggle — visible in empty state too */}
+              <button
+                onClick={() => { setShowHistory(h => { if (!h) loadHistory(); return !h }) }}
+                className="shrink-0 text-forest/25 hover:text-forest/50 transition-colors cursor-pointer"
+                title="Conversation history"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
 
               {/* Attachment */}
               <label

@@ -43,9 +43,13 @@ def blocks_to_json_str(blocks: list[dict]) -> str:
     return json.dumps(clean, ensure_ascii=False)
 
 
-def blocks_to_markdown(blocks: list[dict]) -> str:
-    """Convert a list of blocks to a markdown string for LLM consumption."""
+def blocks_to_markdown(blocks: list[dict], title: str | None = None) -> str:
+    """Convert a list of blocks to a markdown string for LLM consumption.
+    If title is provided it is prepended as an H1 so embeddings include the document title.
+    """
     parts: list[str] = []
+    if title and title.strip():
+        parts.append(f"# {title.strip()}")
     for block in blocks:
         t = block.get("type", "paragraph")
         content = block.get("content", "")

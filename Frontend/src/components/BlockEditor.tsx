@@ -22,7 +22,7 @@ export type BlockEditorHandle = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEXT_TYPES: BlockType[] = ['paragraph', 'h1', 'h2', 'h3', 'quote']
-const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout', 'diagram']
+const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout', 'diagram', 'bullet_list', 'ordered_list']
 
 const TYPE_LABEL: Record<string, string> = {
   paragraph: 'Paragraph',
@@ -37,6 +37,8 @@ const TYPE_LABEL: Record<string, string> = {
   callout: 'Callout',
   divider: 'Divider',
   diagram: 'Diagram',
+  bullet_list: 'Bullet List',
+  ordered_list: 'Numbered List',
 }
 
 const CALLOUT_VARIANTS = ['info', 'tip', 'warning', 'important'] as const
@@ -138,6 +140,32 @@ export function BlockPreview({ block }: { block: Block }) {
           : <div className="h-10 flex items-center justify-center font-mono text-xs text-forest/25">Empty diagram</div>
         }
       </div>
+    )
+  }
+  if (block.type === 'bullet_list') {
+    const items = block.content.split('\n').filter(Boolean)
+    return (
+      <ul className="my-3 ml-1 space-y-1.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-2.5 font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed">
+            <span className="mt-[0.55em] w-1.5 h-1.5 rounded-full bg-sage shrink-0" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  if (block.type === 'ordered_list') {
+    const items = block.content.split('\n').filter(Boolean)
+    return (
+      <ol className="my-3 ml-1 space-y-1.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-2.5 font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed">
+            <span className="w-5 shrink-0 font-mono text-xs text-sage/80 mt-[0.4em] text-right select-none">{i + 1}.</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ol>
     )
   }
   if (block.type === 'divider') {
@@ -461,9 +489,10 @@ function RichBlock({
     : block.type === 'chemistry' ? 'KaTeX chem · e.g. \\text{H}_2\\text{O}'
     : block.type === 'table' ? 'CSV · first row = headers'
     : block.type === 'diagram' ? 'Mermaid · e.g. graph TD; A-->B'
+    : block.type === 'bullet_list' || block.type === 'ordered_list' ? 'One item per line'
     : 'Callout text'
 
-  const sourceRows = block.type === 'code' ? 6 : block.type === 'table' ? 4 : block.type === 'diagram' ? 5 : 3
+  const sourceRows = block.type === 'code' ? 6 : block.type === 'table' ? 4 : block.type === 'diagram' ? 5 : (block.type === 'bullet_list' || block.type === 'ordered_list') ? 4 : 3
 
   const ringRadius = block.type === 'code' ? 'squircle' : 'squircle-xl'
 

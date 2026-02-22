@@ -55,6 +55,7 @@ class MergeRequest(BaseModel):
 class EmbedRequest(BaseModel):
     doc_id: str
     blocks: list[Any]  # permissive — validated in handler
+    title: str | None = None
 
 
 
@@ -294,7 +295,7 @@ async def moderate_message(body: ModerateRequest):
 async def _embed_document_safe(repo_id: str, user_id: str, doc: dict):
     """Legacy fire-and-forget — kept for compatibility."""
     try:
-        markdown = blocks_to_markdown(doc.get("blocks", []))
+        markdown = blocks_to_markdown(doc.get("blocks", []), title=doc.get("title"))
         if not markdown.strip():
             return
         vector = await nim_embed_single(markdown)
@@ -314,7 +315,7 @@ async def embed_document(body: EmbedRequest):
     if not texts:
         raise HTTPException(status_code=400, detail="Document has no content to embed")
 
-    markdown = "\n".join(texts)
+    markdown = blocks_to_markdown(body.blocks, title=body.title)
     try:
         vector = await nim_embed_single(markdown)
     except Exception as e:

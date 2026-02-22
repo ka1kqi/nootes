@@ -244,25 +244,98 @@ export const TypingIndicator = () => (
 
 // ─── PARSE GRAPH RESPONSE ────────────────────────────────────────────────────
 // Extracts the JSON array and any plain-text summary that follows it.
-export function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
-  try {
-    const start = content.indexOf('[')
-    const end   = content.lastIndexOf(']')
-    if (start === -1 || end === -1) return null
+// Falls back to a text-format parser if the AI doesn't emit valid JSON.
 
-    const parsed = JSON.parse(content.slice(start, end + 1))
-    if (
-      !Array.isArray(parsed) ||
-      parsed.length === 0 ||
-      typeof parsed[0].name !== 'string' ||
-      typeof parsed[0].text !== 'string'
-    ) return null
+function dedupeItems(parsed: TaskItem[]): TaskItem[] {
+  const seen = new Set<string>()
+  return parsed.filter(it => {
+    if (typeof it.name !== 'string' || seen.has(it.name)) return false
+    seen.add(it.name)
+    return true
+  })
+}
 
-    const summary = content.slice(end + 1).trim()
-    return { items: parsed as TaskItem[], summary }
-  } catch {
-    return null
+// Fallback: parses the text format the AI sometimes emits instead of JSON:
+//   Node Name text: "description" depends_on: ["Dep1", "Dep2"]
+function parseTextFormat(content: string): { items: TaskItem[]; summary: string } | null {
+  // Regex: capture name / text / depends_on from each line
+  const re = /^(.+?)\s+text:\s+"((?:[^"\\]|\\.)*)"\s+depends_on:\s+(\[[^\]]*\])/gm
+  const items: TaskItem[] = []
+  const summaryLines: string[] = []
+  let match: RegExpExecArray | null
+  const matched = new Set<number>()
+
+  while ((match = re.exec(content)) !== null) {
+    matched.add(match.index)
+    try {
+      const deps = JSON.parse(match[3]) as string[]
+      items.push({ name: match[1].trim(), text: match[2], depends_on: deps })
+    } catch { /* skip malformed line */ }
   }
+
+  if (items.length === 0) return null
+
+  // Any line not matched by the regex is treated as the summary
+  content.split(/\n+/).forEach(line => {
+    const t = line.trim()
+    if (t && !re.test(t)) summaryLines.push(t)
+  })
+
+  return { items: dedupeItems(items), summary: summaryLines.join(' ').trim() }
+}
+
+// Normalise AI output before any parsing attempt:
+//   1. Strip leading [TAG_LABEL] prefixes (e.g. [BURGER_RECIPE], [GRAPH])
+//   2. If the content is bare comma-separated objects (no outer [ ]), wrap them
+function normaliseContent(raw: string): { body: string; suffix: string } {
+  // Remove any leading [ALL_CAPS_TAG] or [Mixed Tag] prefix
+  const stripped = raw.replace(/^\s*\[[A-Z_a-z\s]+\]\s*/g, '').trim()
+
+  // If it starts with '{' the AI forgot the outer array brackets — wrap it
+  if (stripped.startsWith('{')) {
+    // Find the last '}' that closes the final object
+    const lastBrace = stripped.lastIndexOf('}')
+    if (lastBrace !== -1) {
+      const arrayStr = '[' + stripped.slice(0, lastBrace + 1) + ']'
+      const suffix   = stripped.slice(lastBrace + 1).trim()
+      return { body: arrayStr, suffix }
+    }
+  }
+
+  return { body: stripped, suffix: '' }
+}
+
+export function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
+  const { body, suffix } = normaliseContent(content)
+
+  // ── Try JSON path first ──────────────────────────────────────────────────
+  try {
+    const rawStart = body.indexOf('[')
+    if (rawStart !== -1) {
+      const afterBracket = body.slice(rawStart + 1).trimStart()
+      const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
+      const end   = body.lastIndexOf(']')
+      if (start !== -1 && end !== -1 && end >= start) {
+        const jsonStr = body.slice(start, end + 1).replace(/\/\/[^\n\r]*/g, '')
+        const parsed = JSON.parse(jsonStr)
+        if (
+          Array.isArray(parsed) &&
+          parsed.length > 0 &&
+          typeof parsed[0].name === 'string' &&
+          typeof parsed[0].text === 'string'
+        ) {
+          const items = dedupeItems(parsed as TaskItem[])
+          if (items.length > 0) {
+            const summary = (suffix || body.slice(end + 1)).trim()
+            return { items, summary }
+          }
+        }
+      }
+    }
+  } catch { /* fall through to text parser */ }
+
+  // ── Fallback: plain-text node format ────────────────────────────────────
+  return parseTextFormat(content)
 }
 
 // ─── EXPAND TASK ─────────────────────────────────────────────────────────────

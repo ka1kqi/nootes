@@ -258,6 +258,13 @@ const nodeTypes: NodeTypes = { circle: CircleNode }
 // Nodes at depth ≥ 2 are clustered near their parent's angular position so the
 // graph reads as a true spoke/wheel rather than concentric circles.
 function buildCircularLayout(items: TaskItem[]) {
+  // Deduplicate by name defensively (AI can emit duplicate nodes)
+  const seenNames = new Set<string>()
+  items = items.filter(it => {
+    if (seenNames.has(it.name)) return false
+    seenNames.add(it.name)
+    return true
+  })
   const n = items.length
   if (n === 0) return { nodes: [], edges: [] }
 
@@ -404,12 +411,13 @@ function getExpansionCircularPositions(
   const childrenOf = new Map(items.map(it => [it.name, [] as string[]]))
   const parentsOf  = new Map(items.map(it => [it.name, [] as string[]]))
 
+  // depends_on = children (tasks this node spawns/leads to), matching buildCircularLayout
   items.forEach(it => {
     if (!Array.isArray(it.depends_on)) return
     it.depends_on.forEach(dep => {
       if (!nameSet.has(dep) || dep === it.name) return
-      childrenOf.get(dep)!.push(it.name)
-      parentsOf.get(it.name)!.push(dep)
+      childrenOf.get(it.name)!.push(dep)
+      parentsOf.get(dep)!.push(it.name)
     })
   })
 
@@ -601,17 +609,20 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
       }
       let edgeIdx = 0
       const newNameSet = new Set(newItems.map(it => it.name))
+      // depends_on = children (downstream tasks); edge goes item → dep (same as buildCircularLayout)
       newItems.forEach(item => {
         if (!Array.isArray(item.depends_on)) return
         item.depends_on.forEach(dep => {
-          const srcId = newNameSet.has(dep) ? nameToId.get(dep) : existingByLabel.get(dep)
-          const tgtId = nameToId.get(item.name)
+          const srcId = nameToId.get(item.name)
+          const tgtId = newNameSet.has(dep) ? nameToId.get(dep) : existingByLabel.get(dep)
           if (srcId && tgtId) { const e = addEdge(srcId, tgtId, edgeIdx++); if (e) edgesToAdd.push(e) }
         })
       })
+      // Items that appear in any depends_on list have an internal parent pointing to them
       const hasInternalParent = new Set(
-        newItems.flatMap(it => (it.depends_on ?? []).filter(d => newNameSet.has(d)).map(() => it.name))
+        newItems.flatMap(it => (it.depends_on ?? []).filter(d => newNameSet.has(d)))
       )
+      // Attach orphan nodes (nothing points to them yet) directly to the expanded node
       newItems.forEach(item => {
         if (!hasInternalParent.has(item.name)) {
           const tgtId = nameToId.get(item.name)

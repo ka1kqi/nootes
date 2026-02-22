@@ -17,12 +17,12 @@ function _contentFingerprint(blocks: Block[]): string {
     .join('\x00')
 }
 
-async function _embedAndStore(docId: string, blocks: Block[]) {
+async function _embedAndStore(docId: string, blocks: Block[], title?: string) {
   try {
     const res = await fetch(`${_apiBase()}/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doc_id: docId, blocks }),
+      body: JSON.stringify({ doc_id: docId, blocks, title: title ?? null }),
     })
     if (!res.ok) return
     const { embedding } = await res.json()
@@ -48,6 +48,8 @@ export type BlockType =
   | 'divider'
   | 'table'
   | 'diagram'
+  | 'bullet_list'
+  | 'ordered_list'
 
 export type Block = {
   id: string
@@ -318,7 +320,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       const fingerprint = _contentFingerprint(blocks)
       if (fingerprint !== lastEmbedFingerprintRef.current) {
         lastEmbedFingerprintRef.current = fingerprint  // optimistic: skip duplicates even if embed fails
-        _embedAndStore(repoId, blocks)
+        _embedAndStore(repoId, blocks, docRef.current.title || repoTitle || undefined)
       }
 
       setSaveStatus('saved')

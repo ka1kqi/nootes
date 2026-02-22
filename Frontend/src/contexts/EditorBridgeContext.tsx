@@ -55,9 +55,24 @@ export function EditorBridgeProvider({ children }: { children: React.ReactNode }
   const insertBlocks = useCallback((specs: BlockSpec[]) => {
     if (!ref.current) return
     const existing = ref.current.getBlocks()
+
+    // Normalize content: arrays → newline-joined; strip list prefixes
+    const normalizeContent = (type: BlockSpec['type'], raw: unknown): string => {
+      const lines = Array.isArray(raw)
+        ? (raw as unknown[]).map(String)
+        : String(raw ?? '').split('\n')
+      if (type === 'bullet_list') {
+        return lines.map(l => l.replace(/^\s*[-*]\s+/, '').trim()).filter(Boolean).join('\n')
+      }
+      if (type === 'ordered_list') {
+        return lines.map(l => l.replace(/^\s*\d+[.)]\s+/, '').trim()).filter(Boolean).join('\n')
+      }
+      return Array.isArray(raw) ? (raw as string[]).join('\n') : String(raw ?? '')
+    }
+
     const created: Block[] = specs.map(s => ({
       ...newBlock(s.type),
-      content: s.content,
+      content: normalizeContent(s.type, s.content),
       meta: s.meta ?? newBlock(s.type).meta,
     }))
     ref.current.setBlocks([...existing, ...created])
