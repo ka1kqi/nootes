@@ -142,7 +142,75 @@ export default function Design1() {
     }
   }, [forkEnabled, user, doc, repoId, repoMeta, navigate])
 
-  // ── Register with EditorBridge so Noot can insert blocks ─────────────────
+  // ── Submit for merge handler ─────────────────────────────────────────────
+  const [merging, setMerging] = useState(false)
+  const [mergeResult, setMergeResult] = useState<{ summary: string } | null>(null)
+  const [mergeError, setMergeError] = useState<string | null>(null)
+
+  const handleSubmitMerge = useCallback(async () => {
+    if (!doc?.source_document_id || !doc.blocks) return
+    setMerging(true)
+    setMergeResult(null)
+    setMergeError(null)
+    try {
+      // 1. Save fork first so DB is up to date
+      await saveNow()
+
+      // 2. Fetch master blocks from Supabase
+      const { data: masterRow, error: masterErr } = await supabase
+        .from('documents')
+        .select('blocks, title')
+        .eq('id', doc.source_document_id)
+        .single()
+
+      if (masterErr || !masterRow) {
+        setMergeError('Could not load master document.')
+        return
+      }
+
+      // 3. Call merge endpoint
+      const res = await fetch('/api/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          master_blocks: masterRow.blocks ?? [],
+          fork_blocks:   doc.blocks,
+          master_label:  `MASTER: ${masterRow.title ?? 'Master Document'}`,
+          fork_label:    `FORK: ${doc.title ?? 'Fork'}`,
+        }),
+      })
+
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        setMergeError(detail?.detail ?? `Merge failed (${res.status})`)
+        return
+      }
+
+      const { merged_blocks, summary } = await res.json()
+
+      if (!merged_blocks?.length) {
+        setMergeError('Merge engine returned no blocks. Try again.')
+        return
+      }
+
+      // 4. Write merged blocks directly to the master document in Supabase
+      const { error: updateErr } = await supabase
+        .from('documents')
+        .update({ blocks: merged_blocks })
+        .eq('id', doc.source_document_id)
+
+      if (updateErr) {
+        setMergeError(`Could not update master: ${updateErr.message}`)
+        return
+      }
+
+      setMergeResult({ summary })
+    } catch (e) {
+      setMergeError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setMerging(false)
+    }
+  }, [doc, saveNow])
   const bridge = useEditorBridge()
   const blocksRef = useRef(doc?.blocks ?? [])
   useEffect(() => { blocksRef.current = doc?.blocks ?? [] }, [doc?.blocks])
@@ -165,10 +233,48 @@ export default function Design1() {
       .finally(() => setMasterLoading(false))
   }, [])
 
-  // Flush any pending save on SPA navigation (tab-hide is handled inside useDocument)
-  useEffect(() => { return () => saveNow() }, [saveNow])
+  // ── Source document author ──────────────────────────────────────────────
+  const [sourceAuthor, setSourceAuthor] = useState<{ display_name: string; avatar_url: string | null } | null>(null)
+  useEffect(() => {
+    if (!doc?.source_document_id) { setSourceAuthor(null); return }
+    ;(async () => {
+      try {
+        const { data: srcDoc } = await supabase
+          .from('documents')
+          .select('owner_user_id')
+          .eq('id', doc.source_document_id!)
+          .maybeSingle()
+        if (!srcDoc?.owner_user_id) return
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('display_name, avatar_url')
+          .eq('id', srcDoc.owner_user_id)
+          .maybeSingle()
+        if (profile) setSourceAuthor(profile)
+      } catch { /* ignore */ }
+    })()
+  }, [doc?.source_document_id])
 
-  // Undo on Ctrl+Z / Cmd+Z (personal tab only)
+  // ── TOC: derive headings from active document ───────────────────────────────
+  const isFork = Boolean(doc?.source_document_id)
+
+  // ── Check if current user already has a fork of this document ─────────
+  const [userForkId, setUserForkId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!user?.id || !repoId || repoId === 'scratch' || isFork) { setUserForkId(null); return }
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('documents')
+          .select('id')
+          .eq('owner_user_id', user.id)
+          .eq('source_document_id', repoId)
+          .maybeSingle()
+        setUserForkId(data?.id ?? null)
+      } catch { /* ignore */ }
+    })()
+  }, [user?.id, repoId, isFork])
+
   // Use capture phase so we intercept before the browser's native contenteditable undo.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -180,9 +286,6 @@ export default function Design1() {
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [undo, redo, activeTab])
-
-  // ── TOC: derive headings from active document ───────────────────────────────
-  const isFork = Boolean(doc?.source_document_id)
 
   const headings = useMemo(() => {
     const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
@@ -269,9 +372,9 @@ export default function Design1() {
         {/* Main editor */}
         <main className="flex-1 flex flex-col min-w-0">
           {/* Toolbar */}
-          <div className={`border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center shrink-0 gap-0 ${!isOwner && activeTab === 'write' ? 'opacity-40 pointer-events-none' : ''}`}>
-            {/* Insert buttons — clips if viewport too narrow; right side is always visible */}
-            <div className="flex-1 min-w-0 overflow-hidden flex items-center gap-1">
+          <div className={`border-b border-forest/[0.08] bg-cream px-6 py-2.5 flex items-center shrink-0 gap-0`}>
+            {/* Insert buttons — greyed out for non-owners; toggle always active */}
+            <div className={`flex-1 min-w-0 overflow-hidden flex items-center gap-1 ${!isOwner && activeTab === 'write' ? 'opacity-40 pointer-events-none' : ''}`}>
               {/* Text type buttons — reflects and changes the focused block's type */}
               <div className="flex items-center gap-0.5 shrink-0">
                 <TTypeBtn active={currentBlockType === 'paragraph'} onClick={() => editorRef.current?.setCurrentType('paragraph')} title="Paragraph">
@@ -332,6 +435,8 @@ export default function Design1() {
 
             {/* Right side — always pinned, never pushed by insert buttons */}
             <div className="shrink-0 flex items-center gap-2 pl-2">
+              {/* Save status + Diff — greyed for non-owners */}
+              <div className={`flex items-center gap-2 ${!isOwner && activeTab === 'write' ? 'opacity-40 pointer-events-none' : ''}`}>
               {/* Save status — always rendered to hold space, invisible on master tab */}
               <span
                 className="font-[family-name:var(--font-body)] text-[10px] text-forest/35 select-none shrink-0 w-0 whitespace-nowrap overflow-hidden text-right"
@@ -353,23 +458,37 @@ export default function Design1() {
               </Link>
               )}
 
-              {/* Master / Personal tab switcher — only for forks */}
-              {isFork && (
+              </div>{/* end greyed right items */}
+
+              {/* Master / Personal tab switcher — for forks, or when user already has a fork of this doc */}
+              {(isFork || userForkId) && (
               <div className="relative flex h-7 border border-forest/15 squircle-sm overflow-hidden shrink-0">
-                {/* Sliding background pill */}
+                {/* Sliding background pill — on master = left active, on personal fork = right active */}
                 <span
                   className="absolute inset-y-0 w-1/2 bg-forest transition-transform duration-200 ease-in-out"
-                  style={{ transform: activeTab === 'write' ? 'translateX(100%)' : 'translateX(0%)' }}
+                  style={{ transform: (isFork ? activeTab === 'preview' : true) ? 'translateX(0%)' : 'translateX(100%)' }}
                 />
                 <button
-                  onClick={() => { setActiveTab('preview'); setTabSwitched(true) }}
+                  onClick={() => {
+                    if (isFork && doc?.source_document_id) {
+                      navigate(`/editor/${doc.source_document_id}`)
+                    } else {
+                      setActiveTab('preview'); setTabSwitched(true)
+                    }
+                  }}
                   className="relative z-10 w-19 flex items-center justify-center font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-colors duration-200"
-                  style={{ color: activeTab === 'preview' ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
+                  style={{ color: (isFork ? activeTab === 'preview' : !userForkId || true) ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
                 >Master</button>
                 <button
-                  onClick={() => { setActiveTab('write'); setTabSwitched(true) }}
+                  onClick={() => {
+                    if (userForkId) {
+                      navigate(`/editor/${userForkId}`)
+                    } else {
+                      setActiveTab('write'); setTabSwitched(true)
+                    }
+                  }}
                   className="relative z-10 w-19 flex items-center justify-center font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase transition-colors duration-200"
-                  style={{ color: activeTab === 'write' ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
+                  style={{ color: (isFork ? activeTab === 'write' : false) ? '#E9E4D4' : 'rgba(38,70,53,0.4)' }}
                 >Personal</button>
               </div>
               )}
@@ -467,19 +586,31 @@ export default function Design1() {
                     </span>
                     {/* Submit for merge — only for forks owned by current user */}
                     {isFork && isOwner && (
+                    <div className="ml-auto flex flex-col items-end gap-1">
                     <button
-                      className="ml-auto flex items-center gap-2 px-4 py-1.5 bg-forest text-parchment font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm hover:bg-forest/80 transition-colors"
-                      onClick={() => {
-                        saveNow()
-                        alert('Merge request submitted! The semantic merge engine will process your fork in the next merge cycle.')
-                      }}
+                      disabled={merging}
+                      className={`flex items-center gap-2 px-4 py-1.5 font-[family-name:var(--font-body)] text-[11px] tracking-wide squircle-sm transition-colors ${merging ? 'bg-forest/50 text-parchment/60 cursor-not-allowed' : 'bg-forest text-parchment hover:bg-forest/80'}`}
+                      onClick={handleSubmitMerge}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                      Submit for Merge
+                      {merging ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364l-2.121 2.121M8.757 15.243l-2.121 2.121m0-12.728l2.121 2.121M15.243 15.243l2.121 2.121" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                      )}
+                      {merging ? 'Merging…' : 'Submit for Merge'}
                     </button>
+                    {mergeResult && (
+                      <span className="font-mono text-[10px] text-sage/70 max-w-[280px] text-right leading-tight">✓ Merged — {mergeResult.summary}</span>
                     )}
-                    {/* Fork button — shown when viewing someone else's document */}
-                    {!isOwner && repoId !== 'scratch' && (
+                    {mergeError && (
+                      <span className="font-mono text-[10px] text-red-500/70 max-w-[280px] text-right leading-tight">{mergeError}</span>
+                    )}
+                    </div>
+                    )}
+                    {/* Fork button — shown when viewing someone else's document and not yet forked */}
+                    {!isOwner && repoId !== 'scratch' && !userForkId && (
                     <div className="ml-auto flex flex-col items-end gap-1">
                     <button
                       disabled={!forkEnabled || forking}
@@ -515,6 +646,29 @@ export default function Design1() {
                     )}
                   </div>
                 </div>
+
+                {/* Source author attribution — shown for forked documents */}
+                {doc?.source_document_id && sourceAuthor && (
+                  <div className="flex items-center gap-2.5 mb-8 pb-6 border-b border-forest/[0.07]">
+                    {sourceAuthor.avatar_url ? (
+                      <img src={sourceAuthor.avatar_url} alt={sourceAuthor.display_name} className="w-6 h-6 rounded-full object-cover opacity-70" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-sage/30 flex items-center justify-center shrink-0">
+                        <span className="font-mono text-[9px] text-forest/50">{sourceAuthor.display_name.charAt(0).toUpperCase()}</span>
+                      </div>
+                    )}
+                    <span className="font-[family-name:var(--font-body)] text-[11px] text-forest/40 tracking-wide">
+                      Forked from <span className="text-forest/60">{sourceAuthor.display_name}</span>
+                    </span>
+                    <button
+                      onClick={() => navigate(`/editor/${doc.source_document_id}`)}
+                      className="ml-auto font-mono text-[10px] text-sage/60 hover:text-sage transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                      View original
+                    </button>
+                  </div>
+                )}
 
                 {/* ── Block editor ─────────────────────────────────────────── */}
                 {loading ? (

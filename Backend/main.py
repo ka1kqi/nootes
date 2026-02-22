@@ -40,9 +40,14 @@ class Block(BaseModel):
     meta: Optional[dict[str, Any]] = None
 
 
-class UpdateDocRequest(BaseModel):
-    blocks: Optional[list[Block]] = None
-    title: Optional[str] = None
+class MergeRequest(BaseModel):
+    master_blocks: list[dict[str, Any]]
+    fork_blocks: list[dict[str, Any]]
+    master_label: Optional[str] = "Master Document"
+    fork_label: Optional[str] = "Fork"
+
+
+
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -439,7 +444,44 @@ async def merge_documents(repo_id: str):
     }
 
 
-def _bump_version(version: str) -> str:
+@app.post("/api/merge")
+async def merge_documents_direct(body: MergeRequest):
+    """
+    Merge a fork into a master document using blocks supplied directly in the
+    request body.  Returns the merged blocks + a summary; the caller is
+    responsible for persisting the result.
+    """
+    master = {"blocks": body.master_blocks}
+    fork   = {"blocks": body.fork_blocks, "userId": body.fork_label}
+
+    merge_prompt = _load_merge_prompt()
+
+    master_json = blocks_to_json_str(master.get("blocks", []))
+    fork_json   = blocks_to_json_str(fork.get("blocks", []))
+    user_content = (
+        f"## {body.master_label}\n\n{master_json}"
+        f"\n\n---\n\n## {body.fork_label}\n\n{fork_json}"
+    )
+
+    try:
+        result = await nim_chat(
+            messages=[
+                {"role": "system", "content": merge_prompt},
+                {"role": "user",   "content": user_content},
+            ],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM merge failed: {e}")
+
+    merged_blocks, summary = _parse_merge_result(result)
+
+    return {
+        "merged_blocks": merged_blocks,
+        "summary": summary,
+    }
+
+
+
     """Increment the patch version: 1.0.0 → 1.0.1."""
     try:
         parts = version.split(".")
