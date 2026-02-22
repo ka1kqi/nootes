@@ -6,11 +6,15 @@
   "course": "CS-101",
   "professor": "Dr. Smith",
   "semester": "Spring 2026",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "contributorCount": 1,
-  "tags": ["example", "showcase", "rich-text"],
+  "tags": [
+    "example",
+    "showcase",
+    "rich-text"
+  ],
   "createdAt": "2026-02-21T00:00:00.000Z",
-  "updatedAt": "2026-02-21T00:00:00.000Z",
+  "updatedAt": "2026-02-22T08:52:49.610751+00:00",
   "blocks": [
     {
       "id": "b-h1-001",

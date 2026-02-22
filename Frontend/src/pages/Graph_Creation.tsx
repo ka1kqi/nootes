@@ -17,7 +17,7 @@ import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { supabase } from '../lib/supabase'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api/prompt'
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt'
 
 const SYSTEM_PROMPT        = rawPrompt
 const SYSTEM_PROMPT_SIMPLE = rawSimplePrompt
