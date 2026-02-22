@@ -37,6 +37,12 @@ def json_to_document(text: str, fallback_key: str = "") -> dict:
     return doc
 
 
+def blocks_to_json_str(blocks: list[dict]) -> str:
+    """Serialize blocks to a compact JSON string for LLM consumption."""
+    clean = [{"type": b.get("type", "paragraph"), "content": b.get("content", "")} for b in blocks]
+    return json.dumps(clean, ensure_ascii=False)
+
+
 def blocks_to_markdown(blocks: list[dict]) -> str:
     """Convert a list of blocks to a markdown string for LLM consumption."""
     parts: list[str] = []

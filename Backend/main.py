@@ -3,13 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Optional
 import asyncio
+import json
+import re
 import uuid
 import copy
-import os
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from doc_utils import document_to_json, json_to_document, blocks_to_markdown, markdown_to_blocks
+from doc_utils import document_to_json, json_to_document, blocks_to_markdown, blocks_to_json_str
 from nim_client import nim_chat, nim_graph, nim_embed_single, nim_moderate
 
 app = FastAPI(title="Nootes API")
@@ -283,34 +284,48 @@ def _load_merge_prompt() -> str:
     try:
         return MERGE_PROMPT_PATH.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
-        return "You are a document merge assistant. Merge the provided documents into one."
+        return (
+            "You are a document merge assistant. Merge the provided document blocks into one. "
+            "Return ONLY a JSON array of block objects with 'type' and 'content' fields. "
+            "After the JSON array, add a line '---MERGE_SUMMARY---' followed by a brief summary."
+        )
 
 
 def _format_merge_input(master: dict, forks: list[dict]) -> str:
     """Build the user message containing master + all forks for the merge model."""
-    parts = []
+    master_json = blocks_to_json_str(master.get("blocks", []))
+    parts = [f"## MASTER DOCUMENT\n\n{master_json}"]
 
-    # Master document
-    master_md = blocks_to_markdown(master.get("blocks", []))
-    parts.append(f"## MASTER DOCUMENT\n\n{master_md}")
-
-    # Fork documents
     for i, fork in enumerate(forks, 1):
-        fork_md = blocks_to_markdown(fork.get("blocks", []))
+        fork_json = blocks_to_json_str(fork.get("blocks", []))
         user_id = fork.get("userId", "unknown")
-        parts.append(f"## FORK-{i} (contributor: {user_id})\n\n{fork_md}")
+        parts.append(f"## FORK-{i} (contributor: {user_id})\n\n{fork_json}")
 
     return "\n\n---\n\n".join(parts)
 
 
-def _parse_merge_result(result: str) -> tuple[str, str]:
-    """Split merge model output into (merged_markdown, summary)."""
+def _parse_merge_result(result: str) -> tuple[list[dict], str]:
+    """Parse merge model output into (blocks, summary)."""
     separator = "---MERGE_SUMMARY---"
     if separator in result:
-        merged, summary = result.split(separator, 1)
-        return merged.strip(), summary.strip()
-    # Fallback: entire output is the merged document
-    return result.strip(), "Merge completed (no summary generated)."
+        merged_raw, summary = result.split(separator, 1)
+    else:
+        merged_raw, summary = result, "Merge completed (no summary generated)."
+
+    # Extract JSON array from model output
+    merged_raw = merged_raw.strip()
+    # Handle model wrapping JSON in ```json ... ```
+    if merged_raw.startswith("```"):
+        merged_raw = re.sub(r"^```\w*\n?", "", merged_raw)
+        merged_raw = re.sub(r"\n?```$", "", merged_raw)
+
+    blocks = json.loads(merged_raw)
+    # Re-generate IDs
+    for b in blocks:
+        b["id"] = uuid.uuid4().hex[:8]
+        b.setdefault("type", "text")
+        b.setdefault("content", "")
+    return blocks, summary.strip()
 
 
 @app.post("/api/repos/{repo_id}/merge")
@@ -350,10 +365,9 @@ async def merge_documents(repo_id: str):
         raise HTTPException(status_code=502, detail=f"NIM merge failed: {e}")
 
     # 5. Parse result
-    merged_md, summary = _parse_merge_result(result)
+    merged_blocks, summary = _parse_merge_result(result)
 
     # 6. Update master document with merged content
-    merged_blocks = markdown_to_blocks(merged_md)
     master["blocks"] = merged_blocks
     master["updatedAt"] = now_iso()
     master["version"] = _bump_version(master.get("version", "1.0.0"))
