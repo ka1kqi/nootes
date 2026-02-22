@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useRef } from 'react'
+import { createContext, useContext, useCallback, useRef, useState, useMemo } from 'react'
 import type { Block, BlockType } from '../hooks/useDocument'
 import { newBlock } from '../hooks/useDocument'
 
@@ -43,13 +43,16 @@ export function useEditorBridge() {
 
 export function EditorBridgeProvider({ children }: { children: React.ReactNode }) {
   const ref = useRef<RegisterPayload | null>(null)
+  const [isActive, setIsActive] = useState(false)
 
   const register = useCallback((payload: RegisterPayload) => {
     ref.current = payload
+    setIsActive(true)
   }, [])
 
   const unregister = useCallback(() => {
     ref.current = null
+    setIsActive(false)
   }, [])
 
   const insertBlocks = useCallback((specs: BlockSpec[]) => {
@@ -78,12 +81,12 @@ export function EditorBridgeProvider({ children }: { children: React.ReactNode }
     ref.current.setBlocks([...existing, ...created])
   }, [])
 
-  const value: EditorBridge = {
-    get isEditorActive() { return ref.current !== null },
+  const value = useMemo((): EditorBridge => ({
+    isEditorActive: isActive,
     insertBlocks,
     register,
     unregister,
-  }
+  }), [isActive, insertBlocks, register, unregister])
 
   return (
     <EditorBridgeContext.Provider value={value}>
