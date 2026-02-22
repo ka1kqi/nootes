@@ -8,7 +8,6 @@ function ensureInit() {
   initialized = true
   mermaid.initialize({
     startOnLoad: false,
-    suppressErrors: true,
     theme: 'neutral',
     themeVariables: {
       primaryColor: '#A3B18A',
