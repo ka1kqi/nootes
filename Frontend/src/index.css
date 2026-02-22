@@ -37,6 +37,19 @@ body {
 /* Selection */
 ::selection { background: #A3B18A40; color: #264635; }
 
+/* Font scale */
+html.font-scale-sm { font-size: 14px; }
+html.font-scale-lg { font-size: 18px; }
+
+/* Compact mode — reduce spacing on most padded elements */
+html.compact-mode .py-4 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+html.compact-mode .py-5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+html.compact-mode .py-12 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+html.compact-mode .gap-8 { gap: 1rem; }
+html.compact-mode .space-y-6 > * + * { margin-top: 0.75rem; }
+html.compact-mode .p-6 { padding: 1rem; }
+html.compact-mode .mb-8 { margin-bottom: 1rem; }
+
 /* KaTeX overrides */
 .katex { font-size: 1.05em; }
 .katex-display { margin: 0; }

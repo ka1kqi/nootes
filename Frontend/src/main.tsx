@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
+import { EditorBridgeProvider } from './contexts/EditorBridgeContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AIAgentFab } from './components/AIAgentFab'
 import Landing from './pages/Landing.tsx'
@@ -39,7 +41,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
+      <ThemeProvider>
       <AuthProvider>
+      <EditorBridgeProvider>
         <AppShell>
           <Routes>
             <Route path="/" element={<Landing />} />
@@ -62,7 +66,9 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/5" element={<HomeV5 />} />
           </Routes>
         </AppShell>
+      </EditorBridgeProvider>
       </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
 )
