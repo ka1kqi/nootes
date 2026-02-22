@@ -516,8 +516,8 @@ function NootModal({ card, onClose }: { card: NootCardData; onClose: () => void 
 //   = header bar (with drag pill) + top padding + one card row
 
 const DRAWER_HEADER_H = 48   // px — drag pill (12) + label row (36)
-const CARD_H          = 160  // px
-const CARD_W          = 280  // px — ~4–5 visible per viewport width
+const CARD_H = 160  // px
+const CARD_W = 280  // px — ~4–5 visible per viewport width
 const ROW_PADDING_TOP = 12   // px — gap above the card row
 const ROW_H = DRAWER_HEADER_H + ROW_PADDING_TOP + CARD_H  // 220 px
 
@@ -583,32 +583,32 @@ export default function Home() {
   const { profile, user, sessionReady } = useAuth()
   const editorBridge = useEditorBridge()
   const navigate = useNavigate()
-  const [input, setInput]           = useState('')
+  const [input, setInput] = useState('')
   const [activeMode, setActiveMode] = useState<AIMode>('Write')
   const [isExpanded, setIsExpanded] = useState(false)
   const [selectedCard, setSelectedCard] = useState<NootCardData | null>(null)
-  const [messages, setMessages]       = useState<ChatMessage[]>([])
-  const [aiLoading, setAiLoading]     = useState(false)
-  const messagesEndRef                = useRef<HTMLDivElement>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [historyList, setHistoryList] = useState<ConversationSummary[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const turnIndexRef                  = useRef(0)
+  const turnIndexRef = useRef(0)
 
   // DOM refs
-  const contentRef     = useRef<HTMLDivElement>(null)
-  const drawerRef      = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
   const innerScrollRef = useRef<HTMLDivElement>(null)
 
   // Drawer position refs (avoid re-renders on every frame)
-  const offsetRef    = useRef<number>(9999)
+  const offsetRef = useRef<number>(9999)
   const maxOffsetRef = useRef<number>(0)
-  const measuredRef  = useRef(false)
+  const measuredRef = useRef(false)
 
   // Drag state refs
-  const isDragging      = useRef(false)
-  const dragStartY      = useRef(0)
+  const isDragging = useRef(false)
+  const dragStartY = useRef(0)
   const dragStartOffset = useRef(0)
 
   // Direct DOM mutation for high-frequency updates (avoids 60fps re-renders)
@@ -616,7 +616,7 @@ export default function Home() {
     const el = drawerRef.current
     if (!el) return
     const wasExpanded = offsetRef.current < 2
-    const willExpand  = y < 2
+    const willExpand = y < 2
     offsetRef.current = y
     el.style.transition = withTransition
       ? 'transform 0.52s cubic-bezier(0.16,1,0.3,1)'
@@ -630,7 +630,7 @@ export default function Home() {
     const el = contentRef.current
     if (!el) return
     const measure = () => {
-      const h  = el.offsetHeight
+      const h = el.offsetHeight
       const mo = Math.max(0, h - ROW_H)
       maxOffsetRef.current = mo
       if (!measuredRef.current && mo > 0) {
@@ -647,8 +647,8 @@ export default function Home() {
   // Snap to nearest edge
   const snapToEdge = useCallback(() => {
     const cur = offsetRef.current
-    const mo  = maxOffsetRef.current
-    const to  = cur < mo / 2 ? 0 : mo
+    const mo = maxOffsetRef.current
+    const to = cur < mo / 2 ? 0 : mo
     applyOffset(to, true)
   }, [applyOffset])
 
@@ -656,8 +656,8 @@ export default function Home() {
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
-    isDragging.current      = true
-    dragStartY.current      = e.clientY
+    isDragging.current = true
+    dragStartY.current = e.clientY
     dragStartOffset.current = offsetRef.current
     if (drawerRef.current) drawerRef.current.style.userSelect = 'none'
   }, [])
@@ -665,7 +665,7 @@ export default function Home() {
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging.current) return
     const deltaY = e.clientY - dragStartY.current
-    const next   = Math.max(0, Math.min(maxOffsetRef.current, dragStartOffset.current + deltaY))
+    const next = Math.max(0, Math.min(maxOffsetRef.current, dragStartOffset.current + deltaY))
     applyOffset(next)
   }, [applyOffset])
 
@@ -833,9 +833,9 @@ export default function Home() {
 
     try {
       const modeHints: Record<AIMode, string> = {
-        'Write':         '',
-        'Graphs':        '[Always respond with a concept graph in Mode B JSON format. Never use plain text.] ',
-        'Concise':       '[Be concise. Keep any graph to 4–5 nodes.] ',
+        'Write': '',
+        'Graphs': '[Always respond with a concept graph in Mode B JSON format. Never use plain text.] ',
+        'Concise': '[Be concise. Keep any graph to 4–5 nodes.] ',
         'Deep Analysis': '[Provide deep analysis. Use 6–7 nodes with thorough descriptions.] ',
       }
       const modeHint = modeHints[activeMode]
@@ -859,7 +859,7 @@ export default function Home() {
           const rawStart = body.indexOf('[')
           const afterBracket = rawStart !== -1 ? body.slice(rawStart + 1).trimStart() : ''
           const arrStart = (rawStart !== -1 && afterBracket.startsWith('{')) ? rawStart : body.indexOf('[{')
-          const arrEnd   = body.lastIndexOf(']')
+          const arrEnd = body.lastIndexOf(']')
           if (arrStart !== -1 && arrEnd > arrStart) {
             const TYPE_MAP: Record<string, string> = {
               ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
@@ -918,7 +918,7 @@ export default function Home() {
   }, [input, activeMode, messages, aiLoading, ensureConversation, saveTurn, editorBridge, user, navigate])
 
   const firstName = profile?.display_name?.split(' ')[0] ?? 'you'
-  const greeting  = useMemo(() => getTimeGreeting(firstName), [firstName])
+  const greeting = useMemo(() => getTimeGreeting(firstName), [firstName])
 
   // ── Live stats ────────────────────────────────────────────────────
   const [stats, setStats] = useState([
@@ -1002,9 +1002,8 @@ export default function Home() {
                 <button
                   key={conv.id}
                   onClick={() => loadConversation(conv.id)}
-                  className={`w-full text-left px-4 py-3 hover:bg-forest/[0.04] transition-colors border-b border-forest/[0.05] group cursor-pointer ${
-                    conversationId === conv.id ? 'bg-forest/[0.06]' : ''
-                  }`}
+                  className={`w-full text-left px-4 py-3 hover:bg-forest/[0.04] transition-colors border-b border-forest/[0.05] group cursor-pointer ${conversationId === conv.id ? 'bg-forest/[0.06]' : ''
+                    }`}
                 >
                   <p className="text-xs font-[family-name:var(--font-body)] text-forest/75 leading-snug line-clamp-2 group-hover:text-forest transition-colors">
                     {conv.title ?? conv.preview}
@@ -1060,7 +1059,7 @@ export default function Home() {
                           <div key={m.id} className="flex justify-start" style={{ animation: 'home-fade-up 0.4s ease both' }}>
                             <div className="max-w-[85%] px-4 py-2.5 squircle-xl bg-parchment border border-sage/30 text-forest font-[family-name:var(--font-body)] text-sm leading-relaxed flex items-center gap-2">
                               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
-                                <path d="M2 7.5L5.5 11L12 4" stroke="#3D6B4F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M2 7.5L5.5 11L12 4" stroke="#3D6B4F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                               <span>{confirmation}</span>
                             </div>
@@ -1074,8 +1073,8 @@ export default function Home() {
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-5 h-5 shrink-0 flex items-center justify-center border border-forest/20 bg-forest/[0.04] squircle-sm">
                                 <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
-                                  <circle cx="7" cy="7" r="5" stroke="#8a9b75" strokeWidth="1.2"/>
-                                  <path d="M4 7 Q7 4 10 7 Q7 10 4 7Z" fill="#8a9b75" opacity="0.7"/>
+                                  <circle cx="7" cy="7" r="5" stroke="#8a9b75" strokeWidth="1.2" />
+                                  <path d="M4 7 Q7 4 10 7 Q7 10 4 7Z" fill="#8a9b75" opacity="0.7" />
                                 </svg>
                               </div>
                               <span className="font-mono text-[9px] text-sage/50 uppercase tracking-widest">{parsed.items.length} concepts</span>
@@ -1095,11 +1094,10 @@ export default function Home() {
                     }
                     return (
                       <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] px-4 py-2.5 squircle-xl font-[family-name:var(--font-body)] text-sm leading-relaxed ${
-                          m.role === 'user'
+                        <div className={`max-w-[85%] px-4 py-2.5 squircle-xl font-[family-name:var(--font-body)] text-sm leading-relaxed ${m.role === 'user'
                             ? 'bg-forest text-parchment whitespace-pre-wrap'
                             : 'bg-parchment border border-forest/10 text-forest'
-                        }`}>
+                          }`}>
                           {m.role === 'user'
                             ? m.content
                             : <NootMarkdown>{m.content}</NootMarkdown>
@@ -1124,125 +1122,124 @@ export default function Home() {
             {/* Input area — always pinned at bottom */}
             <div className="shrink-0 pb-6">
 
-            {/* History / New chat controls — appear when conversation is active */}
-            {messages.length > 0 && (
-              <div className="flex items-center gap-2 mb-2" style={{ animation: 'home-fade-up 0.3s ease both' }}>
+              {/* History / New chat controls — appear when conversation is active */}
+              {messages.length > 0 && (
+                <div className="flex items-center gap-2 mb-2" style={{ animation: 'home-fade-up 0.3s ease both' }}>
+                  <button
+                    onClick={() => { setShowHistory(h => { if (!h) loadHistory(); return !h }) }}
+                    className="flex items-center gap-1.5 text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    history
+                  </button>
+                  <span className="text-forest/15 text-xs">·</span>
+                  <button
+                    onClick={newConversation}
+                    className="text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+                  >
+                    + new chat
+                  </button>
+                </div>
+              )}
+
+              {/* AI Chatbox */}
+              <div
+                className="w-full bg-parchment border border-forest/[0.12] squircle-xl px-4 py-3 flex items-center gap-3 shadow-[0_4px_32px_-10px_rgba(38,70,53,0.08)] focus-within:border-sage/40 focus-within:shadow-[0_6px_32px_-10px_rgba(138,155,117,0.16)] transition-all"
+                style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 80ms both' }}
+              >
+
+                {/* History toggle — visible in empty state too */}
                 <button
                   onClick={() => { setShowHistory(h => { if (!h) loadHistory(); return !h }) }}
-                  className="flex items-center gap-1.5 text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+                  className="shrink-0 text-forest/25 hover:text-forest/50 transition-colors cursor-pointer"
+                  title="Conversation history"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  history
                 </button>
-                <span className="text-forest/15 text-xs">·</span>
-                <button
-                  onClick={newConversation}
-                  className="text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+
+                {/* Attachment */}
+                <label
+                  className="shrink-0 text-forest/25 hover:text-forest/50 transition-colors cursor-pointer"
+                  title="Attach file"
                 >
-                  + new chat
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,.txt,.md,.docx"
+                    className="sr-only"
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) console.log('Attached:', f.name)
+                      e.target.value = ''
+                    }}
+                  />
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                  </svg>
+                </label>
+
+                {/* Text input */}
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuery() }
+                  }}
+                  placeholder={`Ask me anything, ${firstName}… or ⌘K to open noot`}
+                  className="flex-1 bg-transparent text-sm text-forest placeholder:text-forest/30 outline-none font-[family-name:var(--font-body)]"
+                />
+
+                {/* Send */}
+                <button
+                  onClick={submitQuery}
+                  disabled={!input.trim() || aiLoading}
+                  className="shrink-0 w-9 h-9 bg-forest squircle-sm flex items-center justify-center text-parchment hover:bg-forest-deep transition-colors disabled:opacity-20 cursor-pointer"
+                  aria-label="Send"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
                 </button>
               </div>
-            )}
 
-            {/* AI Chatbox */}
-            <div
-              className="w-full bg-parchment border border-forest/[0.12] squircle-xl px-4 py-3 flex items-center gap-3 shadow-[0_4px_32px_-10px_rgba(38,70,53,0.08)] focus-within:border-sage/40 focus-within:shadow-[0_6px_32px_-10px_rgba(138,155,117,0.16)] transition-all"
-              style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 80ms both' }}
-            >
-
-              {/* History toggle — visible in empty state too */}
-              <button
-                onClick={() => { setShowHistory(h => { if (!h) loadHistory(); return !h }) }}
-                className="shrink-0 text-forest/25 hover:text-forest/50 transition-colors cursor-pointer"
-                title="Conversation history"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </button>
-
-              {/* Attachment */}
-              <label
-                className="shrink-0 text-forest/25 hover:text-forest/50 transition-colors cursor-pointer"
-                title="Attach file"
-              >
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.txt,.md,.docx"
-                  className="sr-only"
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    if (f) console.log('Attached:', f.name)
-                    e.target.value = ''
-                  }}
-                />
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-                </svg>
-              </label>
-
-              {/* Text input */}
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuery() }
-                }}
-                placeholder={`Ask me anything, ${firstName}… or ⌘K to open a noot`}
-                className="flex-1 bg-transparent text-sm text-forest placeholder:text-forest/30 outline-none font-[family-name:var(--font-body)]"
-              />
-
-              {/* Send */}
-              <button
-                onClick={submitQuery}
-                disabled={!input.trim() || aiLoading}
-                className="shrink-0 w-9 h-9 bg-forest squircle-sm flex items-center justify-center text-parchment hover:bg-forest-deep transition-colors disabled:opacity-20 cursor-pointer"
-                aria-label="Send"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Mode pills */}
-            <div
-              className="flex items-center justify-center gap-2 mt-4"
-              style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 160ms both' }}
-            >
-              {AI_MODES.map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setActiveMode(mode)}
-                  className={`font-[family-name:var(--font-body)] text-xs px-4 py-1.5 squircle transition-all cursor-pointer ${
-                    activeMode === mode
-                      ? 'bg-forest text-parchment'
-                      : 'border border-forest/15 text-forest/45 hover:border-forest/28 hover:text-forest/70'
-                  }`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-
-            {/* Stats strip — hide during conversation */}
-            {messages.length === 0 && (
+              {/* Mode pills */}
               <div
-                className="flex items-center justify-center gap-2 mt-3"
-                style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 220ms both' }}
+                className="flex items-center justify-center gap-2 mt-4"
+                style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 160ms both' }}
               >
-                {stats.map((s, i) => (
-                  <span key={s.label} className="flex items-center gap-2">
-                    {i > 0 && <span className="text-forest/10 font-mono text-xs select-none">·</span>}
-                    <span className="font-mono text-[9px] text-forest/28 tracking-wider">
-                      <span className="text-forest/40">{s.value}</span> {s.label}
-                    </span>
-                  </span>
+                {AI_MODES.map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setActiveMode(mode)}
+                    className={`font-[family-name:var(--font-body)] text-xs px-4 py-1.5 squircle transition-all cursor-pointer ${activeMode === mode
+                        ? 'bg-forest text-parchment'
+                        : 'border border-forest/15 text-forest/45 hover:border-forest/28 hover:text-forest/70'
+                      }`}
+                  >
+                    {mode}
+                  </button>
                 ))}
               </div>
-            )}
+
+              {/* Stats strip — hide during conversation */}
+              {messages.length === 0 && (
+                <div
+                  className="flex items-center justify-center gap-2 mt-3"
+                  style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 220ms both' }}
+                >
+                  {stats.map((s, i) => (
+                    <span key={s.label} className="flex items-center gap-2">
+                      {i > 0 && <span className="text-forest/10 font-mono text-xs select-none">·</span>}
+                      <span className="font-mono text-[9px] text-forest/28 tracking-wider">
+                        <span className="text-forest/40">{s.value}</span> {s.label}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
