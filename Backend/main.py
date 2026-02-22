@@ -334,8 +334,6 @@ def _format_merge_input(master: dict, forks: list[dict]) -> str:
 
 def _parse_merge_result(result: str) -> tuple[list[dict], str]:
     """Parse merge model output into (blocks, summary)."""
-    print(f"[MERGE DEBUG] Raw result ({len(result)} chars): {result[:500]!r}")
-
     separator = "---MERGE_SUMMARY---"
     if separator in result:
         merged_raw, summary = result.split(separator, 1)
@@ -356,13 +354,20 @@ def _parse_merge_result(result: str) -> tuple[list[dict], str]:
 
     if not merged_raw:
         logger.error("Merge model returned empty content")
-        return [{"id": uuid.uuid4().hex[:8], "type": "paragraph", "content": ""}], summary.strip()
+        return [], summary.strip()
 
-    blocks = json.loads(merged_raw)
+    try:
+        blocks = json.loads(merged_raw)
+    except json.JSONDecodeError:
+        # Model returned prose instead of JSON (e.g. "no changes needed")
+        # Signal caller to keep master blocks unchanged
+        logger.warning("Merge model returned non-JSON: %s", merged_raw[:200])
+        return [], summary.strip() if summary.strip() != "Merge completed (no summary generated)." else merged_raw.strip()
+
     # Re-generate IDs
     for b in blocks:
         b["id"] = uuid.uuid4().hex[:8]
-        b.setdefault("type", "text")
+        b.setdefault("type", "paragraph")
         b.setdefault("content", "")
     return blocks, summary.strip()
 
@@ -407,7 +412,9 @@ async def merge_documents(repo_id: str):
     merged_blocks, summary = _parse_merge_result(result)
 
     # 6. Update master document with merged content
-    master["blocks"] = merged_blocks
+    # Empty blocks = model found no changes; keep master as-is
+    if merged_blocks:
+        master["blocks"] = merged_blocks
     master["updatedAt"] = now_iso()
     master["version"] = _bump_version(master.get("version", "1.0.0"))
     write_doc(master)
