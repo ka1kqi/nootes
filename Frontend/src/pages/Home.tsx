@@ -1190,7 +1190,7 @@ export default function Home() {
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuery() }
                 }}
-                placeholder={`Ask me anything, ${firstName}…`}
+                placeholder={`Ask me anything, ${firstName}… or ⌘K to open a noot`}
                 className="flex-1 bg-transparent text-sm text-forest placeholder:text-forest/30 outline-none font-[family-name:var(--font-body)]"
               />
 
