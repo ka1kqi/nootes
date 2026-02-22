@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Navbar } from '../components/Navbar'
 import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from './GraphView'
+import type { Node, Edge } from '@xyflow/react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -9,6 +10,9 @@ import 'katex/dist/katex.min.css'
 import { motion, AnimatePresence } from 'framer-motion'
 import rawPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
+import { useAuth } from '../hooks/useAuth'
+import { useGraphPersistence } from '../hooks/useGraphPersistence'
+import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001/api/prompt'
@@ -125,6 +129,11 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
   const isUser = msg.role === 'user'
   const isError = msg.role === 'error'
 
+  // For assistant messages that contain a graph JSON, show only the summary
+  const displayContent = (!isUser && !isError)
+    ? (parseGraphResponse(msg.content)?.summary || msg.content)
+    : msg.content
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -189,7 +198,7 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
                   )},
                 }}
               >
-                {msg.content}
+                {displayContent}
               </ReactMarkdown>
             </div>
           </div>
@@ -533,6 +542,41 @@ function escHtml(str: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 }
+
+/** Produce a compact, varied blurb for an assistant message in the conversation drawer.
+ *  Falls back gracefully when the message isn't a graph response. */
+function assistantBlurb(content: string): string {
+  const parsed = parseGraphResponse(content)
+  if (!parsed) {
+    // Plain text response — truncate cleanly at a sentence boundary
+    const trimmed = content.trim()
+    if (trimmed.length <= 120) return trimmed
+    const cut = trimmed.slice(0, 120)
+    const lastStop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '))
+    return lastStop > 40 ? cut.slice(0, lastStop + 1) : cut + '…'
+  }
+
+  const { items, summary } = parsed
+  const count = items.length
+
+  // Node-count prefix — varies the personality
+  const prefix =
+    count <= 3  ? `${count} steps mapped.` :
+    count <= 6  ? `Broken into ${count} tasks.` :
+    count <= 12 ? `${count}-node plan ready.` :
+                  `${count} nodes across the graph.`
+
+  if (!summary) return prefix
+
+  // Vary summary display by length
+  if (summary.length <= 90) return `${prefix} ${summary}`
+
+  // Extract first sentence for longer summaries
+  const stop = summary.search(/[.!?](\s|$)/)
+  const firstSentence = stop > 0 ? summary.slice(0, stop + 1) : summary.slice(0, 90) + '…'
+  return `${prefix} ${firstSentence}`
+}
+
 const EXAMPLES = [
   { label: 'Build a todo app', icon: '◈', prompt: 'Build a full-stack todo app with React frontend, Node.js API, and PostgreSQL database.' },
   { label: 'Launch a SaaS product', icon: '◉', prompt: 'Plan the launch of a SaaS product for project management targeting small teams.' },
@@ -542,13 +586,23 @@ const EXAMPLES = [
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 export default function App() {
+  const { user } = useAuth()
+  const persistence = useGraphPersistence()
+  const history = useGraphHistory()
+
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pendingCenter, setPendingCenter] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'new' | 'history'>('new')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
+
+  // Track latest prompt + summary so onGraphChanged can use them for the first save
+  const latestPromptRef  = useRef('')
+  const latestSummaryRef = useRef('')
 
   // ── expandTask: closed over historyRef so it can include top-level prompt
   //    and follow-up user prompts as context for the expansion call.
@@ -562,20 +616,20 @@ export default function App() {
     const topLevelPrompt = userMessages[0]?.content ?? ''
     const followUpPrompts = userMessages.slice(1).map(m => m.content)
 
-    let prompt = `Top-level goal: ${topLevelPrompt}`
+    let prompt = `other context: Top-level goal: ${topLevelPrompt}`
 
     if (followUpPrompts.length > 0) {
-      prompt += `\n\nFollow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
+      prompt += `\n\nother context: Follow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
     }
 
     if (ancestors.length > 0) {
-      prompt += `\n\nAncestor task chain (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
+      prompt += `\n\nother context: Ancestor task chain (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
     }
 
-    prompt += `\n\nExpand this task into subtasks:\nTask: ${item.name}\nDescription: ${item.text}`
+    prompt += `\n\ncurrent node title: ${item.name}: ${item.text}`
 
     if (context) {
-      prompt += `\n\nAdditional context: ${context}`
+      prompt += `\n\nother context: ${context}`
     }
 
     const res = await fetch(API_URL, {
@@ -608,18 +662,18 @@ export default function App() {
     const topLevelPrompt = userMessages[0]?.content ?? ''
     const followUpPrompts = userMessages.slice(1).map(m => m.content)
 
-    let context = `Overall goal: ${topLevelPrompt}`
+    let context = `other context: Overall goal: ${topLevelPrompt}`
 
     if (followUpPrompts.length > 0) {
-      context += `\n\nFollow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
+      context += `\n\nother context: Follow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
     }
 
     if (ancestors.length > 0) {
-      context += `\n\nTask hierarchy (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
+      context += `\n\nother context: Task hierarchy (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
     }
 
-    context += `\n\nCurrent task:\nName: ${item.name}\nDescription: ${item.text}`
-    context += `\n\nQuestion: ${question}`
+    context += `\n\ncurrent node title: ${item.name}: ${item.text}`
+    context += `\n\nother context: ${question}`
 
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -659,6 +713,13 @@ export default function App() {
     setInput('')
     setLoading(true)
 
+    // Show the center node immediately in the graph canvas
+    const blurb = text.trim().split(/\s+/).slice(0, 8).join(' ') + (text.trim().split(/\s+/).length > 8 ? '…' : '')
+    setPendingCenter(blurb)
+
+    // Capture prompt for persistence metadata
+    latestPromptRef.current = text.trim()
+
     historyRef.current = [...historyRef.current, { role: 'user', content: text.trim() }]
 
     try {
@@ -677,6 +738,21 @@ export default function App() {
       const data = await res.json()
       const content: string = data.content ?? JSON.stringify(data, null, 2)
       historyRef.current = [...historyRef.current, { role: 'assistant', content }]
+
+      // Capture summary for persistence metadata
+      const parsed = parseGraphResponse(content)
+      if (parsed) {
+        latestSummaryRef.current = parsed.summary
+        // Save immediately — don't wait for GraphView's useEffect
+        persistence.saveItems(parsed.items, {
+          title:   text.trim().slice(0, 60),
+          summary: parsed.summary,
+          prompt:  text.trim(),
+        })
+        // Refresh history list so it shows the new graph
+        history.refresh()
+      }
+
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date() }])
     } catch (err) {
       // Keep user message in historyRef so UI and conversation context stay in sync
@@ -688,6 +764,7 @@ export default function App() {
       }])
     } finally {
       setLoading(false)
+      setPendingCenter(null)
     }
   }
 
@@ -699,6 +776,33 @@ export default function App() {
   }
 
   const isEmpty = messages.length === 0
+
+  // Persist graph whenever GraphView reports a change (expand, manual node)
+  const handleGraphChanged = useCallback((nodes: Node[], edges: Edge[]) => {
+    if (!user) return
+    persistence.upsert(nodes, edges, {
+      title:   latestPromptRef.current.slice(0, 60) || 'Untitled Graph',
+      summary: latestSummaryRef.current,
+      prompt:  latestPromptRef.current,
+    })
+  }, [user, persistence.upsert])
+
+  // Load a graph from history by injecting a synthetic assistant message
+  const handleLoadFromHistory = useCallback((item: ReturnType<typeof useGraphHistory>['graphs'][number]) => {
+    const items = rawNodesToItems(item.rawNodes, item.rawEdges)
+    const fakeContent = JSON.stringify(items) + '\n\n' + (item.summary ?? '')
+    latestPromptRef.current  = item.title
+    latestSummaryRef.current = item.summary
+    historyRef.current = []
+    setMessages([{
+      id:        item.graphId,
+      role:      'assistant',
+      content:   fakeContent,
+      timestamp: new Date(item.updatedAt),
+    }])
+    persistence.loadGraph(item.graphId, item.versionNum)
+    setActiveTab('new')
+  }, [persistence.loadGraph])
 
   // Most recent graph response in the conversation
   const latestGraph = useMemo(() => {
@@ -727,7 +831,7 @@ export default function App() {
             className="font-mono text-[10px] px-3 py-1.5 squircle-sm border border-forest/15 text-forest/40 hover:text-forest hover:border-forest/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5">
             ↓ export pdf
           </button>
-          <button onClick={() => { setMessages([]); historyRef.current = [] }} disabled={isEmpty}
+          <button onClick={() => { setMessages([]); historyRef.current = []; persistence.reset(); history.refresh(); setActiveTab('history') }} disabled={isEmpty}
             className="font-mono text-[10px] px-3 py-1.5 squircle-sm border border-forest/15 text-forest/40 hover:text-forest hover:border-forest/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer">
             clear
           </button>
@@ -751,35 +855,129 @@ export default function App() {
               transition={{ duration: 0.6 }}
               className="flex-1 flex flex-col items-center justify-center px-6 py-4 relative z-10"
             >
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-center mb-10">
-                <h2 className="font-[family-name:var(--font-display)] text-4xl text-forest mb-2">what are you building?</h2>
-                <p className="text-sienna text-sm max-w-sm mx-auto leading-relaxed">
-                  Describe your idea or project — get an instant actionable breakdown rendered as an interactive graph.
-                </p>
-              </motion.div>
-              <div className="grid grid-cols-2 gap-3 max-w-lg w-full">
-                {EXAMPLES.map((ex, i) => (
-                  <motion.button
-                    key={i}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 + i * 0.08 }}
-                    onClick={() => sendPrompt(ex.prompt)}
-                    className="text-left p-4 border border-sage/30 bg-parchment hover:bg-forest hover:border-forest squircle group transition-all duration-200 cursor-pointer"
-                  >
-                    <span className="text-xs text-forest group-hover:text-parchment leading-snug">{ex.label}</span>
-                  </motion.button>
-                ))}
-              </div>
+              {/* ── Tab bar ── */}
               <motion.div
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
-                className="mt-10 border border-sage/30 bg-parchment/60 squircle-xl px-6 py-4 max-w-sm text-center"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+                className="flex items-center gap-0 mb-10 border border-forest/15 bg-parchment squircle overflow-hidden"
               >
-                <p className="font-mono text-[11px] text-sage uppercase tracking-widest mb-2">renders as interactive graph</p>
-                <div className="text-forest text-xs leading-relaxed">
-                  Each subtask becomes a <span className="font-mono bg-forest/8 border border-forest/15 px-1.5 py-0.5">clickable node</span> — click any node to read its full description.
-                </div>
+                {(['new', 'history'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-5 py-2 font-mono text-[11px] uppercase tracking-widest transition-all cursor-pointer ${
+                      activeTab === tab
+                        ? 'bg-forest text-parchment'
+                        : 'text-forest/40 hover:text-forest hover:bg-forest/5'
+                    }`}
+                  >
+                    {tab === 'new' ? '◈ new' : '◉ history'}
+                  </button>
+                ))}
               </motion.div>
+
+              <AnimatePresence mode="wait">
+                {activeTab === 'new' ? (
+                  /* ── New graph panel ── */
+                  <motion.div
+                    key="new"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex flex-col items-center w-full"
+                  >
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-center mb-10">
+                      <h2 className="font-[family-name:var(--font-display)] text-4xl text-forest mb-2">what are you building?</h2>
+                      <p className="text-sienna text-sm max-w-sm mx-auto leading-relaxed">
+                        Describe your idea or project — get an instant actionable breakdown rendered as an interactive graph.
+                      </p>
+                    </motion.div>
+                    <div className="grid grid-cols-2 gap-3 max-w-lg w-full">
+                      {EXAMPLES.map((ex, i) => (
+                        <motion.button
+                          key={i}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.2 + i * 0.08 }}
+                          onClick={() => sendPrompt(ex.prompt)}
+                          className="text-left p-4 border border-sage/30 bg-parchment hover:bg-forest hover:border-forest squircle group transition-all duration-200 cursor-pointer"
+                        >
+                          <span className="text-xs text-forest group-hover:text-parchment leading-snug">{ex.label}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                    <motion.div
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
+                      className="mt-10 border border-sage/30 bg-parchment/60 squircle-xl px-6 py-4 max-w-sm text-center"
+                    >
+                      <p className="font-mono text-[11px] text-sage uppercase tracking-widest mb-2">renders as interactive graph</p>
+                      <div className="text-forest text-xs leading-relaxed">
+                        Each subtask becomes a <span className="font-mono bg-forest/8 border border-forest/15 px-1.5 py-0.5">clickable node</span> — click any node to read its full description.
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                ) : (
+                  /* ── History panel ── */
+                  <motion.div
+                    key="history"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full max-w-lg"
+                  >
+                    {history.loading ? (
+                      <div className="flex flex-col items-center gap-3 py-16 text-forest/30">
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                          className="w-6 h-6 border-2 border-forest/15 border-t-sage rounded-full"
+                        />
+                        <span className="font-mono text-[10px] uppercase tracking-widest">loading history…</span>
+                      </div>
+                    ) : history.graphs.length === 0 ? (
+                      <div className="text-center py-16">
+                        <div className="font-[family-name:var(--font-display)] text-2xl text-forest/30 mb-2">no graphs yet</div>
+                        <p className="font-mono text-[11px] text-forest/25 uppercase tracking-widest">generate your first graph to see it here</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                        {history.graphs.map((g, i) => (
+                          <motion.button
+                            key={g.graphId}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            onClick={() => handleLoadFromHistory(g)}
+                            className="w-full text-left border border-forest/10 bg-parchment hover:border-sage/50 hover:bg-parchment squircle px-4 py-3 group transition-all duration-150 cursor-pointer"
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-1.5">
+                              <span className="font-[family-name:var(--font-display)] text-sm text-forest leading-snug line-clamp-1 group-hover:text-forest">
+                                {g.title}
+                              </span>
+                              <span className="font-mono text-[9px] text-sage/50 uppercase tracking-widest flex-shrink-0 mt-0.5 border border-sage/20 px-1.5 py-0.5 squircle-sm">
+                                v{g.versionNum}
+                              </span>
+                            </div>
+                            {g.summary && (
+                              <p className="text-xs text-forest/50 leading-relaxed line-clamp-2 mb-2">{g.summary}</p>
+                            )}
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono text-[9px] text-sage/60">◆ {g.nodeCount} nodes</span>
+                              <span className="font-mono text-[9px] text-forest/25">·</span>
+                              <span className="font-mono text-[9px] text-forest/30">
+                                {new Date(g.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </>
         ) : (
@@ -796,23 +994,97 @@ export default function App() {
                     transition={{ duration: 0.3 }}
                     className="absolute inset-0"
                   >
-                    <GraphView items={latestGraph.items} onExpand={expandTask} onQuery={queryNode} />
+                    <GraphView items={latestGraph.items} onExpand={expandTask} onQuery={queryNode} onGraphChanged={handleGraphChanged} />
                   </motion.div>
                 ) : (
-                  /* Waiting for first graph response */
+                  /* Waiting for first graph response — show animated center node */
                   <motion.div
                     key="waiting"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
                     className="absolute inset-0 flex items-center justify-center"
+                    style={{ background: 'transparent' }}
                   >
-                    <div className="flex flex-col items-center gap-4">
+                    {/* Dot-grid background */}
+                    <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.06 }}>
+                      <defs>
+                        <pattern id="dotgrid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+                          <circle cx="1.2" cy="1.2" r="1.2" fill="#264635"/>
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill="url(#dotgrid)"/>
+                    </svg>
+
+                    <div className="flex flex-col items-center gap-6 relative z-10">
+                      {/* Centre node */}
                       <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                        className="w-10 h-10 border-2 border-forest/20 border-t-sage rounded-full"
-                      />
-                      <span className="font-mono text-[11px] text-forest/30 uppercase tracking-widest">generating graph…</span>
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ duration: 0.55, ease: [0.34, 1.56, 0.64, 1] }}
+                        style={{ position: 'relative' }}
+                      >
+                        {/* Outer pulse ring */}
+                        <motion.div
+                          animate={{ scale: [1, 1.18, 1], opacity: [0.3, 0, 0.3] }}
+                          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                          style={{
+                            position: 'absolute', inset: -12, borderRadius: '50%',
+                            border: '1.5px solid #A3B18A',
+                          }}
+                        />
+                        {/* Main circle */}
+                        <div style={{
+                          width: 120, height: 120, borderRadius: '50%',
+                          background: '#E9E4D4',
+                          border: '3px solid #264635',
+                          boxShadow: '0 0 0 8px rgba(163,177,138,0.18), 4px 4px 0 rgba(38,70,53,0.14)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          position: 'relative', overflow: 'hidden',
+                        }}>
+                          <div style={{
+                            position: 'absolute', inset: 10, borderRadius: '50%',
+                            border: '1px dashed #264635', opacity: 0.2,
+                          }} />
+                          <div style={{
+                            fontFamily: "'Gamja Flower', cursive",
+                            fontSize: 12, color: '#264635', textAlign: 'center',
+                            padding: '0 12px', lineHeight: 1.3,
+                          }}>
+                            {pendingCenter ?? '…'}
+                          </div>
+                        </div>
+                      </motion.div>
+
+                      {/* Spoke stubs radiating out */}
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                        {[0, 60, 120, 180, 240, 300].map((deg, i) => (
+                          <motion.div
+                            key={deg}
+                            initial={{ opacity: 0, scaleX: 0 }}
+                            animate={{ opacity: 0.2, scaleX: 1 }}
+                            transition={{ delay: 0.4 + i * 0.08, duration: 0.6, ease: 'easeOut' }}
+                            style={{
+                              position: 'absolute',
+                              width: 90, height: 1.5,
+                              background: '#A3B18A',
+                              transformOrigin: 'left center',
+                              transform: `rotate(${deg}deg)`,
+                              left: '50%', top: '50%',
+                              marginTop: -0.75,
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      <motion.span
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.5 }}
+                        className="font-mono text-[10px] text-forest/30 uppercase tracking-widest"
+                      >
+                        building graph…
+                      </motion.span>
                     </div>
                   </motion.div>
                 )}
@@ -856,7 +1128,18 @@ export default function App() {
                           <div className="font-mono text-[9px] opacity-60 mb-1 uppercase tracking-widest">
                             {msg.role} · {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
-                          <p className="leading-relaxed line-clamp-4">{msg.content.slice(0, 200)}{msg.content.length > 200 ? '…' : ''}</p>
+                          {msg.role === 'assistant' ? (() => {
+                            const blurb = assistantBlurb(msg.content)
+                            const sizeClass =
+                              blurb.length <= 40  ? 'text-sm font-[family-name:var(--font-display)] leading-snug' :
+                              blurb.length <= 80  ? 'text-xs leading-relaxed' :
+                                                    'text-[10px] leading-relaxed opacity-80'
+                            return <p className={`${sizeClass} line-clamp-3`}>{blurb}</p>
+                          })() : (
+                            <p className="text-xs leading-relaxed line-clamp-3">
+                              {msg.content.slice(0, 200) + (msg.content.length > 200 ? '…' : '')}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
