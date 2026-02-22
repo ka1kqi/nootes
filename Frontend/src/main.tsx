@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { FloatingAssistant } from './components/FloatingAssistant'
+import { AIAgentFab } from './components/AIAgentFab'
 import Landing from './pages/Landing.tsx'
 import Home from './pages/Home.tsx'
 import Login from './pages/Login.tsx'
@@ -18,14 +18,14 @@ import AuraStore from './pages/AuraStore.tsx'
 import Graph_Creation from './pages/Graph_Creation.tsx'
 import Settings from './pages/Settings.tsx'
 
-// Renders FloatingAssistant on all pages except landing, home (chat), and login
+// Renders AIAgentFab on all pages except landing, home (inline chatbox), and login
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const hideOn = new Set(['/', '/home', '/login'])
   return (
     <>
       {children}
-      {!hideOn.has(location.pathname) && <FloatingAssistant />}
+      {!hideOn.has(location.pathname) && <AIAgentFab />}
     </>
   )
 }
