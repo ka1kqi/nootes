@@ -77,7 +77,7 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
       const end = body.lastIndexOf(']')
       if (start !== -1 && end !== -1 && end >= start) {
         const jsonStr = body.slice(start, end + 1).replace(/\/\/[^\n\r]*/g, '')
-        const parsed = JSON.parse(jsonStr)
+        const parsed = JSON.parse(fixLatexJson(jsonStr))
         if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0].name === 'string' && typeof parsed[0].text === 'string') {
           const items = dedupeItems(parsed as TaskItem[])
           if (items.length > 0) return { items, summary: (suffix || body.slice(end + 1)).trim() }
@@ -86,6 +86,11 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
     }
   } catch { /* fall through */ }
   return parseTextFormat(content)
+}
+
+/** Fix unescaped backslashes that break JSON.parse (common with LaTeX output) */
+function fixLatexJson(str: string): string {
+  return str.replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
 }
 
 function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
@@ -98,7 +103,7 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
     const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
     const end = body.lastIndexOf(']')
     if (start === -1 || end === -1 || end <= start) return null
-    const parsed = JSON.parse(body.slice(start, end + 1))
+    const parsed = JSON.parse(fixLatexJson(body.slice(start, end + 1)))
     if (!Array.isArray(parsed) || parsed.length === 0 || typeof parsed[0].type !== 'string') return null
     const TYPE_MAP: Record<string, string> = {
       ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
@@ -116,7 +121,7 @@ function parseNavigateResponse(content: string): { route: string; message: strin
   if (!/^\s*\[NAVIGATE\]/i.test(content)) return null
   try {
     const body = content.replace(/^\s*\[NAVIGATE\]\s*/i, '')
-    const parsed = JSON.parse(body.trim())
+    const parsed = JSON.parse(fixLatexJson(body.trim()))
     if (typeof parsed.route !== 'string') return null
     return { route: parsed.route, message: parsed.message || 'Navigating…' }
   } catch {
@@ -131,7 +136,7 @@ function parseCreateRepoResponse(content: string): {
   if (!/^\s*\[CREATE_REPO\]/i.test(content)) return null
   try {
     const body = content.replace(/^\s*\[CREATE_REPO\]\s*/i, '')
-    const parsed = JSON.parse(body.trim())
+    const parsed = JSON.parse(fixLatexJson(body.trim()))
     if (typeof parsed.title !== 'string') return null
     return {
       title: parsed.title,

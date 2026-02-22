@@ -75,6 +75,10 @@ Valid types:
 - "code": meta: {"language": "<lang>"}
 - "callout": meta: {"calloutType": "info"|"tip"|"warning"|"important"}
 - "latex": raw LaTeX only, no $ delimiters.
+  IMPORTANT: All backslashes in JSON strings MUST be doubled.
+  ✗ WRONG: "content": "\frac{a}{b}"
+  ✓ RIGHT:  "content": "\\frac{a}{b}"
+  This applies to ALL LaTeX commands: \\sum, \\int, \\left, \\right, \\max, etc.
 - "divider": content is "".
 
 CRITICAL for Mode C:
