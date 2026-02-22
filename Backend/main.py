@@ -2,16 +2,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Optional
+import asyncio
 import uuid
 import copy
 import os
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from dotenv import load_dotenv
 import httpx
-from md_utils import document_to_json, json_to_document
-
-load_dotenv(Path(__file__).parent.parent / "Frontend" / ".env", override=True)
+from md_utils import document_to_json, json_to_document, blocks_to_markdown, markdown_to_blocks
+from nim_client import nim_chat, nim_embed_single, nim_moderate
 
 app = FastAPI(title="Nootes API")
 
@@ -24,6 +24,8 @@ app.add_middleware(
 
 DOCS_DIR = Path(__file__).parent / "data" / "docs"
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
@@ -163,7 +165,7 @@ def get_personal(repo_id: str, user_id: str):
 
 
 @app.put("/api/repos/{repo_id}/personal/{user_id}")
-def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
+async def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
     doc = read_doc(repo_id, user_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -173,6 +175,10 @@ def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
         doc["title"] = body.title
     doc["updatedAt"] = now_iso()
     write_doc(doc)
+
+    # Fire-and-forget: embed the updated document for semantic search
+    asyncio.create_task(_embed_document_safe(repo_id, user_id, doc))
+
     return {"data": doc}
 
 
@@ -186,15 +192,6 @@ class ChatMessage(BaseModel):
 class PromptRequest(BaseModel):
     messages: list[ChatMessage]
     model: str = "gpt-4o"
-
-
-MODERATION_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "moderation_prompt.txt"
-
-def _load_moderation_prompt() -> str:
-    try:
-        return MODERATION_PROMPT_PATH.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return "If the message is appropriate reply YES, otherwise reply NO."
 
 
 async def _openai_chat(api_key: str, messages: list[dict], model: str = "gpt-4o") -> str:
@@ -220,26 +217,163 @@ async def proxy_prompt(body: PromptRequest):
     return {"content": content}
 
 
+# ─── Moderation (Nemotron Content Safety 4B via NIM) ─────────────────────────
+
 class ModerateRequest(BaseModel):
     message: str
 
 
 @app.post("/api/moderate")
 async def moderate_message(body: ModerateRequest):
-    api_key = os.environ.get("OPENAI_API")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENAI_API key not configured")
-    system_prompt = _load_moderation_prompt()
+    """Classify a chat message for content safety using Nemotron Content Safety 4B."""
     try:
-        result = await _openai_chat(
-            api_key,
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": body.message},
+        result = await nim_moderate(body.message)
+        return {"allowed": result["allowed"], "category": result.get("category")}
+    except Exception as e:
+        logger.error("Moderation failed, falling back to allow: %s", e)
+        return {"allowed": True, "category": None}
+
+
+# ─── Embeddings (Nemotron Embed VL 1B via NIM) ───────────────────────────────
+
+class EmbedRequest(BaseModel):
+    repo_id: str
+    user_id: str
+
+
+async def _embed_document_safe(repo_id: str, user_id: str, doc: dict):
+    """Fire-and-forget embedding — errors are logged, not raised."""
+    try:
+        markdown = blocks_to_markdown(doc.get("blocks", []))
+        if not markdown.strip():
+            return
+        vector = await nim_embed_single(markdown)
+        # TODO: Store vector in Supabase pgvector column
+        # For now, log success
+        logger.info("Embedded doc %s/%s — %d dims", repo_id, user_id, len(vector))
+    except Exception as e:
+        logger.error("Background embed failed for %s/%s: %s", repo_id, user_id, e)
+
+
+@app.post("/api/embed")
+async def embed_document(body: EmbedRequest):
+    """Manually trigger embedding for a document."""
+    doc = read_doc(body.repo_id, body.user_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    markdown = blocks_to_markdown(doc.get("blocks", []))
+    if not markdown.strip():
+        raise HTTPException(status_code=400, detail="Document has no content to embed")
+
+    try:
+        vector = await nim_embed_single(markdown)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM embed failed: {e}")
+
+    # TODO: Store vector in Supabase pgvector column
+    return {"repo_id": body.repo_id, "user_id": body.user_id, "dimensions": len(vector)}
+
+
+# ─── Merge (Nemotron Nano 8B via NIM) ────────────────────────────────────────
+
+MERGE_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "merge_prompt.txt"
+
+
+def _load_merge_prompt() -> str:
+    try:
+        return MERGE_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "You are a document merge assistant. Merge the provided documents into one."
+
+
+def _format_merge_input(master: dict, forks: list[dict]) -> str:
+    """Build the user message containing master + all forks for the merge model."""
+    parts = []
+
+    # Master document
+    master_md = blocks_to_markdown(master.get("blocks", []))
+    parts.append(f"## MASTER DOCUMENT\n\n{master_md}")
+
+    # Fork documents
+    for i, fork in enumerate(forks, 1):
+        fork_md = blocks_to_markdown(fork.get("blocks", []))
+        user_id = fork.get("userId", "unknown")
+        parts.append(f"## FORK-{i} (contributor: {user_id})\n\n{fork_md}")
+
+    return "\n\n---\n\n".join(parts)
+
+
+def _parse_merge_result(result: str) -> tuple[str, str]:
+    """Split merge model output into (merged_markdown, summary)."""
+    separator = "---MERGE_SUMMARY---"
+    if separator in result:
+        merged, summary = result.split(separator, 1)
+        return merged.strip(), summary.strip()
+    # Fallback: entire output is the merged document
+    return result.strip(), "Merge completed (no summary generated)."
+
+
+@app.post("/api/repos/{repo_id}/merge")
+async def merge_documents(repo_id: str):
+    """
+    Merge all user forks for a repo into the master document.
+
+    Uses Nemotron Nano 8B to synthesize content based on
+    correctness > completeness > recency > clarity > style.
+    """
+    # 1. Load master
+    master = read_doc(repo_id, "master")
+    if not master:
+        raise HTTPException(status_code=404, detail="Master document not found")
+
+    # 2. Find all forks
+    forks = [
+        doc for doc in list_all_docs()
+        if doc["repoId"] == repo_id and doc.get("userId") != "master"
+    ]
+    if not forks:
+        raise HTTPException(status_code=400, detail="No forks to merge")
+
+    # 3. Build prompt
+    merge_prompt = _load_merge_prompt()
+    user_content = _format_merge_input(master, forks)
+
+    # 4. Call Nemotron Nano 8B
+    try:
+        result = await nim_chat(
+            messages=[
+                {"role": "system", "content": merge_prompt},
+                {"role": "user", "content": user_content},
             ],
-            model="gpt-4o-mini",
         )
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
-    allowed = result.strip().upper().startswith("YES")
-    return {"allowed": allowed}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM merge failed: {e}")
+
+    # 5. Parse result
+    merged_md, summary = _parse_merge_result(result)
+
+    # 6. Update master document with merged content
+    merged_blocks = markdown_to_blocks(merged_md)
+    master["blocks"] = merged_blocks
+    master["updatedAt"] = now_iso()
+    master["version"] = _bump_version(master.get("version", "1.0.0"))
+    write_doc(master)
+
+    return {
+        "data": master,
+        "summary": summary,
+        "forks_merged": len(forks),
+    }
+
+
+def _bump_version(version: str) -> str:
+    """Increment the patch version: 1.0.0 → 1.0.1."""
+    try:
+        parts = version.split(".")
+        if len(parts) == 3:
+            parts[2] = str(int(parts[2]) + 1)
+            return ".".join(parts)
+    except (ValueError, IndexError):
+        pass
+    return version

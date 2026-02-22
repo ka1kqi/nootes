@@ -4,8 +4,14 @@ set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # ── Backend ──────────────────────────────────────────────────────────────────
-echo "[backend] installing dependencies..."
+echo "[backend] setting up virtual environment..."
 cd "$ROOT/Backend"
+if [ ! -d ".venv" ]; then
+  python3 -m venv .venv
+fi
+source .venv/bin/activate
+
+echo "[backend] installing dependencies..."
 pip install -q -r requirements.txt
 
 echo "[backend] starting FastAPI on :3001..."
