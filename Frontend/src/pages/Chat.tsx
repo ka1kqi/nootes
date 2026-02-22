@@ -171,16 +171,22 @@ function ThreadCount({ messageId }: { messageId: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Chat() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const [activeChannel, setActiveChannel] = useState<string | null>(null)
   const [messageText, setMessageText] = useState('')
   const [sendWarning, setSendWarning] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const { channels, loading: channelsLoading } = useChannels()
-  const { messages, loading: messagesLoading, bottomRef } = useMessages(activeChannel)
+  const { messages, loading: messagesLoading } = useMessages(activeChannel)
   const { sendMessage, sending } = useSendMessage()
+
+  // Scroll the messages container to the bottom
+  function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
+    const el = messagesContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }
 
   // Auto-select first channel once loaded
   useEffect(() => {
@@ -189,10 +195,10 @@ export default function Chat() {
     }
   }, [channels, activeChannel])
 
-  // Scroll to bottom when channel changes
+  // Scroll to bottom when messages update or channel changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeChannel])
+    scrollToBottom()
+  }, [messages, activeChannel])
 
   const activeChannelData = channels.find(c => c.id === activeChannel)
 
@@ -236,7 +242,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-cream flex flex-col animate-fade-up">
+    <div className="h-screen bg-cream flex flex-col animate-fade-up overflow-hidden">
       <Navbar
         variant="light"
         breadcrumbs={[
@@ -325,24 +331,6 @@ export default function Chat() {
             )}
           </div>
 
-          {/* User status */}
-          {!sidebarCollapsed && profile && (
-            <div className="px-4 py-3 border-t border-forest/[0.06]">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] text-parchment font-medium relative"
-                  style={{ backgroundColor: colorForId(user?.id ?? '') }}
-                >
-                  {getInitials(profile.display_name)}
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-sage rounded-full border-2 border-cream" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="font-[family-name:var(--font-body)] text-xs text-forest/70 block truncate">{profile.display_name}</span>
-                  <span className="font-mono text-[9px] text-sage/50">{profile.aura.toLocaleString()} ✦</span>
-                </div>
-              </div>
-            </div>
-          )}
         </aside>
 
         {/* Main chat area */}
@@ -372,7 +360,7 @@ export default function Chat() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
             {/* Date divider */}
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-1 h-px bg-forest/[0.06]" />
@@ -393,115 +381,135 @@ export default function Chat() {
                 <p className="font-[family-name:var(--font-body)] text-sm text-forest/30">Be the first to say something!</p>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div>
                 {messages.map((msg, idx) => {
+                  const CLUSTER_MS = 5 * 60_000
                   const prevMsg = idx > 0 ? messages[idx - 1] : null
-                  const isGrouped = prevMsg?.user_id === msg.user_id &&
-                    Math.abs(new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime()) < 5 * 60_000
+                  const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
+
+                  const isGrouped = !!(prevMsg?.user_id === msg.user_id &&
+                    Math.abs(new Date(msg.created_at).getTime() - new Date(prevMsg!.created_at).getTime()) < CLUSTER_MS)
+                  const isNextGrouped = !!(nextMsg?.user_id === msg.user_id &&
+                    Math.abs(new Date(nextMsg!.created_at).getTime() - new Date(msg.created_at).getTime()) < CLUSTER_MS)
+
+                  // Position within the cluster
+                  const pos: 'standalone' | 'first' | 'middle' | 'last' =
+                    !isGrouped && !isNextGrouped ? 'standalone'
+                    : !isGrouped ? 'first'
+                    : isNextGrouped ? 'middle'
+                    : 'last'
+
                   const { displayName, initials, color, aura, tier, badges, reactions, time } = msgToView(msg)
+                  const isOwn = msg.user_id === user?.id
+                  const showAvatar = pos === 'first' || pos === 'standalone'
+
+                  // Avatar is on the first message (top), so:
+                  //   first → tail at bottom-right, pointing down into the cluster
+                  //   middle → inner side flattened
+                  //   last → tail at top-right, pointing up toward the avatar
+                  //   standalone → tail at bottom-right (conventional single-bubble tail)
+                  const ownRounding =
+                    pos === 'standalone' ? 'rounded-2xl'
+                    : pos === 'middle'   ? 'rounded-2xl rounded-r-lg'
+                    : pos === 'first'    ? 'rounded-2xl rounded-br-[5px]'
+                    :                     'rounded-2xl rounded-tr-[5px]'
+                  const otherRounding =
+                    pos === 'standalone' ? 'rounded-2xl'
+                    : pos === 'middle'   ? 'rounded-2xl rounded-l-lg'
+                    : pos === 'first'    ? 'rounded-2xl rounded-bl-[5px]'
+                    :                     'rounded-2xl rounded-tl-[5px]'
+
+                  // Breathe between clusters, tight within
+                  const topMargin = pos === 'first' || pos === 'standalone' ? 'mt-5' : 'mt-1'
+
+                  const bubbleContent = (
+                    <div className={`font-[family-name:var(--font-body)] text-[14px] leading-relaxed whitespace-pre-wrap ${isOwn ? 'text-parchment/90' : 'text-forest/80'}`}>
+                      {msg.is_latex ? (
+                        msg.content.split('\n').map((line, li) => (
+                          <span key={li}>
+                            {li > 0 && <br />}
+                            <InlineLatexChat text={line} />
+                          </span>
+                        ))
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                  )
+
+                  if (isOwn) {
+                    return (
+                      <div key={msg.id} className={`group flex flex-col items-end px-3 ${topMargin}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[9px] text-forest/20 opacity-0 group-hover:opacity-100 transition-opacity">{time}</span>
+                          <div className={`bg-forest ${ownRounding} px-3 py-2 max-w-[20rem] lg:max-w-md`}>
+                            {bubbleContent}
+                          </div>
+                          {showAvatar ? (
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] text-parchment font-medium shrink-0"
+                              style={{ backgroundColor: color }}
+                            >
+                              {initials}
+                            </div>
+                          ) : (
+                            <div className="w-8 shrink-0" />
+                          )}
+                        </div>
+                        {reactions.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-1 pr-10">
+                            {reactions.map((r, ri) => (
+                              <ReactionButton key={ri} emoji={r.emoji} count={r.count} messageId={msg.id} userId={user?.id} />
+                            ))}
+                          </div>
+                        )}
+                        <ThreadCount messageId={msg.id} />
+                      </div>
+                    )
+                  }
 
                   return (
-                    <div
-                      key={msg.id}
-                      className={`group hover:bg-forest/[0.02] rounded-lg px-3 py-1.5 transition-colors ${!isGrouped ? 'mt-3' : ''}`}
-                    >
-                      {!isGrouped ? (
-                        <div className="flex items-start gap-3">
-                          {/* Avatar */}
+                    <div key={msg.id} className={`group flex flex-col items-start px-3 ${topMargin}`}>
+                      <div className="flex items-center gap-2">
+                        {showAvatar ? (
                           <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] text-parchment font-medium shrink-0 mt-0.5"
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] text-parchment font-medium shrink-0"
                             style={{ backgroundColor: color }}
                           >
                             {initials}
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            {/* Author line */}
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="font-[family-name:var(--font-body)] text-sm text-forest font-medium">{displayName}</span>
-                              {badges.map((b, bi) => (
-                                <span key={bi} className="text-xs">{b}</span>
-                              ))}
-                              <span className={`w-2 h-2 rounded-full ${tierColor(tier)}`} title={`${tier} · ${aura} aura`} />
+                        ) : (
+                          <div className="w-8 shrink-0" />
+                        )}
+                        <div className="flex flex-col items-start gap-0.5">
+                          {showAvatar && (
+                            <div className="flex items-center gap-1.5 mb-0.5 pl-0.5">
+                              <span className="font-[family-name:var(--font-body)] text-xs text-forest/60 font-medium">{displayName}</span>
+                              {badges.map((b, bi) => <span key={bi} className="text-xs">{b}</span>)}
+                              <span className={`w-1.5 h-1.5 rounded-full ${tierColor(tier)}`} title={`${tier} · ${aura} aura`} />
                               <span className="font-mono text-[9px] text-sage/40">{aura} ✦</span>
-                              <span className="font-mono text-[10px] text-forest/20 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">{time}</span>
-                            </div>
-
-                            {/* Message content */}
-                            <div className="font-[family-name:var(--font-body)] text-[14px] text-forest/70 leading-relaxed whitespace-pre-wrap">
-                              {msg.is_latex ? (
-                                msg.content.split('\n').map((line, li) => (
-                                  <span key={li}>
-                                    {li > 0 && <br />}
-                                    <InlineLatexChat text={line} />
-                                  </span>
-                                ))
-                              ) : (
-                                msg.content
-                              )}
-                            </div>
-
-                            {/* Reactions */}
-                            {reactions.length > 0 && (
-                              <div className="flex items-center gap-1.5 mt-2">
-                                {reactions.map((r, ri) => (
-                                  <ReactionButton
-                                    key={ri}
-                                    emoji={r.emoji}
-                                    count={r.count}
-                                    messageId={msg.id}
-                                    userId={user?.id}
-                                  />
-                                ))}
-                                <button className="w-6 h-6 flex items-center justify-center text-forest/15 hover:text-forest/40 hover:bg-forest/[0.04] squircle-sm transition-all opacity-0 group-hover:opacity-100">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Thread indicator */}
-                            <ThreadCount messageId={msg.id} />
-                          </div>
-                        </div>
-                      ) : (
-                        /* Grouped message — no avatar */
-                        <div className="pl-12">
-                          <div className="font-[family-name:var(--font-body)] text-[14px] text-forest/70 leading-relaxed whitespace-pre-wrap">
-                            {msg.is_latex ? (
-                              msg.content.split('\n').map((line, li) => (
-                                <span key={li}>
-                                  {li > 0 && <br />}
-                                  <InlineLatexChat text={line} />
-                                </span>
-                              ))
-                            ) : (
-                              msg.content
-                            )}
-                          </div>
-                          {reactions.length > 0 && (
-                            <div className="flex items-center gap-1.5 mt-2">
-                              {reactions.map((r, ri) => (
-                                <ReactionButton
-                                  key={ri}
-                                  emoji={r.emoji}
-                                  count={r.count}
-                                  messageId={msg.id}
-                                  userId={user?.id}
-                                />
-                              ))}
                             </div>
                           )}
-                          <ThreadCount messageId={msg.id} />
+                          <div className={`bg-parchment border border-forest/[0.08] ${otherRounding} px-3 py-2 max-w-[20rem] lg:max-w-md`}>
+                            {bubbleContent}
+                          </div>
+                        </div>
+                        <span className="font-mono text-[9px] text-forest/20 opacity-0 group-hover:opacity-100 transition-opacity">{time}</span>
+                      </div>
+                      {reactions.length > 0 && (
+                        <div className="flex items-center gap-1.5 mt-1 pl-10">
+                          {reactions.map((r, ri) => (
+                            <ReactionButton key={ri} emoji={r.emoji} count={r.count} messageId={msg.id} userId={user?.id} />
+                          ))}
                         </div>
                       )}
+                      <ThreadCount messageId={msg.id} />
                     </div>
                   )
                 })}
               </div>
             )}
 
-            <div ref={bottomRef} />
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Message input */}
@@ -518,17 +526,6 @@ export default function Chat() {
             )}
             <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden focus-within:border-sage/40 focus-within:ring-2 focus-within:ring-sage/10 transition-all">
               <div className="flex items-center gap-2 px-4 py-3">
-                {/* Formatting buttons */}
-                <button className="w-7 h-7 flex items-center justify-center text-forest/25 hover:text-forest/50 hover:bg-forest/[0.04] squircle-sm transition-all" title="LaTeX">
-                  <span className="font-mono text-[10px]">Σ</span>
-                </button>
-                <button className="w-7 h-7 flex items-center justify-center text-forest/25 hover:text-forest/50 hover:bg-forest/[0.04] squircle-sm transition-all" title="Code">
-                  <span className="font-mono text-[10px]">&lt;&gt;</span>
-                </button>
-                <button className="w-7 h-7 flex items-center justify-center text-forest/25 hover:text-forest/50 hover:bg-forest/[0.04] squircle-sm transition-all" title="Bold">
-                  <span className="font-mono text-[10px] font-bold">B</span>
-                </button>
-                <div className="w-px h-4 bg-forest/10" />
                 <input
                   type="text"
                   value={messageText}
@@ -549,17 +546,6 @@ export default function Chat() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                 </button>
               </div>
-            </div>
-            <div className="flex items-center gap-3 mt-2 px-1">
-              <span className="font-mono text-[9px] text-forest/15">
-                <span className="bg-forest/[0.06] px-1.5 py-0.5 squircle-sm text-forest/30">$</span> for inline LaTeX
-              </span>
-              <span className="font-mono text-[9px] text-forest/15">
-                <span className="bg-forest/[0.06] px-1.5 py-0.5 squircle-sm text-forest/30">```</span> for code
-              </span>
-              <span className="font-mono text-[9px] text-forest/15">
-                <span className="bg-forest/[0.06] px-1.5 py-0.5 squircle-sm text-forest/30">**</span> for bold
-              </span>
             </div>
           </div>
         </main>

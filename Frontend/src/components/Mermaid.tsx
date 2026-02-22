@@ -8,6 +8,7 @@ function ensureInit() {
   initialized = true
   mermaid.initialize({
     startOnLoad: false,
+    suppressErrors: true,
     theme: 'neutral',
     themeVariables: {
       primaryColor: '#A3B18A',
@@ -34,9 +35,22 @@ export function Mermaid({ chart }: { chart: string }) {
     setError(null)
 
     const id = `mermaid-render-${++uid}`
+
+    const cleanup = () => {
+      // Remove the hidden render sandbox mermaid appends to <body>
+      document.getElementById(id)?.remove()
+      // Remove any error elements mermaid may have injected into <body>
+      document.querySelectorAll('[id^="dmermaid"], [id^="mermaid-"]').forEach(el => {
+        if (el.id !== id && el.closest('#root') === null) el.remove()
+      })
+    }
+
     mermaid.render(id, chart)
-      .then(({ svg: rendered }) => setSvg(rendered))
-      .catch((err: Error) => setError(err.message ?? 'Diagram error'))
+      .then(({ svg: rendered }) => { cleanup(); setSvg(rendered) })
+      .catch((err: Error) => {
+        cleanup()
+        setError(err.message?.split('\n')[0] ?? 'Diagram error')
+      })
   }, [chart])
 
   if (error) {

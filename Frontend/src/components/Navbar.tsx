@@ -9,7 +9,6 @@ const navLinks = [
   { path: '/editor/scratch', label: 'Editor' },
   { path: '/chat', label: 'Chat' },
   { path: '/diff', label: 'Diff' },
-  { path: '/graph', label: 'Graph' },
 ]
 
 const profileDropdownLinks = [

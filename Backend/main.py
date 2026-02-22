@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -213,6 +216,31 @@ async def proxy_prompt(body: PromptRequest):
         content = await nim_graph(messages)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"NIM graph failed: {e}")
+    return {"content": content}
+
+
+# ─── Noot Agent (dual-mode: text or graph) ───────────────────────────────────
+
+NOOT_PROMPT_PATH = Path(__file__).parent.parent / "gpt_prompts" / "noot_prompt.txt"
+
+
+def _load_noot_prompt() -> str:
+    try:
+        return NOOT_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "You are Noot, a helpful AI study companion."
+
+
+@app.post("/api/noot")
+async def noot_chat(body: PromptRequest):
+    """Noot agent endpoint — decides between plain text and graph responses."""
+    messages = [m.model_dump() for m in body.messages]
+    if not messages or messages[0].get("role") != "system":
+        messages.insert(0, {"role": "system", "content": _load_noot_prompt()})
+    try:
+        content = await nim_graph(messages)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM noot failed: {e}")
     return {"content": content}
 
 
