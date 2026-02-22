@@ -482,7 +482,7 @@ export default function Design1() {
               {/* Diff page link — only for forks */}
               {isFork && (
               <Link
-                to="/diff"
+                to={`/diff/${repoId}`}
                 className="flex items-center gap-1.5 h-7 px-3 border border-forest/15 squircle-sm font-[family-name:var(--font-body)] text-[11px] tracking-wider uppercase text-forest/40 hover:text-forest/70 hover:border-forest/25 transition-all shrink-0"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
