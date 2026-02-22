@@ -244,7 +244,7 @@ export const TypingIndicator = () => (
 
 // ─── PARSE GRAPH RESPONSE ────────────────────────────────────────────────────
 // Extracts the JSON array and any plain-text summary that follows it.
-function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
+export function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
   try {
     const start = content.indexOf('[')
     const end   = content.lastIndexOf(']')

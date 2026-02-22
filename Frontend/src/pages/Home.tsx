@@ -1,6 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Navbar } from '../components/Navbar'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
+import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from './GraphView'
+import { parseGraphResponse } from './Graph_Creation'
+import { NootMarkdown } from '../components/NootMarkdown'
 
 /* ------------------------------------------------------------------ */
 /* Home — AI chatbox centred in generous whitespace                    */
@@ -24,14 +28,6 @@ import { useAuth } from '../hooks/useAuth'
 
 const AI_MODES = ['Write', 'Graphs', 'Concise', 'Deep Analysis'] as const
 type AIMode = typeof AI_MODES[number]
-
-// ── Stats strip ───────────────────────────────────────────────────────
-
-const STATS = [
-  { value: '12,847', label: 'nootes shared' },
-  { value: '3,214',  label: 'active learners' },
-  { value: '487',    label: 'nootbooks' },
-]
 
 // ── Card data ─────────────────────────────────────────────────────────
 
@@ -534,9 +530,45 @@ const CARD_ROWS: NootCardData[][] = (() => {
   return rows
 })()
 
+// ── Time-based greeting ────────────────────────────────────────────────
+
+function getTimeGreeting(name: string): string {
+  const hour = new Date().getHours()
+  let prompts: string[]
+
+  if (hour >= 5 && hour < 12) {
+    prompts = [
+      `Good morning, ${name}. What are we learning today?`,
+      `Rise and think, ${name}. Brain's still warming up.`,
+      `Morning mode: engaged. Let's explore something.`,
+    ]
+  } else if (hour >= 12 && hour < 17) {
+    prompts = [
+      `Afternoon, ${name}. Still curious? Good.`,
+      `Post-lunch brain: surprisingly capable. Use it.`,
+      `The afternoon slump is a lie. What's on your mind?`,
+    ]
+  } else if (hour >= 17 && hour < 21) {
+    prompts = [
+      `Evening, ${name}. Ideas get good around now.`,
+      `Golden hour for learning. What's calling?`,
+      `Brain's in flow state. Let's ride it.`,
+    ]
+  } else {
+    prompts = [
+      `Midnight curiosity? Let's feed it, ${name}.`,
+      `Burning the midnight oil. Highly relatable.`,
+      `Quiet hours, big thoughts. What are we exploring?`,
+    ]
+  }
+
+  // stable within the same hour so it doesn't flicker on re-renders
+  return prompts[hour % prompts.length]
+}
+
 // ── Home ──────────────────────────────────────────────────────────────
 
-interface ChatMessage { role: 'user' | 'assistant'; content: string }
+interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string }
 
 function apiBase(): string {
   const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
@@ -642,12 +674,50 @@ export default function Home() {
     }
   }, [applyOffset, snapToEdge])
 
-  // ── Collapse button ────────────────────────────────────────────────
+  // ── Collapse / expand ──────────────────────────────────────────────
 
   const collapse = useCallback(() => {
     if (innerScrollRef.current) innerScrollRef.current.scrollTop = 0
     applyOffset(maxOffsetRef.current, true)
   }, [applyOffset])
+
+  const expand = useCallback(() => {
+    applyOffset(0, true)
+  }, [applyOffset])
+
+  // ── Graph expand / query ───────────────────────────────────────────
+
+  const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
+
+  const expandTask: ExpandFn = useCallback(async (item, context, ancestors) => {
+    const topPrompt = historyRef.current.find(m => m.role === 'user')?.content ?? ''
+    let prompt = `Top-level goal: ${topPrompt}\n\nExpand this concept into 5–7 connected sub-concepts as a graph:\n${item.name}: ${item.text}`
+    if (ancestors.length > 0)
+      prompt += `\n\nAncestor chain: ${ancestors.map(a => a.name).join(' → ')}`
+    if (context) prompt += `\n\nAdditional context: ${context}`
+
+    const res = await fetch(`${apiBase()}/noot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
+    })
+    const data = await res.json()
+    const parsed = parseGraphResponse(data.content ?? '')
+    if (!parsed) throw new Error('Could not parse expansion response')
+    return parsed
+  }, [])
+
+  const queryNode: QueryFn = useCallback(async (item, question, ancestors) => {
+    const topPrompt = historyRef.current.find(m => m.role === 'user')?.content ?? ''
+    const prompt = `Context: ${topPrompt}\nNode: ${item.name} — ${item.text}${ancestors.length > 0 ? `\nAncestors: ${ancestors.map(a => a.name).join(' → ')}` : ''}\n\nQuestion: ${question}`
+    const res = await fetch(`${apiBase()}/noot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: `[NO GRAPH — answer in plain text] ${prompt}` }] }),
+    })
+    const data = await res.json()
+    return data.content?.trim() ?? 'No response.'
+  }, [])
 
   // ── AI submit ─────────────────────────────────────────────────────
 
@@ -656,10 +726,11 @@ export default function Home() {
     if (!q || aiLoading) return
     setInput('')
 
-    const userMsg: ChatMessage = { role: 'user', content: q }
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: q }
     const next = [...messages, userMsg]
     setMessages(next)
     setAiLoading(true)
+    historyRef.current = [...historyRef.current, { role: 'user', content: q }]
 
     const scrollToBottom = () => {
       const el = messagesEndRef.current
@@ -668,11 +739,17 @@ export default function Home() {
     setTimeout(scrollToBottom, 50)
 
     try {
-      const modeHint = activeMode !== 'Write'
-        ? `[Respond in ${activeMode} style] `
-        : ''
+      const modeHints: Record<AIMode, string> = {
+        'Write':         '',
+        'Graphs':        '[Always respond with a concept graph in Mode B JSON format. Never use plain text.] ',
+        'Concise':       '[Be concise. Keep any graph to 4–5 nodes.] ',
+        'Deep Analysis': '[Provide deep analysis. Use 6–7 nodes with thorough descriptions.] ',
+      }
+      const modeHint = modeHints[activeMode]
       const payload = next.map(m =>
-        m.role === 'user' ? { ...m, content: modeHint + m.content } : m
+        m.role === 'user'
+          ? { role: m.role, content: modeHint + m.content }
+          : { role: m.role, content: m.content }
       )
       const res = await fetch(`${apiBase()}/noot`, {
         method: 'POST',
@@ -681,9 +758,10 @@ export default function Home() {
       })
       const data = await res.json()
       const reply = data.content ?? data.detail ?? 'No response.'
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+      historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: reply }])
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Failed to reach the AI. Check your connection.' }])
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Failed to reach the AI. Check your connection.' }])
     } finally {
       setAiLoading(false)
       setTimeout(() => {
@@ -694,9 +772,39 @@ export default function Home() {
   }, [input, activeMode, messages, aiLoading])
 
   const firstName = profile?.display_name?.split(' ')[0] ?? 'you'
+  const greeting  = useMemo(() => getTimeGreeting(firstName), [firstName])
+
+  // ── Live stats ────────────────────────────────────────────────────
+  const [stats, setStats] = useState([
+    { value: '—', label: 'nootes shared' },
+    { value: '—', label: 'active learners' },
+    { value: '—', label: 'nootbooks' },
+  ])
+
+  useEffect(() => {
+    async function loadStats() {
+      const [{ count: nootCount }, { count: userCount }, { count: repoCount }] = await Promise.all([
+        supabase.from('documents').select('*', { count: 'exact', head: true }),
+        supabase.from('profiles').select('*', { count: 'exact', head: true }),
+        supabase.from('repositories').select('*', { count: 'exact', head: true }),
+      ])
+      setStats([
+        { value: (nootCount ?? 0).toLocaleString(), label: 'nootes shared' },
+        { value: (userCount ?? 0).toLocaleString(), label: 'active learners' },
+        { value: (repoCount ?? 0).toLocaleString(), label: 'nootbooks' },
+      ])
+    }
+    loadStats()
+  }, [])
 
   return (
     <div className="h-screen bg-cream flex flex-col overflow-hidden">
+      <style>{`
+        @keyframes home-fade-up {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <Navbar variant="light" />
 
       {/* ── Content area ─────────────────────────────────────────────── */}
@@ -706,34 +814,76 @@ export default function Home() {
         <div className="absolute inset-0 flex flex-col items-center px-6 pointer-events-none">
           <div className="pointer-events-auto w-full max-w-2xl h-full flex flex-col">
 
-            {/* Empty state spacer + greeting */}
-            {messages.length === 0 && (
-              <>
-                <div style={{ flex: '0 0 max(72px, calc(33vh - 56px))' }} />
-                <p className="font-[family-name:var(--font-display)] text-[1.65rem] text-forest/45 mb-6 tracking-tight text-center leading-snug select-none">
-                  What should we explore today?
-                </p>
-              </>
-            )}
+            {/* Empty state spacer + greeting — collapses when chat starts */}
+            <div
+              className="shrink-0 overflow-hidden"
+              style={{
+                maxHeight: messages.length === 0 ? '300px' : '0px',
+                opacity: messages.length === 0 ? 1 : 0,
+                transition: 'max-height 0.5s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease',
+                pointerEvents: 'none',
+              }}
+            >
+              <div style={{ height: 'max(72px, calc(33vh - 56px))' }} />
+              <p
+                className="font-[family-name:var(--font-display)] text-[2.2rem] text-forest/60 mb-6 tracking-tight text-center leading-snug select-none"
+                style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 0ms both' }}
+              >
+                {greeting}
+              </p>
+            </div>
 
-            {/* Message thread — scrollable, grows to fill space */}
+            {/* Message thread — slides in when chat starts */}
             {messages.length > 0 && (
               <div
                 ref={messagesEndRef}
                 className="flex-1 overflow-y-auto pt-6 pb-2 flex flex-col gap-3"
+                style={{ animation: 'home-fade-up 0.45s cubic-bezier(0.16,1,0.3,1) both' }}
               >
                 <div className="mt-auto flex flex-col gap-3">
-                  {messages.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] px-4 py-2.5 squircle-xl font-[family-name:var(--font-body)] text-sm leading-relaxed whitespace-pre-wrap ${
-                        m.role === 'user'
-                          ? 'bg-forest text-parchment'
-                          : 'bg-parchment border border-forest/10 text-forest'
-                      }`}>
-                        {m.content}
+                  {messages.map((m) => {
+                    if (m.role === 'assistant') {
+                      const parsed = parseGraphResponse(m.content)
+                      if (parsed) {
+                        return (
+                          <div key={m.id} style={{ animation: 'home-fade-up 0.4s ease both' }}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-5 h-5 shrink-0 flex items-center justify-center border border-forest/20 bg-forest/[0.04] squircle-sm">
+                                <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
+                                  <circle cx="7" cy="7" r="5" stroke="#8a9b75" strokeWidth="1.2"/>
+                                  <path d="M4 7 Q7 4 10 7 Q7 10 4 7Z" fill="#8a9b75" opacity="0.7"/>
+                                </svg>
+                              </div>
+                              <span className="font-mono text-[9px] text-sage/50 uppercase tracking-widest">{parsed.items.length} concepts</span>
+                              <div className="flex-1 h-px bg-sage/20" />
+                            </div>
+                            <div className="border border-forest/10 squircle-xl overflow-hidden" style={{ height: 420 }}>
+                              <GraphView key={m.id} items={parsed.items} onExpand={expandTask} onQuery={queryNode} />
+                            </div>
+                            {parsed.summary && (
+                              <div className="mt-3 pl-3 border-l-2 border-sage/30">
+                                <p className="font-[family-name:var(--font-body)] text-xs text-forest/55 leading-relaxed">{parsed.summary}</p>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+                    }
+                    return (
+                      <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] px-4 py-2.5 squircle-xl font-[family-name:var(--font-body)] text-sm leading-relaxed ${
+                          m.role === 'user'
+                            ? 'bg-forest text-parchment whitespace-pre-wrap'
+                            : 'bg-parchment border border-forest/10 text-forest'
+                        }`}>
+                          {m.role === 'user'
+                            ? m.content
+                            : <NootMarkdown>{m.content}</NootMarkdown>
+                          }
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                   {aiLoading && (
                     <div className="flex justify-start">
                       <div className="bg-parchment border border-forest/10 squircle-xl px-4 py-3 flex items-center gap-1.5">
@@ -751,7 +901,10 @@ export default function Home() {
             <div className="shrink-0 pb-6">
 
             {/* AI Chatbox */}
-            <div className="w-full bg-parchment border border-forest/[0.12] squircle-xl px-4 py-3 flex items-center gap-3 shadow-[0_4px_32px_-10px_rgba(38,70,53,0.08)] focus-within:border-sage/40 focus-within:shadow-[0_6px_32px_-10px_rgba(138,155,117,0.16)] transition-all">
+            <div
+              className="w-full bg-parchment border border-forest/[0.12] squircle-xl px-4 py-3 flex items-center gap-3 shadow-[0_4px_32px_-10px_rgba(38,70,53,0.08)] focus-within:border-sage/40 focus-within:shadow-[0_6px_32px_-10px_rgba(138,155,117,0.16)] transition-all"
+              style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 80ms both' }}
+            >
 
               {/* Attachment */}
               <label
@@ -780,7 +933,7 @@ export default function Home() {
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuery() }
                 }}
-                placeholder={`Ask anything, ${firstName}…`}
+                placeholder={`Ask me anything, ${firstName}…`}
                 className="flex-1 bg-transparent text-sm text-forest placeholder:text-forest/30 outline-none font-[family-name:var(--font-body)]"
               />
 
@@ -798,7 +951,10 @@ export default function Home() {
             </div>
 
             {/* Mode pills */}
-            <div className="flex items-center gap-2 mt-4">
+            <div
+              className="flex items-center justify-center gap-2 mt-4"
+              style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 160ms both' }}
+            >
               {AI_MODES.map(mode => (
                 <button
                   key={mode}
@@ -816,8 +972,11 @@ export default function Home() {
 
             {/* Stats strip — hide during conversation */}
             {messages.length === 0 && (
-              <div className="flex items-center gap-2 mt-3">
-                {STATS.map((s, i) => (
+              <div
+                className="flex items-center justify-center gap-2 mt-3"
+                style={{ animation: 'home-fade-up 0.6s cubic-bezier(0.16,1,0.3,1) 220ms both' }}
+              >
+                {stats.map((s, i) => (
                   <span key={s.label} className="flex items-center gap-2">
                     {i > 0 && <span className="text-forest/10 font-mono text-xs select-none">·</span>}
                     <span className="font-mono text-[9px] text-forest/28 tracking-wider">
@@ -878,18 +1037,27 @@ export default function Home() {
                 </span>
               </div>
 
-              {isExpanded && (
-                <button
-                  onClick={e => { e.stopPropagation(); collapse() }}
-                  onPointerDown={e => e.stopPropagation()}
-                  className="flex items-center gap-1 font-mono text-[9px] text-forest/30 hover:text-forest/55 transition-colors cursor-pointer"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                  collapse
-                </button>
-              )}
+              <button
+                onClick={e => { e.stopPropagation(); isExpanded ? collapse() : expand() }}
+                onPointerDown={e => e.stopPropagation()}
+                className="flex items-center gap-1 font-mono text-[9px] text-forest/30 hover:text-forest/55 transition-colors cursor-pointer"
+              >
+                {isExpanded ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                    collapse
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                    </svg>
+                    expand
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
@@ -910,7 +1078,7 @@ export default function Home() {
               {CARD_ROWS.map((rowCards, rowIdx) => (
                 <div
                   key={rowIdx}
-                  className="marquee-row overflow-x-hidden"
+                  className="marquee-row overflow-hidden"
                   style={{ height: `${CARD_H}px`, opacity: 0.55 }}
                 >
                   <div

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logoImg from '../assets/logo.png'
 import { useAuth } from '../hooks/useAuth'
+import { useTheme } from '../contexts/ThemeContext'
 
 function getInitials(name: string): string {
   return name.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2)
@@ -25,7 +26,24 @@ export function Navbar({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
   const location = useLocation()
   const navigate = useNavigate()
   const { signOut, profile } = useAuth()
+  const { themeId } = useTheme()
   const isDark = variant === 'dark'
+
+  const logoFilter = (() => {
+    switch (themeId) {
+      case 'dark-navy':
+        // Tint to #c8d8e8 — light blue-grey
+        return 'brightness(0) invert(1) sepia(1) hue-rotate(165deg) saturate(0.45) brightness(0.90)'
+      case 'dark-void':
+        // Tint to #dddae8 — light lavender-grey
+        return 'brightness(0) invert(1) sepia(1) hue-rotate(205deg) saturate(0.22) brightness(0.93)'
+      case 'dark-dusk':
+        // Tint to #e8dfc8 — warm cream
+        return 'brightness(0) invert(1) sepia(0.5) saturate(0.55) brightness(0.95)'
+      default:
+        return undefined
+    }
+  })()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -41,8 +59,12 @@ export function Navbar({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
   return (
     <header className={`border-b ${isDark ? 'border-sage/15 bg-forest' : 'border-forest/10 bg-cream/80 backdrop-blur-sm'} sticky top-0 z-50`}>
       <div className="flex items-center justify-between px-6 h-14">
-        <Link to="/home" className="logo-wave flex items-center gap-1 hover:opacity-80 transition-opacity">
-          <img src={logoImg} alt="Nootes" style={{ width: 30, height: 30 }} />
+        <Link
+          to="/home"
+          onClick={e => { if (location.pathname === '/home') e.preventDefault() }}
+          className="logo-wave flex items-center gap-1 hover:opacity-80 transition-opacity"
+        >
+          <img src={logoImg} alt="Nootes" style={{ width: 30, height: 30, filter: logoFilter, transition: 'filter 0.3s ease' }} />
           <span className={`font-[family-name:var(--font-display)] text-2xl ${isDark ? 'text-parchment' : 'text-forest'} flex`}>
             {'nootes'.split('').map((letter, i) => (
               <span key={i} className="wave-letter">{letter}</span>

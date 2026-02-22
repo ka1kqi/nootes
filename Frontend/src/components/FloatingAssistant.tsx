@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { NootMarkdown } from './NootMarkdown'
 
 /* ------------------------------------------------------------------ */
 /* FloatingAssistant                                                    */
@@ -32,6 +33,7 @@ export function FloatingAssistant() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
   const location = useLocation()
   const { profile } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -66,20 +68,30 @@ export function FloatingAssistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const text = input.trim()
-    if (!text) return
+    if (!text || loading) return
     setInput('')
-    const id = Date.now().toString()
-    setMessages(prev => [
-      ...prev,
-      { id, role: 'user', content: text },
-      {
-        id: id + '-r',
-        role: 'assistant',
-        content: 'AI integration coming soon — this is a preview of the interface.',
-      },
-    ])
+    const id = crypto.randomUUID()
+    setMessages(prev => [...prev, { id, role: 'user', content: text }])
+    setLoading(true)
+    try {
+      // Prepend NO GRAPH so the popup always gets readable markdown, not raw JSON
+      const res = await fetch('/api/noot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: `[NO GRAPH — respond in plain text with markdown] ${text}` }],
+        }),
+      })
+      const data = await res.json()
+      const reply = data.content ?? data.detail ?? 'No response.'
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: reply }])
+    } catch {
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Could not reach AI. Check your connection.' }])
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -112,14 +124,26 @@ export function FloatingAssistant() {
                 <div
                   className={`max-w-[85%] px-3 py-2 text-xs leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-forest text-parchment squircle-sm font-[family-name:var(--font-body)]'
+                      ? 'bg-forest text-parchment squircle-sm font-[family-name:var(--font-body)] whitespace-pre-wrap'
                       : 'bg-parchment border border-forest/10 squircle-sm font-[family-name:var(--font-body)] text-forest/80'
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user'
+                    ? msg.content
+                    : <NootMarkdown compact>{msg.content}</NootMarkdown>
+                  }
                 </div>
               </div>
             ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-parchment border border-forest/10 squircle-sm px-3 py-2.5 flex items-center gap-1">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="w-1 h-1 rounded-full bg-sage/50 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -130,13 +154,13 @@ export function FloatingAssistant() {
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                onKeyDown={e => { if (e.key === 'Enter' && !loading) sendMessage() }}
                 placeholder="Ask about your nootes..."
                 className="flex-1 bg-transparent text-xs text-forest placeholder:text-forest/30 outline-none font-[family-name:var(--font-body)]"
               />
               <button
                 onClick={sendMessage}
-                disabled={!input.trim()}
+                disabled={!input.trim() || loading}
                 className="w-7 h-7 bg-forest squircle-sm flex items-center justify-center text-parchment hover:bg-forest-deep transition-colors disabled:opacity-30 shrink-0 cursor-pointer"
                 aria-label="Send"
               >
