@@ -52,9 +52,9 @@ class MergeRequest(BaseModel):
     fork_label: Optional[str] = "Fork"
 
 
-class UpdateDocRequest(BaseModel):
-    blocks: Optional[list[Block]] = None
-    title: Optional[str] = None
+class EmbedRequest(BaseModel):
+    doc_id: str
+    blocks: list[Any]  # permissive — validated in handler
 
 
 
@@ -291,20 +291,13 @@ async def moderate_message(body: ModerateRequest):
 
 # ─── Embeddings (Nemotron Embed VL 1B via NIM) ───────────────────────────────
 
-class EmbedRequest(BaseModel):
-    repo_id: str
-    user_id: str
-
-
 async def _embed_document_safe(repo_id: str, user_id: str, doc: dict):
-    """Fire-and-forget embedding — errors are logged, not raised."""
+    """Legacy fire-and-forget — kept for compatibility."""
     try:
         markdown = blocks_to_markdown(doc.get("blocks", []))
         if not markdown.strip():
             return
         vector = await nim_embed_single(markdown)
-        # TODO: Store vector in Supabase pgvector column
-        # For now, log success
         logger.info("Embedded doc %s/%s — %d dims", repo_id, user_id, len(vector))
     except Exception as e:
         logger.error("Background embed failed for %s/%s: %s", repo_id, user_id, e)
@@ -312,22 +305,39 @@ async def _embed_document_safe(repo_id: str, user_id: str, doc: dict):
 
 @app.post("/api/embed")
 async def embed_document(body: EmbedRequest):
-    """Manually trigger embedding for a document."""
-    doc = read_doc(body.repo_id, body.user_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    markdown = blocks_to_markdown(doc.get("blocks", []))
-    if not markdown.strip():
+    """Embed document blocks and return the vector. Caller writes to Supabase."""
+    texts = [
+        str(b.get("content", "") or "").strip()
+        for b in body.blocks
+        if isinstance(b, dict) and str(b.get("content", "") or "").strip()
+    ]
+    if not texts:
         raise HTTPException(status_code=400, detail="Document has no content to embed")
 
+    markdown = "\n".join(texts)
     try:
         vector = await nim_embed_single(markdown)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"NIM embed failed: {e}")
 
-    # TODO: Store vector in Supabase pgvector column
-    return {"repo_id": body.repo_id, "user_id": body.user_id, "dimensions": len(vector)}
+    return {"doc_id": body.doc_id, "embedding": vector, "dimensions": len(vector)}
+
+
+class QueryEmbedRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/embed/query")
+async def embed_query(body: QueryEmbedRequest):
+    """Embed a search query string and return the vector."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Query text is empty")
+    try:
+        vector = await nim_embed_single(text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM embed failed: {e}")
+    return {"embedding": vector}
 
 
 # ─── Merge (Nemotron Nano 8B via NIM) ────────────────────────────────────────

@@ -95,6 +95,7 @@ create table if not exists documents (
 
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
+  embeddding         vector 
 
   -- sanity checks (optional but helpful)
   constraint chk_root_self_consistency

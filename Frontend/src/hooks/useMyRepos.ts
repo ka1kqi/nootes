@@ -18,6 +18,8 @@ export interface UserDocument {
   access_level: 'private' | 'public' | 'restricted'
   required_user_tags: string[]
   created_at: string
+  updated_at: string
+  embedding: number[] | null
 }
 
 // ─── createDocument ───────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ export function useUserDocuments() {
     setLoading(true)
     const { data } = await supabase
       .from('documents')
-      .select('id, title, blocks, version, access_level, required_user_tags, created_at')
+      .select('id, title, blocks, version, access_level, required_user_tags, created_at, updated_at, embedding')
       .eq('owner_user_id', user.id)
       .order('created_at', { ascending: false })
     setDocs((data as unknown as UserDocument[]) ?? [])

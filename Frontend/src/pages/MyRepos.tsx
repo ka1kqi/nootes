@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Navbar } from '../components/Navbar'
 import { useUserDocuments } from '../hooks/useMyRepos'
 import { NewNootModal } from '../components/NewNootModal'
@@ -21,6 +21,23 @@ function timeAgo(dateStr: string): string {
   return `${months}mo ago`
 }
 
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dot   += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom === 0 ? 0 : dot / denom
+}
+
+function apiBase(): string {
+  const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+  if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
+  return url.replace(/\/[^/]+$/, '')
+}
+
 /* ------------------------------------------------------------------ */
 /* Main page                                                           */
 /* ------------------------------------------------------------------ */
@@ -30,11 +47,53 @@ export default function MyRepos() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [queryEmbedding, setQueryEmbedding] = useState<number[] | null>(null)
+  const [embedding, setEmbedding] = useState(false)
+  const embedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const filtered = docs.filter(d =>
-    search === '' ||
-    d.title.toLowerCase().includes(search.toLowerCase())
-  )
+  // Debounced semantic embed: fires 600 ms after the user stops typing
+  useEffect(() => {
+    if (embedTimerRef.current) clearTimeout(embedTimerRef.current)
+    if (!search.trim()) { setQueryEmbedding(null); return }
+
+    embedTimerRef.current = setTimeout(async () => {
+      setEmbedding(true)
+      try {
+        const res = await fetch(`${apiBase()}/embed/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: search.trim() }),
+        })
+        if (res.ok) {
+          const { embedding: vec } = await res.json()
+          setQueryEmbedding(Array.isArray(vec) ? vec : null)
+        }
+      } catch { /* non-fatal */ }
+      finally { setEmbedding(false) }
+    }, 600)
+
+    return () => { if (embedTimerRef.current) clearTimeout(embedTimerRef.current) }
+  }, [search])
+
+  // Compute sorted+filtered list
+  const filtered = (() => {
+    if (!search.trim()) return docs
+
+    // If embedding is ready, rank by cosine similarity (docs without embeddings go last)
+    if (queryEmbedding) {
+      return [...docs]
+        .map(d => ({
+          doc: d,
+          score: d.embedding ? cosineSimilarity(queryEmbedding, d.embedding) : -1,
+        }))
+        .filter(() => true)
+        .sort((a, b) => b.score - a.score)
+        .map(({ doc }) => doc)
+    }
+
+    // While embedding is in-flight, fall back to title substring match
+    return docs.filter(d => d.title.toLowerCase().includes(search.toLowerCase()))
+  })()
 
   return (
     <div className="min-h-screen bg-cream flex flex-col">
@@ -87,22 +146,29 @@ export default function MyRepos() {
         {/* Search */}
         <div className="max-w-5xl mx-auto px-6 pb-6">
           <div className="flex-1 min-w-[240px] relative">
-            <svg
-              className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-forest/30"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
+            {embedding ? (
+              <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-sage/60 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-forest/30"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            )}
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search your nootbooks..."
+              placeholder="Search your nootbooks…"
               className="w-full bg-parchment border border-forest/10 squircle pl-10 pr-4 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/30 outline-none focus:border-sage/40 focus:ring-2 focus:ring-sage/10 transition-all"
             />
+            {queryEmbedding && search.trim() && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[9px] text-sage/50 tracking-widest uppercase">semantic</span>
+            )}
           </div>
         </div>
 

@@ -2,6 +2,37 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { blocksToJson, jsonToBlocks } from '../lib/markdown'
 
+// ─── Embed helper (fire-and-forget) ──────────────────────────────────────────
+
+function _apiBase(): string {
+  const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+  if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
+  return url.replace(/\/[^/]+$/, '')
+}
+
+/** Lightweight fingerprint of a document's text content. */
+function _contentFingerprint(blocks: Block[]): string {
+  return blocks
+    .map(b => (b.content ?? '').trimEnd())
+    .join('\x00')
+}
+
+async function _embedAndStore(docId: string, blocks: Block[]) {
+  try {
+    const res = await fetch(`${_apiBase()}/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_id: docId, blocks }),
+    })
+    if (!res.ok) return
+    const { embedding } = await res.json()
+    if (!Array.isArray(embedding)) return
+    await supabase.from('documents').update({ embedding }).eq('id', docId)
+  } catch {
+    // Non-blocking — embedding failure must not affect save UX
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type BlockType =
@@ -75,6 +106,9 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const docRef = useRef<Document | null>(null)
+  // Tracks the fingerprint of blocks that were last successfully embedded.
+  // Saves that don't change text content skip the embed API call entirely.
+  const lastEmbedFingerprintRef = useRef<string>('')
 
   // Undo history
   const historyRef = useRef<Block[][]>([])
@@ -129,6 +163,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           docRef.current = loaded
           historyRef.current = [blocks]
           historyIndexRef.current = 0
+          lastEmbedFingerprintRef.current = _contentFingerprint(blocks)
         } else {
           // Load everything from Supabase — blocks stored as jsonb
           const { data: docRow } = await supabase
@@ -163,6 +198,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           docRef.current = loaded
           historyRef.current = [loaded.blocks]
           historyIndexRef.current = 0
+          lastEmbedFingerprintRef.current = _contentFingerprint(blocks)
         }
       } catch {
         if (cancelled) return
@@ -188,6 +224,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           docRef.current = fallback
           historyRef.current = [fallback.blocks]
           historyIndexRef.current = 0
+          lastEmbedFingerprintRef.current = _contentFingerprint(blocks)
         } else {
           // Offline / network fallback for real repos
           const fallback: Document = {
@@ -208,6 +245,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
           docRef.current = fallback
           historyRef.current = [fallback.blocks]
           historyIndexRef.current = 0
+          // Don't set fingerprint for offline fallback — first online save should embed
           setSaveStatus('offline')
         }
       } finally {
@@ -260,6 +298,13 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
         })
         .eq('id', repoId)
       if (metaErr) throw metaErr
+
+      // Only re-embed when text content has actually changed
+      const fingerprint = _contentFingerprint(blocks)
+      if (fingerprint !== lastEmbedFingerprintRef.current) {
+        lastEmbedFingerprintRef.current = fingerprint  // optimistic: skip duplicates even if embed fails
+        _embedAndStore(repoId, blocks)
+      }
 
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 1500)
