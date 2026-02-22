@@ -137,8 +137,13 @@ export default function Landing() {
       {/* ── Nav ─────────────────────────────────────────────────── */}
       <header className="shrink-0 bg-cream/80 backdrop-blur-sm border-b border-forest/[0.06] z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-14">
-          <Link to="/">
+          <Link to="/" className="logo-wave flex items-center gap-1 hover:opacity-80 transition-opacity">
             <img src={logoImg} alt="Nootes logo" style={{ width: 36, height: 36 }} />
+            <span className="font-[family-name:var(--font-display)] text-2xl text-forest flex">
+              {'nootes'.split('').map((letter, i) => (
+                <span key={i} className="wave-letter">{letter}</span>
+              ))}
+            </span>
           </Link>
           <nav className="flex items-center gap-2">
             <Link
