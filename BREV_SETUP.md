@@ -45,14 +45,14 @@ You need this to pull NIM container images from NVIDIA's registry.
 2. Click **New +**
 3. Configure:
    - **Mode:** VM Mode
-   - **GPU:** L40S 48GB (fits all 4 models in fp8) or H100 80GB (fits all in bf16)
+   - **GPU:** H100 80GB (fits all 4 models in bf16 on a single GPU)
    - **Name:** `nootes-nim`
 4. Click **Deploy** — wait ~2-3 min until status shows **Running**
 
 ### Option B: Via CLI
 
 ```bash
-brev create nootes-nim --gpu L40S
+brev create nootes-nim --gpu H100
 ```
 
 ---
@@ -124,9 +124,7 @@ docker run -d --name nim-embed \
   nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:latest
 ```
 
-### 5d: Super 49B (graph agent) — needs its own GPU or separate instance
-
-If running on the same instance (H100 80GB):
+### 5d: Super 49B (graph agent)
 
 ```bash
 docker run -d --name nim-graph \
@@ -134,18 +132,6 @@ docker run -d --name nim-graph \
   -e NGC_API_KEY="$NGC_CLI_API_KEY" \
   -v "$LOCAL_NIM_CACHE:/opt/nim/.cache" \
   -p 8004:8000 \
-  nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest
-```
-
-If on a **separate Brev instance** (L40S in fp8), repeat Steps 3-4 for a second instance, then run:
-
-```bash
-docker run -d --name nim-graph \
-  --runtime=nvidia --gpus all \
-  -e NGC_API_KEY="$NGC_CLI_API_KEY" \
-  -e NIM_FP8_ENABLED=1 \
-  -v "$LOCAL_NIM_CACHE:/opt/nim/.cache" \
-  -p 8000:8000 \
   nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest
 ```
 
@@ -184,41 +170,24 @@ This exposes your NIM endpoints publicly so your backend can reach them.
    - Port `8001` → you'll get a URL like `https://abc123-8001.brev.dev`
    - Port `8002` → `https://abc123-8002.brev.dev`
    - Port `8003` → `https://abc123-8003.brev.dev`
-   - Port `8004` → `https://abc123-8004.brev.dev` (or separate instance URL)
+   - Port `8004` → `https://abc123-8004.brev.dev`
 4. Copy each tunnel URL
 
 ---
 
 ## Step 8: Update your `.env`
 
-In `Frontend/.env`, set the tunnel URLs:
+In `Frontend/.env`, set the tunnel URLs (one per container port):
 
 ```env
-# All three smaller models share one base URL (same instance)
-# Point to port 8001 (nano/merge model is the default for nim_chat)
-NVIDIA_NIM_BASE_URL=https://abc123-8001.brev.dev
-NVIDIA_NIM_API_KEY=
+NVIDIA_NIM_API_KEY=nvapi-your-key-here
 
-# Graph model on its own port (or separate instance)
+# Per-model base URLs (Brev tunnel URLs)
+NIM_MERGE_BASE_URL=https://abc123-8001.brev.dev
+NIM_MODERATE_BASE_URL=https://abc123-8002.brev.dev
+NIM_EMBED_BASE_URL=https://abc123-8003.brev.dev
 NIM_GRAPH_BASE_URL=https://abc123-8004.brev.dev
-NIM_GRAPH_API_KEY=
-
-# Override model endpoints if models are on different ports
-# nim_client.py uses these for moderation and embed calls:
-# You may need to adjust nim_client.py to support per-model base URLs
-# for safety (port 8002) and embed (port 8003), OR use a reverse proxy.
 ```
-
-> **Note:** Since each NIM container runs on a different port, and the current
-> `nim_client.py` uses a single `NIM_BASE_URL` for moderation/embed/merge,
-> you have two options:
->
-> **Option A (simple):** Put all 3 small models in one NIM container
-> if supported, or use an nginx reverse proxy that routes by model name.
->
-> **Option B (recommended):** Add `NIM_MODERATE_BASE_URL` and
-> `NIM_EMBED_BASE_URL` env vars to `nim_client.py`, similar to how
-> `GRAPH_BASE_URL` already works.
 
 ---
 
