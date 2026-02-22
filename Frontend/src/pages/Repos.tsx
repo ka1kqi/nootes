@@ -35,7 +35,7 @@ function timeAgo(iso: string): string {
 
 function AccessBadge({ level }: { level: string }) {
   const styles: Record<string, string> = {
-    public:     'text-sage/70     bg-sage/[0.08]     border-sage/15',
+    public: 'text-sage/70     bg-sage/[0.08]     border-sage/15',
     restricted: 'text-amber/70   bg-amber/[0.08]    border-amber/15',
   }
   return (
@@ -187,7 +187,7 @@ function BranchIcon() {
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0
   for (let i = 0; i < a.length; i++) {
-    dot   += a[i] * b[i]
+    dot += a[i] * b[i]
     normA += a[i] * a[i]
     normB += b[i] * b[i]
   }
@@ -203,50 +203,50 @@ function apiBase(): string {
 
 export default function Repos() {
   const { user, profile } = useAuth()
-  const [docs, setDocs]           = useState<RepoDoc[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
-  const [filter, setFilter]       = useState<'all' | 'public' | 'restricted'>('all')
+  const [docs, setDocs] = useState<RepoDoc[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<'all' | 'public' | 'restricted'>('all')
   const [queryEmbedding, setQueryEmbedding] = useState<number[] | null>(null)
   const [embedding, setEmbedding] = useState(false)
-  const embedTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const embedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!user) return
-    ;(async () => {
-      setLoading(true)
-      const userTags: string[] = profile?.tags ?? []
+      ; (async () => {
+        setLoading(true)
+        const userTags: string[] = profile?.tags ?? []
 
-      // Always fetch public docs + restricted docs with overlapping tags
-      let query = supabase
-        .from('documents')
-        .select('id, title, tags, access_level, merge_policy, owner_user_id, created_at, updated_at, embedding')
-        .neq('owner_user_id', user.id) // exclude own docs
+        // Always fetch public docs + restricted docs with overlapping tags
+        let query = supabase
+          .from('documents')
+          .select('id, title, tags, access_level, merge_policy, owner_user_id, created_at, updated_at, embedding')
+          .neq('owner_user_id', user.id) // exclude own docs
 
-      if (userTags.length > 0) {
-        query = query.or(
-          `access_level.eq.public,and(access_level.eq.restricted,tags.ov.{${userTags.join(',')}})`
-        )
-      } else {
-        query = query.eq('access_level', 'public')
-      }
+        if (userTags.length > 0) {
+          query = query.or(
+            `access_level.eq.public,and(access_level.eq.restricted,tags.ov.{${userTags.join(',')}})`
+          )
+        } else {
+          query = query.eq('access_level', 'public')
+        }
 
-      const { data, error } = await query.order('updated_at', { ascending: false })
+        const { data, error } = await query.order('updated_at', { ascending: false })
 
-      if (error || !data) { setLoading(false); return }
+        if (error || !data) { setLoading(false); return }
 
-      // Fetch owner display names
-      const ownerIds = [...new Set(data.map(d => d.owner_user_id))]
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-        .in('id', ownerIds)
+        // Fetch owner display names
+        const ownerIds = [...new Set(data.map(d => d.owner_user_id))]
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, display_name')
+          .in('id', ownerIds)
 
-      const nameMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p.display_name]))
+        const nameMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p.display_name]))
 
-      setDocs(data.map(d => ({ ...d, ownerName: nameMap[d.owner_user_id] ?? 'unknown' })))
-      setLoading(false)
-    })()
+        setDocs(data.map(d => ({ ...d, ownerName: nameMap[d.owner_user_id] ?? 'unknown' })))
+        setLoading(false)
+      })()
   }, [user, profile?.tags])
 
   // Debounced semantic embed: fires 600 ms after typing stops
@@ -310,7 +310,7 @@ export default function Repos() {
           <span className="font-mono text-[10px] text-sage/50 tracking-[0.3em] uppercase block mb-3">BROWSE</span>
           <h1 className="font-[family-name:var(--font-display)] text-6xl text-forest leading-[0.9] mb-4">Public Nootbooks</h1>
           <p className="font-[family-name:var(--font-body)] text-[15px] text-forest/50 max-w-lg">
-            Public nootbooks and invite-only nootbooks that match your tags.
+            Explore the nootes knowledge base.
           </p>
 
           {/* Search + filter bar */}
@@ -318,8 +318,8 @@ export default function Repos() {
             <div className="flex-1 min-w-[280px] relative">
               {embedding ? (
                 <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-sage/60 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
               ) : (
                 <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-forest/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -330,7 +330,7 @@ export default function Repos() {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search public nootbooks…"
+                placeholder="Describe your curiosity…"
                 className="w-full bg-parchment border border-forest/10 squircle pl-10 pr-20 py-2.5 font-[family-name:var(--font-body)] text-sm text-forest placeholder:text-forest/30 outline-none focus:border-sage/40 transition-all"
               />
               {queryEmbedding && search.trim() && (
@@ -345,7 +345,7 @@ export default function Repos() {
                   className={`font-mono text-[11px] px-3 py-2 squircle-sm transition-all capitalize ${filter === f
                     ? 'bg-forest text-parchment'
                     : 'text-forest/40 hover:text-forest hover:bg-forest/[0.05] border border-forest/10'
-                  }`}
+                    }`}
                 >{f}</button>
               ))}
             </div>
@@ -402,11 +402,10 @@ export default function Repos() {
                     {doc.tags.length > 0 ? doc.tags.map(tag => (
                       <span
                         key={tag}
-                        className={`font-mono text-[10px] px-2 py-0.5 squircle-sm border ${
-                          (profile?.tags ?? []).includes(tag)
-                            ? 'text-sage/80 border-sage/25 bg-sage/[0.06]'
-                            : 'text-forest/35 border-forest/10'
-                        }`}
+                        className={`font-mono text-[10px] px-2 py-0.5 squircle-sm border ${(profile?.tags ?? []).includes(tag)
+                          ? 'text-sage/80 border-sage/25 bg-sage/[0.06]'
+                          : 'text-forest/35 border-forest/10'
+                          }`}
                       >{tag}</span>
                     )) : (
                       <span className="font-mono text-[10px] text-forest/20 italic">no tags</span>

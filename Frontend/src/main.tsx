@@ -29,10 +29,10 @@ import HomeV3 from './pages/HomeV3.tsx'
 import HomeV4 from './pages/HomeV4.tsx'
 import HomeV5 from './pages/HomeV5.tsx'
 
-// Renders AIAgentFab on all pages except landing, home (inline chatbox), and login
+// Renders AIAgentFab on all pages except landing, login, and explore
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  const hideOn = new Set(['/', '/home', '/login', '/explore', '/how-it-works', '/1', '/2', '/3', '/4', '/5'])
+  const hideOn = new Set(['/', '/login', '/explore', '/how-it-works', '/1', '/2', '/3', '/4', '/5'])
   const isEditor = location.pathname.startsWith('/editor/')
   return (
     <>
