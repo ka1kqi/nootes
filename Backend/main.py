@@ -236,8 +236,31 @@ class PromptRequest(BaseModel):
     model: str = "gpt-4o"  # ignored — NIM_GRAPH_MODEL is always used
 
 
-@app.post("/api/prompt")
-async def proxy_prompt(body: PromptRequest):
+SIMPLE_PROMPT_PATH = _find_prompt("gpt_prompt_simple.txt")
+
+
+def _load_simple_prompt() -> str:
+    if SIMPLE_PROMPT_PATH:
+        return SIMPLE_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    return "Explain the concept in 1–2 sentences. Plain text only."
+
+
+@app.post("/api/explain")
+async def explain_node(body: PromptRequest):
+    """Node explanation endpoint — always uses the simple prompt, never the noot prompt."""
+    messages = [m.model_dump() for m in body.messages]
+    # Strip any system message the client sent — we always enforce the simple prompt.
+    if messages and messages[0].get("role") == "system":
+        messages = messages[1:]
+    messages.insert(0, {"role": "system", "content": _load_simple_prompt()})
+    try:
+        content = await nim_graph(messages)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"NIM explain failed: {e}")
+    return {"content": content.strip()}
+
+
+
     messages = [m.model_dump() for m in body.messages]
     # Prepend graph system prompt if not already present
     if not messages or messages[0].get("role") != "system":
@@ -252,6 +275,123 @@ async def proxy_prompt(body: PromptRequest):
 # ─── Noot Agent (dual-mode: text or graph) ───────────────────────────────────
 
 NOOT_PROMPT_PATH = _find_prompt("noot_prompt.txt")
+
+# Valid tool markers and substring patterns used to normalise LLM typos
+_NOOT_TOOL_HINTS = [
+    ("WRITE", "WRITE_TO_EDITOR"),
+    ("CREATE", "CREATE_REPO"),
+    ("NAVIGATE", "NAVIGATE"),
+    ("GRAPH", "GRAPH"),
+]
+
+
+def _sanitise_latex_content(content: str) -> str:
+    """
+    Strip $$ or $ delimiters from a latex block's content so KaTeX receives
+    pure LaTeX.  Handles three cases:
+      1. Content wrapped in $$...$$  → strip outer $$
+      2. Content wrapped in $...$    → strip outer $
+      3. Mixed prose + $...$ inline  → strip all $ signs so KaTeX can render
+         the LaTeX commands even if the prose looks odd
+    """
+    s = content.strip()
+    # Case 1: wrapped in $$
+    if s.startswith("$$") and s.endswith("$$") and len(s) > 4:
+        return s[2:-2].strip()
+    # Case 2: wrapped in single $
+    if s.startswith("$") and s.endswith("$") and len(s) > 2:
+        return s[1:-1].strip()
+    # Case 3: inline $...$ mixed with prose — strip all $ delimiters
+    if "$" in s:
+        return s.replace("$$", "").replace("$", "")
+    return s
+
+
+def _fix_latex_backslashes(s: str) -> str:
+    """
+    Normalize backslashes in a raw JSON text string so json.loads succeeds.
+
+    Strategy — process each \\X or \\\\X pair in one left-to-right pass:
+      • \\\\X  (already-escaped backslash pair)  → leave alone → parses as \\X ✓
+      • \\n \\r \\t \\u \\\\ \\"  \\/  (standard JSON escapes) → leave alone ✓
+      • \\X  for any other X  (bare LaTeX: \\frac \\leq \\delta …) → double to \\\\X ✓
+
+    \\f and \\b are technically valid JSON escapes but collide with \\frac / \\begin
+    etc.  Note content never contains literal form-feed or backspace bytes.
+    """
+    def _repl(m: re.Match) -> str:
+        c = m.group(1)
+        if c in ('"', '\\', '/', 'n', 'r', 't', 'u'):
+            return m.group(0)
+        return '\\\\' + c
+    return re.sub(r'\\(\\|["\\/nrtu]|.)', _repl, s)
+
+
+def _normalise_noot_response(raw: str) -> str:
+    """
+    Ensure every noot response is exactly:
+        [TOOL]\n{body}
+
+    Fixes:
+    - Typos in the marker (e.g. [TWRITE_TO_EDITOR] → [WRITE_TO_EDITOR])
+    - Extra whitespace / blank lines between marker and body
+    - Body not starting with '[' for array tools or '{' for object tools
+    - $ delimiters in latex block content (WRITE_TO_EDITOR blocks only)
+    """
+    text = raw.strip()
+
+    # --- Resolve marker --------------------------------------------------
+    m = re.match(r'^\[([A-Z_a-z0-9 ]+)\]', text)
+    if not m:
+        marker = "WRITE_TO_EDITOR"
+        body = text
+    else:
+        raw_token = m.group(1).upper().strip()
+        body = text[m.end():].lstrip("\n").lstrip()
+        marker = "WRITE_TO_EDITOR"  # default
+        for hint, tool in _NOOT_TOOL_HINTS:
+            if hint in raw_token:
+                marker = tool
+                break
+
+    # --- Trim body to correct opening bracket ----------------------------
+    # Use "[{" for array tools to skip any duplicate "[MARKER]" tokens the
+    # model may have emitted before the actual JSON array.
+    if marker in ("GRAPH", "WRITE_TO_EDITOR"):
+        start = body.find("[{")
+        if start != -1:
+            body = body[start:]
+        else:
+            # Fallback: find bare "[" in case array is empty "[]"
+            start = body.find("[")
+            if start != -1:
+                body = body[start:]
+    elif marker in ("NAVIGATE", "CREATE_REPO"):
+        start = body.find("{")
+        if start != -1:
+            body = body[start:]
+
+    # --- Sanitise latex block content in WRITE_TO_EDITOR -----------------
+    if marker == "WRITE_TO_EDITOR":
+        try:
+            arr_end = body.rfind("]")
+            if arr_end != -1:
+                # Fix backslashes before JSON parsing (handles both bare \frac
+                # and already-doubled \\frac without breaking either).
+                json_str = _fix_latex_backslashes(body[:arr_end + 1])
+                blocks = json.loads(json_str)
+                for block in blocks:
+                    if isinstance(block, dict) and block.get("type") == "latex":
+                        block["content"] = _sanitise_latex_content(
+                            str(block.get("content", ""))
+                        )
+                # Always re-serialise so the frontend gets properly escaped JSON.
+                body = json.dumps(blocks, ensure_ascii=False) + body[arr_end + 1:]
+        except Exception:
+            # Fallback: at least fix bare backslashes in the raw body text.
+            body = _fix_latex_backslashes(body)
+
+    return f"[{marker}]\n{body}"
 
 
 def _load_noot_prompt() -> str:
@@ -268,6 +408,7 @@ async def noot_chat(body: PromptRequest):
         messages.insert(0, {"role": "system", "content": _load_noot_prompt()})
     try:
         content = await nim_graph(messages)
+        content = _normalise_noot_response(content)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"NIM noot failed: {e}")
     return {"content": content}

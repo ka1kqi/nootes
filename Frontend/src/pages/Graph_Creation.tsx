@@ -17,10 +17,10 @@ import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { supabase } from '../lib/supabase'
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt'
+const API_URL     = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt'
+const EXPLAIN_URL = API_URL.replace(/\/api\/prompt$/, '/api/explain')
 
-const SYSTEM_PROMPT        = rawPrompt
-const SYSTEM_PROMPT_SIMPLE = rawSimplePrompt
+const SYSTEM_PROMPT = rawPrompt
 
 // ─── TYPES ─────────────────────────────────────────────────────────────────
 interface Message {
@@ -515,13 +515,12 @@ export default function App() {
     context += `\nNode: ${item.name} — ${item.text}`
     if (question) context += `\nQuestion: ${question}`
 
-    const res = await fetch(API_URL, {
+    const res = await fetch(EXPLAIN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT_SIMPLE },
           { role: 'user', content: context },
         ],
       }),

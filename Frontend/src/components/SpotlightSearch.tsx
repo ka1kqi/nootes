@@ -28,7 +28,8 @@ interface AttachedFile {
 // ─── API CONFIG ─────────────────────────────────────────────────────────
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt').replace(/\/api\/prompt$/, '')
 const NOOT_API_URL = `${API_BASE}/api/noot`
-const GRAPH_API_URL = `${API_BASE}/api/prompt`
+const GRAPH_API_URL  = `${API_BASE}/api/prompt`
+const EXPLAIN_API_URL = `${API_BASE}/api/explain`
 
 // ─── PARSE GRAPH RESPONSE ──────────────────────────────────────────────
 function dedupeItems(parsed: TaskItem[]): TaskItem[] {
@@ -90,9 +91,20 @@ function parseGraphResponse(content: string): { items: TaskItem[]; summary: stri
   return parseTextFormat(stripped)
 }
 
-/** Fix unescaped backslashes that break JSON.parse (common with LaTeX output) */
+/** Normalize backslashes in a raw JSON string so JSON.parse succeeds.
+ *
+ *  Strategy — process each \X or \\X pair in one pass (left-to-right):
+ *   • \\X  (already-escaped backslash pair)  → leave alone → parses as \X ✓
+ *   • \n \r \t \u \\ \"  \/  (standard JSON escapes) → leave alone ✓
+ *   • \X  for any other X  (bare LaTeX: \frac \leq \delta …) → double to \\X ✓
+ *
+ *  \f and \b are technically valid JSON escapes but collide with \frac / \begin
+ *  etc. Note content never contains literal form-feed (0x0C) or backspace (0x08)
+ *  so we treat them as bare LaTeX backslashes and double them. */
 function fixLatexJson(str: string): string {
-  return str.replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
+  return str.replace(/\\(\\|["\\/nrtu]|.)/g, (_m, c: string) =>
+    (c === '\\' || '"\\/nrtu'.includes(c)) ? _m : '\\\\' + c
+  )
 }
 
 function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
@@ -537,13 +549,12 @@ export function SpotlightSearch({
     context += `\n\ncurrent node title: ${item.name}: ${item.text}`
     context += `\n\nother context: ${question}`
 
-    const res = await fetch(GRAPH_API_URL, {
+    const res = await fetch(EXPLAIN_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: rawSimplePrompt },
           { role: 'user', content: context },
         ],
       }),

@@ -798,10 +798,10 @@ export default function Home() {
   const queryNode: QueryFn = useCallback(async (item, question, ancestors) => {
     const topPrompt = historyRef.current.find(m => m.role === 'user')?.content ?? ''
     const prompt = `Context: ${topPrompt}\nNode: ${item.name} — ${item.text}${ancestors.length > 0 ? `\nAncestors: ${ancestors.map(a => a.name).join(' → ')}` : ''}\n\nQuestion: ${question}`
-    const res = await fetch(`${apiBase()}/noot`, {
+    const res = await fetch(`${apiBase()}/explain`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: `[NO GRAPH — answer in plain text] ${prompt}` }] }),
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
     })
     const data = await res.json()
     return data.content?.trim() ?? 'No response.'
