@@ -49,6 +49,7 @@ export default function MyRepos() {
   const [modalOpen, setModalOpen] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [queryEmbedding, setQueryEmbedding] = useState<number[] | null>(null)
   const [embedding, setEmbedding] = useState(false)
   const embedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -198,33 +199,65 @@ export default function MyRepos() {
             <div className="space-y-3 stagger-fast">
               {filtered.map(doc => (
                 <div key={doc.id} className="relative group">
+                  {/* Delete button — fades in on hover */}
                   <button
                     type="button"
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       if (deletingDocId) return
-                      if (!window.confirm(`Delete "${doc.title}"? This cannot be undone.`)) return
-                      setDeleteError(null)
-                      setDeletingDocId(doc.id)
-                      const { error } = await deleteDocument(doc.id)
-                      setDeletingDocId(null)
-                      if (error) {
-                        setDeleteError(error)
-                        return
-                      }
-                      await refetch()
+                      setConfirmDeleteId(doc.id)
                     }}
                     disabled={deletingDocId === doc.id}
-                    className={`absolute top-3 right-3 z-10 px-2.5 py-1 font-mono text-[10px] squircle-sm border transition-colors ${
+                    className={`absolute top-3 right-3 z-10 px-2.5 py-1 font-mono text-[10px] squircle-sm border transition-all ${
                       deletingDocId === doc.id
-                        ? 'bg-forest/[0.06] border-forest/10 text-forest/30 cursor-not-allowed'
-                        : 'bg-parchment/90 border-forest/15 text-sienna/70 hover:bg-sienna/10 hover:border-sienna/40'
+                        ? 'bg-forest/[0.06] border-forest/10 text-forest/30 cursor-not-allowed opacity-100'
+                        : 'bg-parchment/90 border-forest/15 text-sienna/70 hover:bg-sienna/10 hover:border-sienna/40 opacity-0 group-hover:opacity-100'
                     }`}
                     title="Delete this nootbook"
                   >
                     {deletingDocId === doc.id ? 'Deleting…' : 'Delete'}
                   </button>
+
+                  {/* Inline delete confirmation overlay */}
+                  {confirmDeleteId === doc.id && (
+                    <div
+                      className="absolute inset-0 z-20 squircle-xl flex items-center justify-between px-5 gap-4 bg-parchment/95 backdrop-blur-sm border border-sienna/20"
+                      onClick={e => e.preventDefault()}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-[family-name:var(--font-body)] text-sm text-forest/80 truncate">
+                          Delete <span className="font-medium text-forest">"{doc.title}"</span>?
+                        </p>
+                        <p className="font-mono text-[10px] text-forest/35 mt-0.5">This cannot be undone.</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="px-3 py-1.5 font-[family-name:var(--font-body)] text-xs text-forest/50 hover:text-forest/80 border border-forest/10 squircle-sm transition-colors bg-parchment"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setConfirmDeleteId(null)
+                            setDeleteError(null)
+                            setDeletingDocId(doc.id)
+                            const { error } = await deleteDocument(doc.id)
+                            setDeletingDocId(null)
+                            if (error) { setDeleteError(error); return }
+                            await refetch()
+                          }}
+                          className="px-3 py-1.5 font-[family-name:var(--font-body)] text-xs text-parchment bg-sienna/80 hover:bg-sienna squircle-sm transition-colors border border-sienna/20"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <Link
                     to={`/editor/${doc.id}`}
                     className="bg-parchment border border-forest/10 squircle-xl p-5 hover:shadow-[0_4px_32px_-8px_rgba(38,70,53,0.1)] transition-all hover:border-forest/20 block"
@@ -245,7 +278,7 @@ export default function MyRepos() {
                         </div>
                       </div>
                       <div className="shrink-0 text-right hidden md:flex flex-col items-end gap-3">
-                        <span className="font-mono text-[10px] text-forest/25">{timeAgo(doc.created_at)}</span>
+                        <span className="font-mono text-[10px] text-forest/25 transition-opacity group-hover:opacity-0">{timeAgo(doc.created_at)}</span>
                       </div>
                     </div>
                   </Link>

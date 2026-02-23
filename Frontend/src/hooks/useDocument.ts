@@ -93,6 +93,7 @@ export function newBlock(type: BlockType): Block {
       : type === 'chemistry' ? { caption: '' }
       : type === 'table' ? { caption: '' }
       : type === 'diagram' ? { caption: '' }
+      : type === 'bullet_list' ? { items: [{ id: crypto.randomUUID(), text: '', indent: 0 }] }
       : undefined,
   }
 }

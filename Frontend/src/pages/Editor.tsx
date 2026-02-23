@@ -62,6 +62,259 @@ function TDivider() {
   return <div className="w-px h-4 bg-forest/10 mx-2.5 shrink-0" />
 }
 
+// ─── PDF export ───────────────────────────────────────────────────────────────
+
+import katex from 'katex'
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function blockToHtml(block: { type: string; content: string; meta?: Record<string, unknown> }, latexImages?: Map<number, string>, idx = 0): string {
+  const { type, content, meta } = block
+  switch (type) {
+    case 'h1': return `<h1 class="h1">${escHtml(content)}</h1>`
+    case 'h2': return `<h2 class="h2">${escHtml(content)}</h2>`
+    case 'h3': return `<h3 class="h3">${escHtml(content)}</h3>`
+    case 'quote': return `<blockquote class="quote">${escHtml(content)}</blockquote>`
+    case 'divider': return `<hr class="divider"/>`
+    case 'callout': {
+      const variant = (meta?.calloutType as string) || 'info'
+      const icons: Record<string, string> = { info: 'ℹ', tip: '💡', warning: '⚠', important: '❗' }
+      return `<div class="callout callout-${variant}"><span class="callout-icon">${icons[variant] ?? 'ℹ'}</span><div>${escHtml(content)}</div></div>`
+    }
+    case 'code': {
+      const lang = (meta?.language as string) || ''
+      const filename = meta?.filename as string | undefined
+      return `<div class="code-block">${filename ? `<div class="code-filename">${escHtml(filename)}</div>` : ''}<div class="code-lang">${escHtml(lang)}</div><pre><code>${escHtml(content)}</code></pre></div>`
+    }
+    case 'latex': {
+      const imgSrc = latexImages?.get(idx)
+      if (imgSrc) return `<div class="latex-block"><div class="latex-label">LaTeX</div><div class="latex-rendered"><img src="${imgSrc}" style="max-width:90%;max-height:64px;height:auto;display:block;margin:0 auto"/></div></div>`
+      return `<div class="latex-block"><div class="latex-label">LaTeX</div><pre class="latex-src">${escHtml(block.content)}</pre></div>`
+    }
+    case 'chemistry': {
+      const cap = meta?.caption as string | undefined
+      return `<div class="latex-block">${cap ? `<div class="latex-label">${escHtml(cap)}</div>` : ''}<pre class="latex-src">${escHtml(content)}</pre></div>`
+    }
+    case 'diagram': {
+      const cap = meta?.caption as string | undefined
+      return `<div class="diagram-block">${cap ? `<div class="diagram-label">${escHtml(cap)}</div>` : '<div class="diagram-label">Diagram</div>'}<pre class="diagram-src">${escHtml(content)}</pre></div>`
+    }
+    case 'table': {
+      const cap = meta?.caption as string | undefined
+      const lines = content.split('\n').filter(Boolean)
+      if (!lines.length) return ''
+      const [headerRow, ...dataRows] = lines
+      const headers = headerRow.split(',').map(s => s.trim())
+      const rows = dataRows.map(r => r.split(',').map(s => s.trim()))
+      return `<div class="table-wrap">${cap ? `<div class="table-caption">${escHtml(cap)}</div>` : ''}<table><thead><tr>${headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+    }
+    case 'bullet_list': {
+      type BulletItem = { text: string; indent: number }
+      const rawItems = meta?.items as BulletItem[] | undefined
+      const items: BulletItem[] = Array.isArray(rawItems) && rawItems.length
+        ? rawItems
+        : content.split('\n').filter(Boolean).map(line => {
+            const spaces = line.match(/^( +)/)?.[1]?.length ?? 0
+            return { text: line.trimStart(), indent: Math.floor(spaces / 2) }
+          })
+      const renderList = (startIdx: number, parentIndent: number): { html: string; next: number } => {
+        let html = '<ul>'
+        let i = startIdx
+        while (i < items.length) {
+          if (items[i].indent < parentIndent) break
+          if (items[i].indent === parentIndent) {
+            html += `<li>${escHtml(items[i].text)}`
+            const j = i + 1
+            if (j < items.length && items[j].indent > parentIndent) {
+              const sub = renderList(j, items[j].indent)
+              html += sub.html
+              i = sub.next
+            } else {
+              i++
+            }
+            html += '</li>'
+          } else { i++ }
+        }
+        return { html: html + '</ul>', next: i }
+      }
+      return `<div class="bullet-list">${renderList(0, 0).html}</div>`
+    }
+    case 'ordered_list': {
+      const items = content.split('\n').filter(Boolean)
+      return `<ol class="ordered-list">${items.map(item => `<li>${escHtml(item)}</li>`).join('')}</ol>`
+    }
+    default: // paragraph
+      return content ? `<p>${escHtml(content)}</p>` : '<p class="empty-p">&nbsp;</p>'
+  }
+}
+
+async function exportDocumentToPDF(title: string, blocks: { type: string; content: string; meta?: Record<string, unknown> }[], onDone?: () => void) {
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  try {
+    const { default: html2canvas } = await import('html2canvas')
+    const { jsPDF } = await import('jspdf')
+
+    // ── Pre-render each LaTeX block to a PNG via KaTeX + html2canvas ─────────
+    // Inject frac-line fix into <head> BEFORE rendering — katex.render() wipes
+    // el's children so a child <style> gets removed. Also replace border-top
+    // with background-color since html2canvas misses sub-pixel borders.
+    const fracFix = document.createElement('style')
+    fracFix.textContent = [
+      '.katex-pdf .katex .frac-line{',
+      '  display:block!important;background-color:#000!important;',
+      '  min-height:2px!important;border:none!important;',
+      '}',
+    ].join('')
+    document.head.appendChild(fracFix)
+
+    const latexImages = new Map<number, string>()
+    for (let i = 0; i < blocks.length; i++) {
+      if (blocks[i].type !== 'latex') continue
+      const el = document.createElement('div')
+      el.className = 'katex-pdf'
+      el.style.cssText = [
+        'position:fixed', 'top:0', 'left:0',
+        'background:#ffffff', 'padding:8px 14px',
+        'font-size:32px', 'line-height:1.4',
+        'z-index:-9999', 'visibility:hidden',
+      ].join(';')
+      document.body.appendChild(el)
+      try {
+        let src = blocks[i].content.trim()
+        if (src.startsWith('$$') && src.endsWith('$$') && src.length > 4) src = src.slice(2, -2).trim()
+        else if (src.startsWith('$') && src.endsWith('$') && src.length > 2) src = src.slice(1, -1).trim()
+        katex.render(src, el, { displayMode: true, throwOnError: false, strict: false })
+        await document.fonts.ready
+        await new Promise(r => requestAnimationFrame(r))
+        el.style.visibility = 'visible'
+        const c = await html2canvas(el, { scale: 3, backgroundColor: '#ffffff', logging: false, useCORS: true })
+        latexImages.set(i, c.toDataURL('image/png'))
+      } catch { /* keep fallback */ } finally {
+        document.body.removeChild(el)
+      }
+    }
+
+    document.head.removeChild(fracFix)
+
+    // ── Build HTML body ───────────────────────────────────────────────────────
+    const body = blocks.map((b, i) => blockToHtml(b, latexImages, i)).join('\n')
+
+    // ── Build hidden off-screen container ────────────────────────────────────
+    const container = document.createElement('div')
+    container.style.cssText = [
+      'position:fixed', 'top:0', 'left:-9999px',
+      'width:952px', 'background:#ffffff',
+      'font-family:"JetBrains Mono",monospace',
+      'color:#111111', 'line-height:1.7',
+      'padding:64px 96px', 'box-sizing:border-box',
+    ].join(';')
+
+    container.innerHTML = `
+      <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        .cover{border-bottom:2px solid #222;padding-bottom:24px;margin-bottom:36px}
+        .brand{font-size:9px;text-transform:uppercase;letter-spacing:.2em;color:#888;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+        .brand::before{content:'';display:inline-block;width:6px;height:6px;background:#222;clip-path:polygon(50% 0%,100% 100%,0% 100%)}
+        .doc-title{font-size:30px;color:#111;line-height:1.15;margin-bottom:6px;font-weight:700;letter-spacing:-.02em}
+        .meta{font-size:9px;color:#888;letter-spacing:.08em}
+        h1.h1{font-size:22px;color:#111;margin:28px 0 8px;line-height:1.2;font-weight:700}
+        h2.h2{font-size:14px;font-weight:700;color:#111;margin:20px 0 6px}
+        h3.h3{font-size:11px;font-weight:600;color:#444;margin:14px 0 4px}
+        p{font-size:10px;margin-bottom:8px;color:#222;line-height:1.7}
+        .empty-p{margin-bottom:3px}
+        .quote{border-left:2px solid #bbb;padding:5px 12px;margin:10px 0;font-style:italic;color:#555;font-size:10px}
+        .divider{border:none;border-top:1px solid #ddd;margin:16px 0}
+        .code-block{margin:10px 0;border-left:2px solid #555;background:#f7f7f7;padding:8px 12px}
+        .code-filename{font-size:8px;color:#888;margin-bottom:3px;letter-spacing:.08em}
+        .code-lang{font-size:7px;text-transform:uppercase;letter-spacing:.15em;color:#aaa;margin-bottom:5px}
+        .code-block pre{font-family:"JetBrains Mono",monospace;font-size:8px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:#111}
+        .latex-block{margin:6px 0;border:1px solid #ddd;background:#fafafa;padding:5px 10px}
+        .latex-label{font-size:7px;text-transform:uppercase;letter-spacing:.15em;color:#aaa;margin-bottom:3px}
+        .latex-src{font-family:"JetBrains Mono",monospace;font-size:8px;white-space:pre-wrap;color:#333}
+        .latex-rendered{display:flex;justify-content:center;padding:2px 0}
+        .diagram-block{margin:10px 0;border:1px dashed #ccc;background:#fafafa;padding:8px 12px}
+        .diagram-label{font-size:7px;text-transform:uppercase;letter-spacing:.15em;color:#aaa;margin-bottom:5px}
+        .diagram-src{font-family:"JetBrains Mono",monospace;font-size:8px;white-space:pre-wrap;color:#555}
+        .table-wrap{margin:10px 0}
+        .table-caption{font-size:8px;color:#888;margin-bottom:4px;letter-spacing:.08em}
+        table{width:100%;border-collapse:collapse;font-size:9px}
+        th{background:#f0f0f0;padding:5px 8px;text-align:left;font-size:7.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;border-bottom:1px solid #ddd}
+        td{padding:4px 8px;border-bottom:1px solid #eee;color:#222;font-size:9px}
+        .callout{display:flex;gap:8px;margin:10px 0;padding:8px 12px;border-left:2px solid #bbb;background:#f7f7f7}
+        .callout-info{border-color:#60a5fa;background:#f0f6ff}
+        .callout-warning{border-color:#f59e0b;background:#fffbf0}
+        .callout-important{border-color:#c06241;background:#fff5f0}
+        .callout-icon{font-size:11px;flex-shrink:0}
+        .callout div{font-size:9px;color:#222;line-height:1.6}
+        .bullet-list ul,.ordered-list{margin:6px 0 6px 16px;display:flex;flex-direction:column;gap:2px}
+        .bullet-list ul{list-style:disc}.bullet-list ul ul{list-style:circle;margin-top:2px}.bullet-list ul ul ul{list-style:square}
+        .bullet-list li,.ordered-list li{font-size:10px;color:#222;line-height:1.65}
+        .ordered-list{list-style:decimal}
+      </style>
+      <div class="cover">
+        <div class="brand">nootes · document export</div>
+        <div class="doc-title">${escHtml(title)}</div>
+        <div class="meta">exported ${date}</div>
+      </div>
+      ${body}
+    `
+
+    document.body.appendChild(container)
+
+    // ── Capture with html2canvas then slice into A4 pages ────────────────────
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      width: 952,
+    })
+    document.body.removeChild(container)
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = pdf.internal.pageSize.getWidth()   // 210 mm
+    const pageH = pdf.internal.pageSize.getHeight()  // 297 mm
+
+    const imgW = canvas.width
+    const imgH = canvas.height
+    const ratio = pageW / imgW
+    const scaledH = imgH * ratio
+
+    let yOffset = 0
+    let page = 0
+
+    while (yOffset < scaledH) {
+      if (page > 0) pdf.addPage()
+
+      const srcY = yOffset / ratio
+      const srcH = Math.min(pageH / ratio, imgH - srcY)
+
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width = imgW
+      pageCanvas.height = Math.ceil(srcH)
+      const ctx = pageCanvas.getContext('2d')!
+      ctx.drawImage(canvas, 0, srcY, imgW, srcH, 0, 0, imgW, srcH)
+
+      const imgData = pageCanvas.toDataURL('image/jpeg', 0.92)
+      const sliceH = srcH * ratio
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageW, sliceH)
+
+      yOffset += pageH
+      page++
+    }
+
+    const safe = title.replace(/[^a-z0-9\s\-_]/gi, '').trim().replace(/\s+/g, '_') || 'nootes'
+    pdf.save(`${safe}.pdf`)
+  } catch (err) {
+    console.error('PDF export failed:', err)
+  } finally {
+    onDone?.()
+  }
+}
+
 /* ------------------------------------------------------------------ */
 
 export default function Design1() {
@@ -78,6 +331,7 @@ export default function Design1() {
   const tagsInfoRef = useRef<HTMLSpanElement>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [exportingPdf, setExportingPdf] = useState(false)
 
   // ── Auth + routing ───────────────────────────────────────────────────────
   const { user, profile } = useAuth()
@@ -291,6 +545,26 @@ export default function Design1() {
     })()
   }, [doc?.source_document_id])
 
+  // ── Document owner (for display in editor header) ───────────────────────
+  const [docOwner, setDocOwner] = useState<{ display_name: string; avatar_url: string | null } | null>(null)
+  useEffect(() => {
+    if (!doc?.owner_user_id) { setDocOwner(null); return }
+    if (doc.owner_user_id === user?.id && profile) {
+      setDocOwner({ display_name: profile.display_name ?? 'You', avatar_url: profile.avatar_url ?? null })
+      return
+    }
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('display_name, avatar_url')
+          .eq('id', doc.owner_user_id!)
+          .maybeSingle()
+        if (data) setDocOwner(data)
+      } catch { /* ignore */ }
+    })()
+  }, [doc?.owner_user_id, user?.id, profile])
+
   // ── TOC: derive headings from active document ───────────────────────────────
   const isFork = Boolean(doc?.source_document_id)
 
@@ -461,6 +735,12 @@ export default function Design1() {
                 <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm font-mono text-[11px] text-forest/50">&#x2014;</span>
                 <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">Rule</span>
               </TBtn>
+              <TBtn wide onClick={() => insertBlock('bullet_list')} title="Bullet list (Tab to indent)">
+                <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                </span>
+                <span className="font-[family-name:var(--font-body)] text-xs text-forest/50">List</span>
+              </TBtn>
               <TBtn wide onClick={() => insertBlock('diagram')} title="Mermaid diagram">
                 <span className="w-5 h-5 flex items-center justify-center bg-forest/[0.06] squircle-sm text-forest/50">
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
@@ -471,6 +751,28 @@ export default function Design1() {
 
             {/* Right side — always pinned, never pushed by insert buttons */}
             <div className="shrink-0 flex items-center gap-2 pl-2">
+              {/* Export PDF */}
+              <button
+                disabled={exportingPdf}
+                onClick={() => {
+                  if (exportingPdf) return
+                  setExportingPdf(true)
+                  exportDocumentToPDF(doc?.title ?? 'Nootes', doc?.blocks ?? [], () => setExportingPdf(false)).catch(() => setExportingPdf(false))
+                }}
+                title={exportingPdf ? 'Generating PDF…' : 'Export to PDF'}
+                className={`w-7 h-7 flex items-center justify-center border squircle-sm transition-all shrink-0 ${exportingPdf ? 'border-sage/30 text-sage/50 cursor-wait' : 'border-forest/10 text-forest/35 hover:text-forest/70 hover:border-forest/25'}`}
+              >
+                {exportingPdf ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364l-2.121 2.121M8.757 15.243l-2.121 2.121m0-12.728l2.121 2.121M15.243 15.243l2.121 2.121" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                )}
+              </button>
+              <TDivider />
               {/* Save status + Diff — greyed for non-owners */}
               <div className={`flex items-center gap-2 ${!isOwner && activeTab === 'write' ? 'opacity-40 pointer-events-none' : ''}`}>
               {/* Save status — always rendered to hold space, invisible on master tab */}
@@ -616,6 +918,21 @@ export default function Design1() {
                     <span className="font-mono text-[9px] text-forest/25 block mb-4">
                       give this a title to save it as a nootbook
                     </span>
+                  )}
+                  {/* Document owner attribution */}
+                  {docOwner && !isScratch && (
+                    <div className="flex items-center gap-2 mb-3">
+                      {docOwner.avatar_url ? (
+                        <img src={docOwner.avatar_url} alt={docOwner.display_name} className="w-5 h-5 rounded-full object-cover opacity-60" />
+                      ) : (
+                        <div className="w-5 h-5 rounded-full bg-sage/30 flex items-center justify-center shrink-0">
+                          <span className="font-mono text-[8px] text-forest/50">{docOwner.display_name.charAt(0).toUpperCase()}</span>
+                        </div>
+                      )}
+                      <span className="font-[family-name:var(--font-body)] text-[11px] text-forest/40 tracking-wide">
+                        {isOwner ? 'Your nootbook' : <><span className="text-forest/55">{docOwner.display_name}</span>'s nootbook</>}
+                      </span>
+                    </div>
                   )}
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-[10px] text-sage bg-sage/[0.08] px-2.5 py-1 squircle-sm">
