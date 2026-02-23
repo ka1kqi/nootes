@@ -164,6 +164,16 @@ function parseCreateRepoResponse(content: string): {
   }
 }
 
+function parseMessageResponse(content: string): { message: string } | null {
+  if (!/^\s*\[MESSAGE\]/i.test(content)) return null
+  try {
+    const body = content.replace(/^\s*\[MESSAGE\]\s*/i, '')
+    const parsed = JSON.parse(fixLatexJson(body.trim()))
+    if (typeof parsed.message !== 'string') return null
+    return { message: parsed.message }
+  } catch { return null }
+}
+
 function escHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
@@ -484,13 +494,14 @@ export function SpotlightSearch({
               createRepoData: { title: repoData.title, message: repoMessage, repoId: createdId },
             }])
           } else {
-            // ── Fall through to graph/plain response
+            // ── MESSAGE or graph/plain response
+            const msgData = parseMessageResponse(content)
             const graphData = parseGraphResponse(content)
             setMessages(prev => [...prev, {
               id: id + '-r',
               role: 'assistant' as const,
-              content,
-              graphData,
+              content: msgData ? msgData.message : content,
+              graphData: msgData ? undefined : graphData,
             }])
           }
         }
