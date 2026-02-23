@@ -6,7 +6,6 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import rawGraphPrompt from '../../../gpt_prompts/gpt_prompt.txt?raw'
 import rawSimplePrompt from '../../../gpt_prompts/gpt_prompt_simple.txt?raw'
-import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
 import { supabase } from '../lib/supabase'
@@ -303,12 +302,10 @@ export function SpotlightSearch({
   const [clearing, setClearing] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [loading, setLoading] = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const navigate = useNavigate()
   const { user } = useAuth()
-  const history = useGraphHistory()
   const editorBridge = useEditorBridge()
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -943,18 +940,6 @@ export function SpotlightSearch({
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            {/* History button */}
-            <button
-              onMouseDown={e => e.stopPropagation()}
-              onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) history.refresh() }}
-              className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors cursor-pointer ${historyOpen ? (isDark ? 'bg-sage/20 text-sage/80' : 'bg-parchment/20 text-parchment') : handleClose}`}
-              aria-label="History"
-              title="Graph history"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </button>
             {/* Export PDF */}
             {expanded && messages.length > 0 && (
               <>
@@ -1010,7 +995,7 @@ export function SpotlightSearch({
         </div>
 
         {/* ── Suggestions ── */}
-        {!expanded && !clearing && !historyOpen && (
+        {!expanded && !clearing && (
           <div className={`px-4 pb-3 pt-0 flex flex-wrap gap-2 ${isDark ? '' : 'bg-forest/[0.025]'}`}>
             {SUGGESTIONS.map(s => (
               <button
@@ -1021,54 +1006,6 @@ export function SpotlightSearch({
                 {s}
               </button>
             ))}
-          </div>
-        )}
-
-        {/* ── History panel ── */}
-        {historyOpen && (
-          <div className={`border-t ${border} overflow-hidden`}>
-            <div className={`px-4 py-2 flex items-center justify-between ${isDark ? 'bg-white/[0.02]' : 'bg-forest/[0.03]'}`}>
-              <span className={`font-[family-name:var(--font-display)] text-[13px] ${handleLabel}`}>
-                Saved Graphs
-              </span>
-              <button onClick={() => setHistoryOpen(false)} className={`text-[11px] ${subtleBtn} cursor-pointer`}>
-                close
-              </button>
-            </div>
-            <div className="px-3 py-2 overflow-y-auto" style={{ maxHeight: 280 }}>
-              {history.loading ? (
-                <div className={`text-center py-6 text-[12px] ${mutedText}`}>Loading…</div>
-              ) : history.graphs.length === 0 ? (
-                <div className={`text-center py-6 text-[12px] ${mutedText}`}>No saved graphs yet</div>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {history.graphs.map(g => (
-                    <button
-                      key={g.graphId}
-                      onClick={() => {
-                        const items = rawNodesToItems(g.rawNodes, g.rawEdges)
-                        if (items.length === 0) return
-                        const summary = g.title || items[0]?.name || 'Loaded graph'
-                        setMessages(prev => [
-                          ...prev,
-                          { id: crypto.randomUUID(), role: 'assistant', content: summary, graphData: { items, summary } }
-                        ])
-                        setExpanded(true)
-                        setHistoryOpen(false)
-                      }}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${isDark ? 'hover:bg-sage/10' : 'hover:bg-forest/[0.06]'}`}
-                    >
-                      <div className={`text-[12px] font-medium truncate ${isDark ? 'text-sage/80' : 'text-forest/85'}`}>
-                        {g.title || 'Untitled graph'}
-                      </div>
-                      <div className={`text-[10px] mt-0.5 ${mutedText}`}>
-                        {g.nodeCount} nodes · {new Date(g.updatedAt || g.createdAt).toLocaleDateString()}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
 

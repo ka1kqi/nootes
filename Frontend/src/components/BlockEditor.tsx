@@ -22,7 +22,8 @@ export type BlockEditorHandle = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEXT_TYPES: BlockType[] = ['paragraph', 'h1', 'h2', 'h3', 'quote']
-const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout', 'diagram', 'bullet_list', 'ordered_list']
+const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout', 'diagram', 'ordered_list']
+const BULLET_TYPES: BlockType[] = ['bullet_list']
 
 const TYPE_LABEL: Record<string, string> = {
   paragraph: 'Paragraph',
@@ -143,17 +144,54 @@ export function BlockPreview({ block }: { block: Block }) {
     )
   }
   if (block.type === 'bullet_list') {
-    const items = block.content.split('\n').filter(Boolean)
-    return (
-      <ul className="my-3 ml-1 space-y-1.5">
-        {items.map((item, i) => (
-          <li key={i} className="flex items-start gap-2.5 font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed">
-            <span className="mt-[0.55em] w-1.5 h-1.5 rounded-full bg-sage shrink-0" />
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    )
+    // Prefer structured items from meta; fall back to legacy newline-split content
+    const rawItems = block.meta?.items as Array<{ id?: string; text: string; indent: number }> | undefined
+    const items = Array.isArray(rawItems) && rawItems.length > 0
+      ? rawItems
+      : block.content.split('\n').filter(Boolean).map(line => {
+          const spaces = line.match(/^( +)/)?.[1]?.length ?? 0
+          return { text: line.trimStart(), indent: Math.floor(spaces / 2) }
+        })
+    if (!items.length) return null
+    const renderItems = (parentIndent: number, startIdx: number): { el: React.ReactNode; consumed: number } => {
+      const listItems: React.ReactNode[] = []
+      let i = startIdx
+      while (i < items.length) {
+        const item = items[i]
+        if (item.indent < parentIndent) break
+        if (item.indent === parentIndent) {
+          // Check if next items have deeper indent
+          let j = i + 1
+          let nested: React.ReactNode = null
+          if (j < items.length && items[j].indent > parentIndent) {
+            const sub = renderItems(items[j].indent, j)
+            nested = sub.el
+            j += sub.consumed
+          }
+          listItems.push(
+            <li key={i} className="font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed">
+              <div className="flex items-start gap-2.5">
+                <span className={`shrink-0 mt-[0.55em] ${
+                  parentIndent === 0 ? 'w-1.5 h-1.5 rounded-full bg-sage'
+                  : parentIndent === 1 ? 'w-1.5 h-1.5 rounded-sm border border-sage/60'
+                  : 'w-1 h-1 rounded-full bg-sage/40'
+                }`} />
+                <span>{item.text}</span>
+              </div>
+              {nested}
+            </li>
+          )
+          i = j
+        } else {
+          i++
+        }
+      }
+      return {
+        el: <ul className="my-1 space-y-1 ml-0">{listItems}</ul>,
+        consumed: i - startIdx,
+      }
+    }
+    return <div className="my-3 ml-1">{renderItems(0, 0).el}</div>
   }
   if (block.type === 'ordered_list') {
     const items = block.content.split('\n').filter(Boolean)
@@ -631,6 +669,230 @@ function LivePreview({ block }: { block: Block }) {
   }
 }
 
+// ─── Bullet list block — interactive, indentable ─────────────────────────────
+
+type BulletItem = { id: string; text: string; indent: number }
+
+function parseBulletItems(block: Block): BulletItem[] {
+  const raw = block.meta?.items as BulletItem[] | undefined
+  if (Array.isArray(raw) && raw.length > 0) return raw
+  const lines = block.content.split('\n').filter(l => l.trim() !== '')
+  if (!lines.length) return [{ id: crypto.randomUUID(), text: '', indent: 0 }]
+  return lines.map(line => {
+    const spaces = line.match(/^( +)/)?.[1]?.length ?? 0
+    return { id: crypto.randomUUID(), text: line.trimStart(), indent: Math.floor(spaces / 2) }
+  })
+}
+
+function serializeBulletContent(items: BulletItem[]): string {
+  return items.map(item => '  '.repeat(item.indent) + item.text).join('\n')
+}
+
+const BulletItemRow = forwardRef<
+  HTMLDivElement,
+  {
+    item: BulletItem
+    onTextChange: (text: string) => void
+    onEnter: () => void
+    onIndent: (delta: number) => void
+    onRemove: () => void
+    onArrowUp: () => void
+    onArrowDown: () => void
+  }
+>(function BulletItemRow({ item, onTextChange, onEnter, onIndent, onRemove, onArrowUp, onArrowDown }, ref) {
+  const innerRef = useRef<HTMLDivElement>(null)
+
+  // Merge forwarded ref with local ref
+  const setRef = (el: HTMLDivElement | null) => {
+    (innerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    if (typeof ref === 'function') ref(el)
+    else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el
+  }
+
+  // Sync DOM only when text changes externally (undo, indent, etc.)
+  useEffect(() => {
+    const el = innerRef.current
+    if (!el || el === document.activeElement) return
+    if ((el.textContent ?? '') !== item.text) el.textContent = item.text
+  }, [item.text])
+
+  // Initial DOM content
+  useEffect(() => {
+    const el = innerRef.current
+    if (el && el.textContent !== item.text) el.textContent = item.text
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const bulletClass =
+    item.indent === 0 ? 'w-1.5 h-1.5 rounded-full bg-sage mt-[0.55em] shrink-0'
+    : item.indent === 1 ? 'w-1.5 h-1.5 rounded-sm border border-sage/60 mt-[0.55em] shrink-0'
+    : 'w-1 h-1 rounded-full bg-sage/40 mt-[0.6em] shrink-0'
+
+  return (
+    <div className="flex items-start gap-2.5 py-[2px]" style={{ paddingLeft: `${item.indent * 20}px` }}>
+      <span className={bulletClass} />
+      <div
+        ref={setRef}
+        contentEditable
+        suppressContentEditableWarning
+        className="flex-1 font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed outline-none bg-transparent caret-forest cursor-text"
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', minHeight: '1.4em' }}
+        onInput={e => onTextChange((e.currentTarget.textContent ?? ''))}
+        onKeyDown={e => {
+          const text = e.currentTarget.textContent ?? ''
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter(); return }
+          if (e.key === 'Tab') { e.preventDefault(); onIndent(e.shiftKey ? -1 : 1); return }
+          if (e.key === 'Backspace' && text === '') { e.preventDefault(); if (item.indent > 0) { onIndent(-1) } else { onRemove() } return }
+          if (e.key === 'ArrowUp') {
+            const sel = window.getSelection()
+            if (sel?.rangeCount) {
+              const r = sel.getRangeAt(0)
+              const er = e.currentTarget.getBoundingClientRect()
+              const cr = r.getBoundingClientRect()
+              if (cr.top - er.top < 4) { e.preventDefault(); onArrowUp(); return }
+            }
+          }
+          if (e.key === 'ArrowDown') {
+            const sel = window.getSelection()
+            if (sel?.rangeCount) {
+              const r = sel.getRangeAt(0)
+              const er = e.currentTarget.getBoundingClientRect()
+              const cr = r.getBoundingClientRect()
+              if (er.bottom - cr.bottom < 4) { e.preventDefault(); onArrowDown(); return }
+            }
+          }
+        }}
+        onPaste={e => {
+          e.preventDefault()
+          const text = e.clipboardData.getData('text/plain')
+          document.execCommand('insertText', false, text)
+        }}
+      />
+    </div>
+  )
+})
+
+function BulletListBlock({
+  block,
+  selected,
+  onFocus,
+  onUpdate,
+  onDelete,
+  onArrowUp,
+  onArrowDown,
+}: {
+  block: Block
+  selected?: boolean
+  onFocus?: () => void
+  onUpdate: (updates: Partial<Block>) => void
+  onDelete: () => void
+  onArrowUp?: () => void
+  onArrowDown?: () => void
+}) {
+  const [items, setItems] = useState<BulletItem[]>(() => parseBulletItems(block))
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const lastCommittedRef = useRef<string>('')
+  const prevSelectedRef = useRef<boolean | undefined>(false)
+
+  // Sync from external changes (undo, etc.) — skip our own writes
+  useEffect(() => {
+    const ext = JSON.stringify(block.meta?.items ?? block.content)
+    if (ext === lastCommittedRef.current) return
+    const parsed = parseBulletItems(block)
+    lastCommittedRef.current = JSON.stringify(block.meta?.items ?? block.content)
+    setItems(parsed)
+  }, [block.meta, block.content])
+
+  // When block becomes selected via keyboard nav, focus appropriate item
+  useEffect(() => {
+    if (selected && !prevSelectedRef.current) {
+      const first = items[0]
+      if (first) focusItemId(first.id, 'start')
+    }
+    prevSelectedRef.current = selected
+  }, [selected, items])
+
+  const focusItemId = (id: string, edge: 'start' | 'end' = 'end') => {
+    requestAnimationFrame(() => {
+      const el = rowRefs.current.get(id)
+      if (!el) return
+      el.focus()
+      const len = (el.textContent || '').length
+      const offset = edge === 'start' ? 0 : len
+      const sel = window.getSelection()
+      if (!sel) return
+      const range = document.createRange()
+      const textNode = el.firstChild
+      if (textNode?.nodeType === Node.TEXT_NODE) {
+        range.setStart(textNode, Math.min(offset, (textNode as Text).length))
+      } else {
+        range.setStart(el, 0)
+      }
+      range.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    })
+  }
+
+  const commit = (newItems: BulletItem[]) => {
+    lastCommittedRef.current = JSON.stringify(newItems)
+    setItems(newItems)
+    onUpdate({
+      meta: { ...(block.meta ?? {}), items: newItems },
+      content: serializeBulletContent(newItems),
+    })
+  }
+
+  return (
+    <div
+      className="my-2"
+      onFocus={onFocus}
+    >
+      {items.map((item, idx) => (
+        <BulletItemRow
+          key={item.id}
+          ref={el => {
+            if (el) rowRefs.current.set(item.id, el)
+            else rowRefs.current.delete(item.id)
+          }}
+          item={item}
+          onTextChange={text => {
+            const next = items.map((it, i) => i === idx ? { ...it, text } : it)
+            commit(next)
+          }}
+          onEnter={() => {
+            const newItem: BulletItem = { id: crypto.randomUUID(), text: '', indent: item.indent }
+            const next = [...items.slice(0, idx + 1), newItem, ...items.slice(idx + 1)]
+            commit(next)
+            focusItemId(newItem.id, 'start')
+          }}
+          onIndent={delta => {
+            const newIndent = Math.max(0, Math.min(6, item.indent + delta))
+            const next = items.map((it, i) => i === idx ? { ...it, indent: newIndent } : it)
+            commit(next)
+            focusItemId(item.id, 'end')
+          }}
+          onRemove={() => {
+            if (items.length <= 1) { onDelete(); return }
+            const next = items.filter((_, i) => i !== idx)
+            commit(next)
+            const targetId = idx > 0 ? items[idx - 1].id : items[1].id
+            focusItemId(targetId, 'end')
+          }}
+          onArrowUp={() => {
+            if (idx > 0) focusItemId(items[idx - 1].id, 'end')
+            else onArrowUp?.()
+          }}
+          onArrowDown={() => {
+            if (idx < items.length - 1) focusItemId(items[idx + 1].id, 'start')
+            else onArrowDown?.()
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ─── Divider block ────────────────────────────────────────────────────────────
 
 function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
@@ -715,6 +977,8 @@ export const BlockEditor = forwardRef<
         onChange(next)
         if (TEXT_TYPES.includes(type)) {
           setTimeout(() => focusBlock(nb.id, 'end'), 0)
+        } else if (BULLET_TYPES.includes(type)) {
+          setTimeout(() => setFocusedId(nb.id), 0)
         } else if (RICH_TYPES.includes(type)) {
           setTimeout(() => setAutoEditId(nb.id), 0)
         }
@@ -725,6 +989,9 @@ export const BlockEditor = forwardRef<
       onChange(next)
       if (TEXT_TYPES.includes(type)) {
         setTimeout(() => focusBlock(nb.id, 'end'), 0)
+      } else if (BULLET_TYPES.includes(type)) {
+        // BulletListBlock manages its own focus; just set focusedId
+        setTimeout(() => setFocusedId(nb.id), 0)
       } else if (RICH_TYPES.includes(type)) {
         setTimeout(() => setAutoEditId(nb.id), 0)
       }
@@ -1060,6 +1327,19 @@ export const BlockEditor = forwardRef<
                 selected={focusedId === block.id}
                 onUpdate={updates => { updateBlock(block.id, updates); setAutoEditId(null) }}
                 onDelete={() => { deleteBlock(block.id); setAutoEditId(null) }}
+                onArrowUp={() => arrowNav('up')}
+                onArrowDown={() => arrowNav('down')}
+              />
+            )
+          }
+          if (block.type === 'bullet_list') {
+            return (
+              <BulletListBlock
+                block={block}
+                selected={focusedId === block.id}
+                onFocus={() => setFocusedId(block.id)}
+                onUpdate={updates => updateBlock(block.id, updates)}
+                onDelete={() => deleteBlock(block.id)}
                 onArrowUp={() => arrowNav('up')}
                 onArrowDown={() => arrowNav('down')}
               />
