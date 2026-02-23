@@ -76,6 +76,8 @@ export default function Design1() {
   const [tagInput, setTagInput] = useState('')
   const [showTagsInfo, setShowTagsInfo] = useState(false)
   const tagsInfoRef = useRef<HTMLSpanElement>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // ── Auth + routing ───────────────────────────────────────────────────────
   const { user, profile } = useAuth()
@@ -924,6 +926,42 @@ export default function Design1() {
                     <option value="anyone">Anyone</option>
                   </select>
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'write' && repoId !== 'scratch' && isOwner && (
+            <div className="mt-8 pt-6 border-t border-forest/[0.06]">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={async () => {
+                  if (!user || deleting) return
+                  if (!window.confirm('Delete this nootbook? This cannot be undone.')) return
+                  setDeleteError(null)
+                  setDeleting(true)
+                  const { error } = await supabase
+                    .from('documents')
+                    .delete()
+                    .eq('id', repoId)
+                    .eq('owner_user_id', user.id)
+                  setDeleting(false)
+                  if (error) {
+                    setDeleteError(error.message)
+                    return
+                  }
+                  navigate('/my-repos', { replace: true })
+                }}
+                className={`w-full font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-2 squircle-sm border transition-colors ${
+                  deleting
+                    ? 'bg-forest/[0.04] border-forest/10 text-forest/30 cursor-not-allowed'
+                    : 'bg-sienna/10 border-sienna/30 text-sienna/80 hover:bg-sienna/15'
+                }`}
+              >
+                {deleting ? 'Deleting…' : 'Delete Nootbook'}
+              </button>
+              {deleteError && (
+                <p className="font-mono text-[10px] text-red-500/80 mt-2 leading-relaxed">{deleteError}</p>
               )}
             </div>
           )}

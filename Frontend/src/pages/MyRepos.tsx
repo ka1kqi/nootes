@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { Navbar } from '../components/Navbar'
-import { useUserDocuments } from '../hooks/useMyRepos'
+import { useUserDocuments, deleteDocument } from '../hooks/useMyRepos'
 import { NewNootModal } from '../components/NewNootModal'
 
 /* ------------------------------------------------------------------ */
@@ -43,10 +43,12 @@ function apiBase(): string {
 /* ------------------------------------------------------------------ */
 
 export default function MyRepos() {
-  const { docs, loading } = useUserDocuments()
+  const { docs, loading, refetch } = useUserDocuments()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
   const [queryEmbedding, setQueryEmbedding] = useState<number[] | null>(null)
   const [embedding, setEmbedding] = useState(false)
   const embedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -170,6 +172,9 @@ export default function MyRepos() {
               <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[9px] text-sage/50 tracking-widest uppercase">semantic</span>
             )}
           </div>
+          {deleteError && (
+            <p className="font-mono text-[11px] text-red-500/80 mt-2">{deleteError}</p>
+          )}
         </div>
 
         {/* Nootbook list */}
@@ -193,6 +198,33 @@ export default function MyRepos() {
             <div className="space-y-3 stagger-fast">
               {filtered.map(doc => (
                 <div key={doc.id} className="relative group">
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (deletingDocId) return
+                      if (!window.confirm(`Delete "${doc.title}"? This cannot be undone.`)) return
+                      setDeleteError(null)
+                      setDeletingDocId(doc.id)
+                      const { error } = await deleteDocument(doc.id)
+                      setDeletingDocId(null)
+                      if (error) {
+                        setDeleteError(error)
+                        return
+                      }
+                      await refetch()
+                    }}
+                    disabled={deletingDocId === doc.id}
+                    className={`absolute top-3 right-3 z-10 px-2.5 py-1 font-mono text-[10px] squircle-sm border transition-colors ${
+                      deletingDocId === doc.id
+                        ? 'bg-forest/[0.06] border-forest/10 text-forest/30 cursor-not-allowed'
+                        : 'bg-parchment/90 border-forest/15 text-sienna/70 hover:bg-sienna/10 hover:border-sienna/40'
+                    }`}
+                    title="Delete this nootbook"
+                  >
+                    {deletingDocId === doc.id ? 'Deleting…' : 'Delete'}
+                  </button>
                   <Link
                     to={`/editor/${doc.id}`}
                     className="bg-parchment border border-forest/10 squircle-xl p-5 hover:shadow-[0_4px_32px_-8px_rgba(38,70,53,0.1)] transition-all hover:border-forest/20 block"
