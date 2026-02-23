@@ -282,6 +282,7 @@ _NOOT_TOOL_HINTS = [
     ("CREATE", "CREATE_REPO"),
     ("NAVIGATE", "NAVIGATE"),
     ("GRAPH", "GRAPH"),
+    ("MESSAGE", "MESSAGE"),
 ]
 
 
@@ -343,12 +344,12 @@ def _normalise_noot_response(raw: str) -> str:
     # --- Resolve marker --------------------------------------------------
     m = re.match(r'^\[([A-Z_a-z0-9 ]+)\]', text)
     if not m:
-        marker = "WRITE_TO_EDITOR"
+        marker = "MESSAGE"
         body = text
     else:
         raw_token = m.group(1).upper().strip()
         body = text[m.end():].lstrip("\n").lstrip()
-        marker = "WRITE_TO_EDITOR"  # default
+        marker = "MESSAGE"  # default — safer than WRITE_TO_EDITOR
         for hint, tool in _NOOT_TOOL_HINTS:
             if hint in raw_token:
                 marker = tool
@@ -362,11 +363,10 @@ def _normalise_noot_response(raw: str) -> str:
         if start != -1:
             body = body[start:]
         else:
-            # Fallback: find bare "[" in case array is empty "[]"
             start = body.find("[")
             if start != -1:
                 body = body[start:]
-    elif marker in ("NAVIGATE", "CREATE_REPO"):
+    elif marker in ("NAVIGATE", "CREATE_REPO", "MESSAGE"):
         start = body.find("{")
         if start != -1:
             body = body[start:]

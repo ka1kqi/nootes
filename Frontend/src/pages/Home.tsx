@@ -7,6 +7,7 @@ import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from './GraphVi
 import { parseGraphResponse } from './Graph_Creation'
 import { NootMarkdown } from '../components/NootMarkdown'
 import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext'
+import { createDocument } from '../hooks/useMyRepos'
 
 /* ------------------------------------------------------------------ */
 /* Home — AI chatbox centred in generous whitespace                    */
@@ -568,6 +569,74 @@ function getTimeGreeting(name: string): string {
   return prompts[hour % prompts.length]
 }
 
+// ── Tool-response parsers (mirrors SpotlightSearch.tsx) ──────────────────────
+
+function fixLatexJson(str: string): string {
+  return str.replace(/\\(\\|["\\/nrtu]|.)/g, (_m, c: string) =>
+    (c === '\\' || '"\\/nrtu'.includes(c)) ? _m : '\\\\' + c
+  )
+}
+
+function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
+  if (!/^\s*\[WRITE_TO_EDITOR\]/i.test(content)) return null
+  try {
+    const body = content.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/i, '')
+    const rawStart = body.indexOf('[')
+    if (rawStart === -1) return null
+    const afterBracket = body.slice(rawStart + 1).trimStart()
+    const start = afterBracket.startsWith('{') ? rawStart : body.indexOf('[{')
+    const end = body.lastIndexOf(']')
+    if (start === -1 || end === -1 || end <= start) return null
+    const TYPE_MAP: Record<string, string> = {
+      ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
+      list: 'bullet_list', numbered_list: 'ordered_list',
+    }
+    const parsed = JSON.parse(fixLatexJson(body.slice(start, end + 1)))
+    if (!Array.isArray(parsed) || parsed.length === 0 || typeof parsed[0].type !== 'string') return null
+    const blocks = parsed.map((b: BlockSpec) => ({ ...b, type: (TYPE_MAP[b.type] ?? b.type) as BlockSpec['type'] }))
+    const confirmation = body.slice(end + 1).trim() || `Wrote ${blocks.length} block(s) to your notes.`
+    return { blocks, confirmation }
+  } catch { return null }
+}
+
+function parseNavigateResponse(content: string): { route: string; message: string } | null {
+  if (!/^\s*\[NAVIGATE\]/i.test(content)) return null
+  try {
+    const body = content.replace(/^\s*\[NAVIGATE\]\s*/i, '')
+    const parsed = JSON.parse(fixLatexJson(body.trim()))
+    if (typeof parsed.route !== 'string') return null
+    return { route: parsed.route, message: parsed.message || 'Navigating…' }
+  } catch { return null }
+}
+
+function parseCreateRepoResponse(content: string): {
+  title: string; description?: string; tags?: string[]; initial_blocks?: BlockSpec[]; message: string
+} | null {
+  if (!/^\s*\[CREATE_REPO\]/i.test(content)) return null
+  try {
+    const body = content.replace(/^\s*\[CREATE_REPO\]\s*/i, '')
+    const parsed = JSON.parse(fixLatexJson(body.trim()))
+    if (typeof parsed.title !== 'string') return null
+    return {
+      title: parsed.title,
+      description: parsed.description,
+      tags: parsed.tags || [],
+      initial_blocks: parsed.initial_blocks,
+      message: parsed.message || `Created "${parsed.title}"!`,
+    }
+  } catch { return null }
+}
+
+function parseMessageResponse(content: string): { message: string } | null {
+  if (!/^\s*\[MESSAGE\]/i.test(content)) return null
+  try {
+    const body = content.replace(/^\s*\[MESSAGE\]\s*/i, '')
+    const parsed = JSON.parse(fixLatexJson(body.trim()))
+    if (typeof parsed.message !== 'string') return null
+    return { message: parsed.message }
+  } catch { return null }
+}
+
 // ── Home ──────────────────────────────────────────────────────────────
 
 interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string }
@@ -770,12 +839,27 @@ export default function Home() {
     }, 80)
   }, [])
 
+  const [confirmClear, setConfirmClear] = useState(false)
+
   const newConversation = useCallback(() => {
     setMessages([])
     setConversationId(null)
     turnIndexRef.current = 0
     historyRef.current = []
   }, [])
+
+  const clearHistory = useCallback(async () => {
+    // Delete from DB first, then reset local state
+    if (conversationId) {
+      await supabase.from('conversation_turns').delete().eq('conversation_id', conversationId)
+      await supabase.from('conversations').delete().eq('id', conversationId)
+    }
+    setMessages([])
+    setConversationId(null)
+    turnIndexRef.current = 0
+    historyRef.current = []
+    setConfirmClear(false)
+  }, [conversationId])
 
   const expandTask: ExpandFn = useCallback(async (item, context, ancestors) => {
     const topPrompt = historyRef.current.find(m => m.role === 'user')?.content ?? ''
@@ -849,63 +933,85 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payload }),
       })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      const reply = data.content ?? data.detail ?? 'No response.'
-
-      // Handle WRITE_TO_EDITOR mode
-      if (reply.trimStart().startsWith('[WRITE_TO_EDITOR]')) {
-        try {
-          const body = reply.replace(/^\s*\[WRITE_TO_EDITOR\]\s*/, '')
-          const rawStart = body.indexOf('[')
-          const afterBracket = rawStart !== -1 ? body.slice(rawStart + 1).trimStart() : ''
-          const arrStart = (rawStart !== -1 && afterBracket.startsWith('{')) ? rawStart : body.indexOf('[{')
-          const arrEnd = body.lastIndexOf(']')
-          if (arrStart !== -1 && arrEnd > arrStart) {
-            const TYPE_MAP: Record<string, string> = {
-              ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
-              list: 'bullet_list', numbered_list: 'ordered_list',
-            }
-            const raw = JSON.parse(body.slice(arrStart, arrEnd + 1))
-            if (Array.isArray(raw) && raw.length > 0) {
-              const blocks = raw.map((b: { type: string; content: unknown; meta?: unknown }) => ({
-                ...b,
-                id: crypto.randomUUID(),
-                type: TYPE_MAP[b.type] ?? b.type,
-              })) as BlockSpec[]
-              if (editorBridge.isEditorActive) {
-                editorBridge.insertBlocks(blocks)
-              } else if (user) {
-                // No editor open — create a new note and navigate to it
-                // Use h1 block content as title, fall back to prompt text
-                const h1Block = blocks.find((b: { type: string; content: unknown }) => b.type === 'h1')
-                const rawTitle = (h1Block?.content as string | undefined) || q
-                const title = rawTitle.length > 80 ? rawTitle.slice(0, 77) + '…' : rawTitle
-                const { data, error } = await supabase
-                  .from('documents')
-                  .insert({ owner_user_id: user.id, title, blocks, access_level: 'private', is_public_root: false })
-                  .select('id')
-                  .single()
-                if (!error && data?.id) {
-                  historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
-                  setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Created note "${title}" — opening editor…` }])
-                  saveTurn(convId, 'assistant', reply, turnIndexRef.current++)
-                  navigate(`/editor/${data.id}`, { state: { name: title } })
-                  return
-                }
-              }
-            }
-          }
-        } catch { /* ignore parse errors */ }
-      }
-
+      const reply: string = data.content ?? data.detail ?? 'No response.'
       historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: reply }])
-      // Persist assistant turn (fire-and-forget)
       saveTurn(convId, 'assistant', reply, turnIndexRef.current++)
-      // Auto-title conversation from first user message
       if (userTurnIdx === 0) {
         supabase.from('conversations').update({ title: q.slice(0, 80) }).eq('id', convId)
       }
+
+      // ── WRITE_TO_EDITOR ──────────────────────────────────────────────
+      const writeData = parseWriteResponse(reply)
+      if (writeData) {
+        if (editorBridge.isEditorActive) {
+          editorBridge.insertBlocks(writeData.blocks)
+          setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: writeData.confirmation }])
+        } else {
+          const blocks = writeData.blocks.map(b => ({ ...b, id: crypto.randomUUID() }))
+          const h1Block = blocks.find(b => b.type === 'h1')
+          const rawTitle = (h1Block?.content as string | undefined) || q
+          const title = rawTitle.length > 80 ? rawTitle.slice(0, 77) + '…' : rawTitle
+          let docId: string | null = null
+          if (user) {
+            try {
+              const { data: doc, error } = await supabase
+                .from('documents')
+                .insert({ owner_user_id: user.id, title, blocks, access_level: 'private', is_public_root: false })
+                .select('id').single()
+              if (!error && doc?.id) docId = doc.id
+            } catch { /* fall through */ }
+          }
+          if (docId) {
+            setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `Created note "${title}" — opening editor…` }])
+            navigate(`/editor/${docId}`, { state: { name: title } })
+          } else {
+            setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: writeData.confirmation + '\n\n⚠ Could not create note — are you signed in?' }])
+          }
+        }
+        return
+      }
+
+      // ── NAVIGATE ─────────────────────────────────────────────────────
+      const navData = parseNavigateResponse(reply)
+      if (navData) {
+        let resolvedRoute = navData.route
+        let navMessage = navData.message
+        const searchMatch = resolvedRoute.match(/__SEARCH:(.+?)__/)
+        if (searchMatch && user) {
+          const { data: found } = await supabase
+            .from('documents').select('id')
+            .eq('owner_user_id', user.id).ilike('title', `%${searchMatch[1]}%`)
+            .limit(1).single()
+          if (found) resolvedRoute = `/editor/${found.id}`
+          else { navMessage += `\n\n⚠ Couldn't find "${searchMatch[1]}".`; resolvedRoute = '' }
+        } else if (searchMatch) {
+          navMessage += '\n\n⚠ Sign in to search your nootbooks.'; resolvedRoute = ''
+        }
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: navMessage }])
+        if (resolvedRoute) navigate(resolvedRoute)
+        return
+      }
+
+      // ── CREATE_REPO ───────────────────────────────────────────────────
+      const repoData = parseCreateRepoResponse(reply)
+      if (repoData) {
+        let repoMessage = repoData.message
+        if (user) {
+          const { docId, error } = await createDocument(user, { title: repoData.title, tags: repoData.tags ?? [] })
+          if (error) repoMessage += `\n\n⚠ ${error}`
+          else if (docId) navigate(`/editor/${docId}`)
+        } else {
+          repoMessage += '\n\n⚠ You need to be signed in to create a nootbook.'
+        }
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: repoMessage }])
+        return
+      }
+
+      // ── MESSAGE / GRAPH / plain text ─────────────────────────────────
+      const msgData = parseMessageResponse(reply)
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: msgData ? msgData.message : reply }])
     } catch {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Failed to reach the AI. Check your connection.' }])
     } finally {
@@ -1141,6 +1247,33 @@ export default function Home() {
                   >
                     + new chat
                   </button>
+                  {messages.length > 0 && (
+                    <>
+                      <span className="text-forest/15 text-xs">·</span>
+                      {confirmClear ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-[family-name:var(--font-body)] text-forest/50">clear history?</span>
+                          <button
+                            onClick={clearHistory}
+                            className="text-[10px] font-[family-name:var(--font-body)] text-red-400 hover:text-red-500 transition-colors cursor-pointer"
+                          >yes</button>
+                          <span className="text-forest/15 text-xs">/</span>
+                          <button
+                            onClick={() => setConfirmClear(false)}
+                            className="text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-forest/70 transition-colors cursor-pointer"
+                          >no</button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmClear(true)}
+                          className="text-[10px] font-[family-name:var(--font-body)] text-forest/40 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Clear chat history"
+                        >
+                          clear
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
