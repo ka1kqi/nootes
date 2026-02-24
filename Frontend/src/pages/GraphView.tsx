@@ -59,6 +59,7 @@ type CircleNodeData = {
   isRoot: boolean
   isExpanded?: boolean
   isGenerating?: boolean  // true while children are being fetched
+  isConnecting?: boolean  // true when this node is the source of an in-progress user connection
   ancestors?: TaskItem[]
   depth: number       // BFS depth from root (0 = center)
   animDelay: number   // ms delay for staggered entrance animation
@@ -194,6 +195,24 @@ const CircleNode = ({ data, selected }: NodeProps<CircleNodeType>) => {
             }} />
           )}
         </div>
+
+        {/* Pulsing outer ring — visible while this node is the connection source */}
+        {data.isConnecting && (
+          <motion.div
+            style={{
+              position: 'absolute',
+              width: D + 20, height: D + 20,
+              borderRadius: '50%',
+              border: '2px solid #A3B18A',
+              // Centre the ring over the circle inside the bounding box
+              top: circlePaddingTop - 10,
+              left: (NODE_W - D - 20) / 2,
+              pointerEvents: 'none',
+            }}
+            animate={{ scale: [1, 1.14, 1], opacity: [0.9, 0.3, 0.9] }}
+            transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        )}
 
         <div style={{
           marginTop: 8, width: NODE_W, textAlign: 'center',
@@ -587,9 +606,61 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
     return () => clearTimeout(t)
   }, [initNodes, initEdges])
 
+  /**
+   * The node ID that the user is currently drawing a connection FROM.
+   * When non-null the graph is in "connect mode": the next node clicked becomes
+   * the edge target.  Null means normal (panel) mode.
+   */
+  const [connectingFromId, setConnectingFromId] = useState<string | null>(null)
+
+  /** Clears connect mode: removes the pulsing-ring flag from every node. */
+  const cancelConnect = useCallback(() => {
+    setNodes(prev => prev.map(nd => ({ ...nd, data: { ...nd.data, isConnecting: false } })))
+    setConnectingFromId(null)
+  }, [setNodes])
+
+  // Cancel connect mode when the user presses Escape
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && connectingFromId !== null) cancelConnect()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [connectingFromId, cancelConnect])
+
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    // ── Connect mode: this click completes (or cancels) the pending connection ──
+    if (connectingFromId !== null) {
+      if (connectingFromId === node.id) {
+        // Same node clicked — just cancel
+        cancelConnect()
+        return
+      }
+      // Deduplicate: skip if an edge already exists in either direction
+      const alreadyExists = edgesRef.current.some(
+        e => (e.source === connectingFromId && e.target === node.id) ||
+             (e.source === node.id && e.target === connectingFromId),
+      )
+      if (!alreadyExists) {
+        const newEdge: Edge = {
+          id: `custom-${connectingFromId}-${node.id}-${Date.now()}`,
+          source: connectingFromId,
+          target: node.id,
+          type: 'curved',
+          style: { stroke: '#A3B18A', strokeWidth: 1.5, opacity: 0.8, strokeDasharray: '5 3' },
+          markerEnd: { type: MarkerType.Arrow, color: '#A3B18A', width: 10, height: 10 },
+          data: { curvature: 0.2 },
+        }
+        const finalEdges = [...edgesRef.current, newEdge]
+        setEdges(finalEdges)
+        onGraphChanged?.(nodesRef.current, finalEdges)
+      }
+      cancelConnect()
+      return
+    }
+
+    // ── Normal mode: open/close the detail panel ──
     const d = node.data as CircleNodeData
-    // Toggle: clicking the already-open node closes the panel; clicking a new node opens it.
     setPanel(prev =>
       prev?.nodeId === node.id
         ? null
@@ -611,7 +682,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
             ancestors: (d.ancestors ?? []),
           }
     )
-  }, [])
+  }, [connectingFromId, cancelConnect, onGraphChanged, setEdges])
 
   const handleExpand = useCallback(async () => {
     if (!panel || panel.loading) return
@@ -836,8 +907,46 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
     setPanel(p => p ? { ...p, newNodeName: '', newNodeText: '' } : null)
   }, [panel, onGraphChanged, setNodes, setEdges])
 
+  /**
+   * Removes the currently-selected node and all edges incident to it from the graph.
+   * Reads from refs so it always operates on the latest node/edge state.
+   * Closes the panel and notifies the parent persistence callback.
+   */
+  const handleDeleteNode = useCallback(() => {
+    if (!panel) return
+    const nodeId = panel.nodeId
+    // Keep every node except the deleted one
+    const finalNodes = nodesRef.current.filter(nd => nd.id !== nodeId)
+    // Remove all edges that connect to or from the deleted node
+    const finalEdges = edgesRef.current.filter(
+      e => e.source !== nodeId && e.target !== nodeId,
+    )
+    setNodes(finalNodes)
+    setEdges(finalEdges)
+    setPanel(null)
+    onGraphChanged?.(finalNodes, finalEdges)
+  }, [panel, onGraphChanged, setNodes, setEdges])
+
+  /**
+   * Enters "connect mode" for the currently-selected panel node.
+   * Marks the node with `isConnecting: true` (triggers the pulsing ring),
+   * stores its ID in `connectingFromId`, then closes the panel so the user
+   * can see the full graph and click a target node.
+   */
+  const handleStartConnect = useCallback(() => {
+    if (!panel) return
+    const fromId = panel.nodeId
+    setNodes(prev => prev.map(nd =>
+      nd.id === fromId
+        ? { ...nd, data: { ...nd.data, isConnecting: true } }
+        : nd,
+    ))
+    setConnectingFromId(fromId)
+    setPanel(null) // close panel so the whole graph is visible for target selection
+  }, [panel, setNodes])
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', cursor: connectingFromId ? 'crosshair' : 'default' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -859,6 +968,66 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
           showInteractive={false}
         />
       </ReactFlow>
+
+      {/* ── Connect mode banner — shown while user is picking a target node ────── */}
+      <AnimatePresence>
+        {connectingFromId && (
+          <motion.div
+            key="connect-banner"
+            initial={{ y: -16, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -16, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 30,
+              background: '#264635',
+              border: '1.5px solid #A3B18A',
+              borderRadius: 10,
+              padding: '9px 16px',
+              display: 'flex', alignItems: 'center', gap: 12,
+              boxShadow: '0 4px 20px rgba(38,70,53,0.3)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {/* Animated connection icon */}
+            <motion.span
+              animate={{ opacity: [1, 0.4, 1] }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#A3B18A' }}
+            >
+              ⟷
+            </motion.span>
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+              color: '#E9E4D4', letterSpacing: '0.08em', textTransform: 'uppercase',
+            }}>
+              Click a node to connect
+            </span>
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
+              color: '#A3B18A', opacity: 0.6, letterSpacing: '0.06em',
+            }}>
+              esc to cancel
+            </span>
+            <button
+              onClick={cancelConnect}
+              style={{
+                background: 'none', border: '1px solid rgba(163,177,138,0.35)',
+                color: '#A3B18A', cursor: 'pointer',
+                borderRadius: 5, padding: '3px 9px',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase',
+                transition: 'border-color 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#A3B18A'; e.currentTarget.style.color = '#E9E4D4' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(163,177,138,0.35)'; e.currentTarget.style.color = '#A3B18A' }}
+            >
+              cancel
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Node panel ─────────────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -891,10 +1060,40 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
               }}>
                 subtask
               </span>
-              <button onClick={() => setPanel(null)} aria-label="Close panel" style={{
-                background: 'none', border: 'none', color: '#A3B18A',
-                cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px',
-              }}>✕</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {/* Delete node — removes the selected node and all its edges from the graph */}
+                <button
+                  onClick={handleDeleteNode}
+                  aria-label="Delete node"
+                  title="Delete this node"
+                  style={{
+                    background: 'none', border: '1px solid rgba(196,83,58,0.3)',
+                    color: 'rgba(196,83,58,0.7)',
+                    cursor: 'pointer', fontSize: 9, lineHeight: 1, padding: '3px 7px',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                    borderRadius: 5, transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    const b = e.currentTarget
+                    b.style.color = 'rgba(196,83,58,1)'
+                    b.style.background = 'rgba(196,83,58,0.12)'
+                    b.style.borderColor = 'rgba(196,83,58,0.6)'
+                  }}
+                  onMouseLeave={e => {
+                    const b = e.currentTarget
+                    b.style.color = 'rgba(196,83,58,0.7)'
+                    b.style.background = 'none'
+                    b.style.borderColor = 'rgba(196,83,58,0.3)'
+                  }}
+                >
+                  ✕ del
+                </button>
+                <button onClick={() => setPanel(null)} aria-label="Close panel" style={{
+                  background: 'none', border: 'none', color: '#A3B18A',
+                  cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px',
+                }}>✕</button>
+              </div>
             </div>
 
             {/* Scrollable body */}
@@ -911,6 +1110,38 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
               <p style={{ fontSize: 11, color: '#1A1A18', lineHeight: 1.75, margin: 0 }}>
                 {panel.item.text}
               </p>
+            </div>
+
+            {/* Connect action — enters connect mode so the user can draw an edge to any target node */}
+            <div style={{ padding: '0 16px 12px', flexShrink: 0 }}>
+              <button
+                onClick={handleStartConnect}
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: '1.5px solid rgba(163,177,138,0.5)',
+                  color: '#264635',
+                  borderRadius: 8,
+                  padding: '7px 0',
+                  cursor: 'pointer',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase',
+                  transition: 'background 0.15s, border-color 0.15s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(163,177,138,0.12)'
+                  e.currentTarget.style.borderColor = '#A3B18A'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.borderColor = 'rgba(163,177,138,0.5)'
+                }}
+              >
+                {/* Arrow-left-right unicode glyph */}
+                <span style={{ fontSize: 13, lineHeight: 1, color: '#A3B18A' }}>⟷</span>
+                connect to…
+              </button>
             </div>
 
             {/* Divider */}

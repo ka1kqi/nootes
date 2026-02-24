@@ -532,3 +532,28 @@ CREATE POLICY "merge_requests: users manage own"
      );
 
    alter publication supabase_realtime add table conversation_turns;
+
+-- Folders
+create table if not exists folders (
+  id               uuid primary key default gen_random_uuid(),
+  owner_user_id    uuid not null references auth.users(id) on delete cascade,
+  parent_folder_id uuid references folders(id) on delete cascade,
+  name             text not null,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (owner_user_id, parent_folder_id, name)
+);
+
+create index if not exists idx_folders_owner  on folders(owner_user_id);
+create index if not exists idx_folders_parent on folders(parent_folder_id);
+
+-- Documents: add this column
+alter table documents
+  add column if not exists folder_id uuid references folders(id) on delete set null;
+
+create index if not exists idx_documents_folder on documents(folder_id);
+
+create policy "folders: users manage own"
+  on folders for all to authenticated
+  using (owner_user_id = auth.uid())
+  with check (owner_user_id = auth.uid());

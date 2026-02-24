@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Navbar } from '../components/Navbar'
-import { useUserDocuments, deleteDocument } from '../hooks/useMyRepos'
+import { useUserDocuments, deleteDocument, updateDocumentFolder, type UserDocument } from '../hooks/useMyRepos'
 import { NewNootModal } from '../components/NewNootModal'
 
 /**
@@ -76,6 +76,38 @@ export default function MyRepos() {
   const [embedding, setEmbedding] = useState(false)
   const embedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Folder state ─────────────────────────────────────────────────────────────
+  /** Currently selected folder filter — null means "show all documents". */
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
+  /** ID of the document currently being dragged for folder assignment. */
+  const [draggingDocId, setDraggingDocId] = useState<string | null>(null)
+  /** The folder name currently hovered over during a drag operation. */
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
+  /** Locally created empty folders (visible until the page refreshes). */
+  const [localFolders, setLocalFolders] = useState<string[]>([])
+  /** Whether the new-folder name input is visible. */
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  /** Value of the new-folder name input. */
+  const [newFolderName, setNewFolderName] = useState('')
+
+  /**
+   * Extracts the folder name from a document's tags array.
+   * Folder tags use the `folder:<name>` prefix convention stored in the DB.
+   * @returns The folder name or null if the doc is uncategorised.
+   */
+  const getDocFolder = useCallback((doc: UserDocument): string | null => {
+    const tag = (doc.tags ?? []).find(t => t.startsWith('folder:'))
+    return tag ? tag.slice('folder:'.length) : null
+  }, [])
+
+  /** Unique sorted list of all folder names (from docs + any locally-created empty folders). */
+  const allFolderNames = useMemo(() => {
+    const fromDocs = new Set(
+      docs.map(d => getDocFolder(d)).filter((f): f is string => f !== null),
+    )
+    return [...new Set([...localFolders, ...fromDocs])].sort()
+  }, [docs, localFolders, getDocFolder])
+
   // Debounced semantic embed: fires 600 ms after the user stops typing
   useEffect(() => {
     if (embedTimerRef.current) clearTimeout(embedTimerRef.current)
@@ -102,26 +134,66 @@ export default function MyRepos() {
     return () => { if (embedTimerRef.current) clearTimeout(embedTimerRef.current) }
   }, [search])
 
-  // Compute sorted+filtered list
+  // Compute sorted+filtered list (search ranking first, then folder filter)
   const filtered = (() => {
-    if (!search.trim()) return docs
+    let base = docs
 
-    // If embedding is ready, rank by cosine similarity (docs without embeddings go last)
-    if (queryEmbedding) {
-      return [...docs]
-        .map(d => ({
-          doc: d,
-          // Docs that have no stored embedding get score -1 so they sink to the bottom
-          score: d.embedding ? cosineSimilarity(queryEmbedding, d.embedding) : -1,
-        }))
-        .filter(() => true)
-        .sort((a, b) => b.score - a.score)  // descending: highest similarity first
-        .map(({ doc }) => doc)
+    if (search.trim()) {
+      // If embedding is ready, rank by cosine similarity (docs without embeddings go last)
+      if (queryEmbedding) {
+        base = [...base]
+          .map(d => ({
+            doc: d,
+            // Docs that have no stored embedding get score -1 so they sink to the bottom
+            score: d.embedding ? cosineSimilarity(queryEmbedding, d.embedding) : -1,
+          }))
+          .sort((a, b) => b.score - a.score)  // descending: highest similarity first
+          .map(({ doc }) => doc)
+      } else {
+        // While embedding is in-flight, fall back to title substring match
+        base = base.filter(d => d.title.toLowerCase().includes(search.toLowerCase()))
+      }
     }
 
-    // While embedding is in-flight, fall back to title substring match
-    return docs.filter(d => d.title.toLowerCase().includes(search.toLowerCase()))
+    // Apply folder filter: null = all, '__none__' = uncategorised, else specific folder
+    if (selectedFolder !== null) {
+      if (selectedFolder === '__none__') {
+        base = base.filter(d => !getDocFolder(d))
+      } else {
+        base = base.filter(d => getDocFolder(d) === selectedFolder)
+      }
+    }
+
+    return base
   })()
+
+  /**
+   * Assigns a document to a folder (or removes it from all folders) by
+   * updating the `folder:` tag in Supabase, then re-fetches the list.
+   * @param targetFolder - Destination folder name or null for uncategorised.
+   */
+  const handleDropToFolder = async (targetFolder: string | null) => {
+    if (!draggingDocId) return
+    const { error } = await updateDocumentFolder(draggingDocId, targetFolder)
+    if (error) setDeleteError(error)
+    setDraggingDocId(null)
+    setDragOverFolder(null)
+    await refetch()
+  }
+
+  /**
+   * Confirms creation of a new empty folder from the sidebar input.
+   * The folder is added to `localFolders` so it appears in the sidebar
+   * immediately even before any docs are moved into it.
+   */
+  const handleCreateFolder = () => {
+    const name = newFolderName.trim()
+    if (!name || allFolderNames.includes(name)) return
+    setLocalFolders(prev => [...prev, name])
+    setSelectedFolder(name)
+    setNewFolderName('')
+    setCreatingFolder(false)
+  }
 
   return (
     <div className="min-h-screen bg-cream flex flex-col">
@@ -203,6 +275,108 @@ export default function MyRepos() {
           )}
         </div>
 
+        {/* Folder tabs — each pill is a drop target for drag-and-drop assignment */}
+        <div className="max-w-5xl mx-auto px-6 pb-5">
+          <div className="flex items-center gap-2 flex-wrap">
+
+            {/* "All" tab — dropping here removes folder assignment */}
+            <button
+              onClick={() => setSelectedFolder(null)}
+              onDragOver={e => { e.preventDefault(); setDragOverFolder('__all__') }}
+              onDragLeave={() => setDragOverFolder(null)}
+              onDrop={() => handleDropToFolder(null)}
+              className={`font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 squircle-sm border transition-all ${
+                selectedFolder === null
+                  ? 'bg-forest text-parchment border-forest'
+                  : dragOverFolder === '__all__'
+                  ? 'bg-sage/20 border-sage text-forest'
+                  : 'bg-parchment border-forest/15 text-forest/50 hover:border-forest/30 hover:text-forest/70'
+              }`}
+            >
+              All ({docs.length})
+            </button>
+
+            {/* Uncategorised tab — docs with no folder: tag */}
+            {docs.some(d => !getDocFolder(d)) && (
+              <button
+                onClick={() => setSelectedFolder('__none__')}
+                onDragOver={e => { e.preventDefault(); setDragOverFolder('__none__') }}
+                onDragLeave={() => setDragOverFolder(null)}
+                onDrop={() => handleDropToFolder(null)}
+                className={`font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 squircle-sm border transition-all ${
+                  selectedFolder === '__none__'
+                    ? 'bg-forest text-parchment border-forest'
+                    : dragOverFolder === '__none__'
+                    ? 'bg-sage/20 border-sage text-forest'
+                    : 'bg-parchment border-forest/15 text-forest/50 hover:border-forest/30 hover:text-forest/70'
+                }`}
+              >
+                ◌ unfiled ({docs.filter(d => !getDocFolder(d)).length})
+              </button>
+            )}
+
+            {/* One pill per named folder */}
+            {allFolderNames.map(folder => (
+              <button
+                key={folder}
+                onClick={() => setSelectedFolder(folder)}
+                onDragOver={e => { e.preventDefault(); setDragOverFolder(folder) }}
+                onDragLeave={() => setDragOverFolder(null)}
+                onDrop={() => handleDropToFolder(folder)}
+                className={`font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 squircle-sm border transition-all flex items-center gap-1.5 ${
+                  selectedFolder === folder
+                    ? 'bg-forest text-parchment border-forest'
+                    : dragOverFolder === folder
+                    ? 'bg-sage/25 border-sage text-forest scale-105 shadow-[0_2px_12px_-2px_rgba(38,70,53,0.2)]'
+                    : 'bg-parchment border-forest/15 text-forest/50 hover:border-forest/30 hover:text-forest/70'
+                }`}
+              >
+                <svg className="w-3 h-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                </svg>
+                {folder}
+                <span className="opacity-50">
+                  ({docs.filter(d => getDocFolder(d) === folder).length})
+                </span>
+              </button>
+            ))}
+
+            {/* New folder creation — inline input or trigger button */}
+            {creatingFolder ? (
+              <input
+                autoFocus
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreateFolder()
+                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName('') }
+                }}
+                onBlur={() => { if (!newFolderName.trim()) { setCreatingFolder(false) } }}
+                placeholder="Folder name…"
+                className="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 squircle-sm border border-sage/50 bg-parchment text-forest outline-none focus:border-sage focus:ring-2 focus:ring-sage/15 w-32"
+              />
+            ) : (
+              <button
+                onClick={() => setCreatingFolder(true)}
+                className="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 squircle-sm border border-dashed border-forest/20 text-forest/35 hover:border-sage/50 hover:text-sage transition-all flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Folder
+              </button>
+            )}
+
+          </div>
+
+          {/* Drag hint — only visible while a card is being dragged */}
+          {draggingDocId && (
+            <p className="font-mono text-[9px] text-sage/50 mt-2 tracking-[0.15em] uppercase animate-pulse">
+              Drop onto a folder tab above to move
+            </p>
+          )}
+        </div>
+
         {/* Nootbook list */}
         <div className="max-w-5xl mx-auto px-6 pb-16">
           {loading ? (
@@ -223,7 +397,21 @@ export default function MyRepos() {
           ) : (
             <div className="space-y-3 stagger-fast">
               {filtered.map(doc => (
-                <div key={doc.id} className="relative group">
+                <div
+                  key={doc.id}
+                  className={`relative group transition-opacity ${draggingDocId === doc.id ? 'opacity-50' : ''}`}
+                  draggable
+                  onDragStart={e => {
+                    /* Mark this doc as the one being dragged so drop targets know what to accept */
+                    e.dataTransfer.effectAllowed = 'move'
+                    setDraggingDocId(doc.id)
+                  }}
+                  onDragEnd={() => {
+                    /* Reset drag state when the user releases the card anywhere */
+                    setDraggingDocId(null)
+                    setDragOverFolder(null)
+                  }}
+                >
                   {/* Delete button — fades in on hover */}
                   <button
                     type="button"
@@ -290,6 +478,15 @@ export default function MyRepos() {
                     <div className="flex items-start gap-5">
                       <div className="flex flex-col items-center gap-2 pt-1 shrink-0">
                         <div className="w-1 h-10 rounded-full bg-sage/40" />
+                        {/* Drag handle dots — appear on hover to hint at draggability */}
+                        <div className="opacity-0 group-hover:opacity-40 transition-opacity flex flex-col gap-0.5">
+                          {[0,1,2].map(i => (
+                            <div key={i} className="flex gap-0.5">
+                              <div className="w-0.5 h-0.5 rounded-full bg-forest" />
+                              <div className="w-0.5 h-0.5 rounded-full bg-forest" />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-[family-name:var(--font-display)] text-2xl text-forest group-hover:text-sage transition-colors mb-1">
@@ -297,6 +494,15 @@ export default function MyRepos() {
                         </h3>
                         <div className="flex items-center gap-2 flex-wrap mt-1">
                           <span className="font-mono text-[9px] text-forest/25 uppercase tracking-wider">{doc.access_level}</span>
+                          {/* Show the folder badge if this doc belongs to a folder */}
+                          {getDocFolder(doc) && (
+                            <span className="font-mono text-[9px] bg-sage/10 text-sage/70 px-1.5 py-0.5 squircle-sm flex items-center gap-1">
+                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                              </svg>
+                              {getDocFolder(doc)}
+                            </span>
+                          )}
                           {(doc.required_user_tags ?? []).slice(0, 4).map(tag => (
                             <span key={tag} className="font-mono text-[9px] bg-forest/[0.05] text-forest/35 px-1.5 py-0.5 squircle-sm">{tag}</span>
                           ))}
