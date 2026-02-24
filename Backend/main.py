@@ -288,7 +288,7 @@ async def explain_node(body: PromptRequest):
     try:
         content = await nim_graph(messages)  # Use the Super 49B model for concise node explanations
     except Exception as e:
-    return {"content": content.strip()}
+        return {"content": content.strip()}
 
 
 
