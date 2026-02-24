@@ -16,6 +16,7 @@ type ChannelType = 'school' | 'major' | 'repo'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Returns up to 2 uppercase initials from a display name (e.g. "John Doe" → "JD"). */
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -25,6 +26,7 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
+/** Maps a user tier name to a Tailwind background-color class for the tier dot. */
 function tierColor(tier: string): string {
   const map: Record<string, string> = {
     'seedling': 'bg-forest/20',
@@ -36,21 +38,25 @@ function tierColor(tier: string): string {
   return map[tier] || map.seedling
 }
 
+/** Palette of deterministic avatar background colors (GMK Botanical-inspired). */
 const AVATAR_COLORS = [
   '#264635', '#A3B18A', '#8B6E4E', '#5C7A6B', '#D4A843',
   '#4A6741', '#8B4513', '#1a2f26',
 ]
+/** Derives a stable avatar color from a user UUID using a simple string hash. */
 function colorForId(id: string): string {
   let hash = 0
   for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
+/** Formats an ISO timestamp as a short 12-hour clock string (e.g. "3:05 PM"). */
 function formatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
+/** Aggregates a flat reactions array into `{ emoji, count }` pairs for rendering. */
 function groupReactions(reactions: Reaction[]): { emoji: string; count: number }[] {
   const map: Record<string, number> = {}
   for (const r of reactions) {
@@ -61,6 +67,10 @@ function groupReactions(reactions: Reaction[]): { emoji: string; count: number }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+/**
+ * Renders a chat message that may contain inline LaTeX delimited by `$…$`.
+ * Non-LaTeX spans are rendered as plain text.
+ */
 function InlineLatexChat({ text }: { text: string }) {
   const parts = text.split(/(\$[^$]+\$)/g)
   return (
@@ -75,6 +85,12 @@ function InlineLatexChat({ text }: { text: string }) {
   )
 }
 
+/**
+ * Renders the appropriate SVG icon for a channel type:
+ * - school → graduation cap
+ * - major  → group / people
+ * - repo   → document / file
+ */
 function ChannelIcon({ type }: { type: ChannelType }) {
   if (type === 'school') return (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -94,6 +110,15 @@ function ChannelIcon({ type }: { type: ChannelType }) {
 }
 
 // Inline reaction toggle button (keeps design, talks to Supabase)
+/**
+ * Emoji reaction pill that toggles the current user's reaction on click.
+ * Optimistically updates the local count; hides itself when count reaches 0.
+ *
+ * @param emoji     - The emoji character for this reaction.
+ * @param count     - Initial reaction count from the database.
+ * @param messageId - Parent message UUID.
+ * @param userId    - Authenticated user's UUID (undefined when logged out).
+ */
 function ReactionButton({
   emoji,
   count,
@@ -119,9 +144,11 @@ function ReactionButton({
       .maybeSingle()
 
     if (existing) {
+      // Toggle off: remove the existing reaction row and decrement the local counter.
       await supabase.from('reactions').delete().eq('id', existing.id)
       setLocalCount(c => Math.max(0, c - 1))
     } else {
+      // Toggle on: insert a new reaction row and increment the local counter.
       await supabase.from('reactions').insert({ message_id: messageId, user_id: userId, emoji })
       setLocalCount(c => c + 1)
     }
@@ -140,6 +167,12 @@ function ReactionButton({
 }
 
 // Thread reply count — reads from Supabase once
+/**
+ * Fetches and displays the number of threaded replies for a given message.
+ * Shows the timestamp of the most recent reply. Renders nothing if count is 0.
+ *
+ * @param messageId - UUID of the parent message whose thread count to display.
+ */
 function ThreadCount({ messageId }: { messageId: string }) {
   const [count, setCount] = useState<number | null>(null)
   const [lastReply, setLastReply] = useState<string>('')
@@ -151,6 +184,7 @@ function ThreadCount({ messageId }: { messageId: string }) {
       .eq('thread_id', messageId)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
+        // Set total reply count and capture the most recent reply's timestamp for display.
         setCount(data?.length ?? 0)
         if (data?.[0]) setLastReply(formatTime(data[0].created_at))
       })
@@ -168,6 +202,17 @@ function ThreadCount({ messageId }: { messageId: string }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+/**
+ * Full-page chat interface with a collapsible channel sidebar and message feed.
+ *
+ * Features:
+ * - Channel list grouped by school / major / repo
+ * - Real-time Supabase Presence tracking for online count
+ * - In-channel message search
+ * - Consecutive-message clustering (bubble tails merge within 5-minute windows)
+ * - Inline LaTeX rendering via `$…$` syntax
+ * - Emoji reaction toggle and threaded reply count per message
+ */
 export default function Chat() {
   const { user } = useAuth()
   const [activeChannel, setActiveChannel] = useState<string | null>(getFirstCachedChannelId)
@@ -190,10 +235,12 @@ export default function Chat() {
     const ch = supabase.channel(`presence:${activeChannel}`, {
       config: { presence: { key: user.id } },
     })
+    // Update the online count every time a member joins or leaves.
     ch.on('presence', { event: 'sync' }, () => {
       setOnlineCount(Object.keys(ch.presenceState()).length)
     })
     ch.subscribe(async (status) => {
+      // Track the current user in the presence set only after the subscription is confirmed.
       if (status === 'SUBSCRIBED') {
         await ch.track({ user_id: user.id, online_at: new Date().toISOString() })
       }
@@ -210,6 +257,7 @@ export default function Chat() {
   // Focus search input when opening
   useEffect(() => {
     if (searchOpen) {
+      // Defer focus by a tick so the input has mounted before we try to focus it.
       setTimeout(() => searchInputRef.current?.focus(), 50)
     }
   }, [searchOpen])
@@ -234,12 +282,14 @@ export default function Chat() {
 
   const activeChannelData = channels.find(c => c.id === activeChannel)
 
+  // Group channels by type for sidebar section rendering
   const groupedChannels = {
     school: channels.filter(c => c.type === 'school'),
     major: channels.filter(c => c.type === 'major'),
     repo: channels.filter(c => c.type === 'repo'),
   }
 
+  /** Sends the composed message and clears the input on success. Detects LaTeX content. */
   async function handleSend() {
     if (!activeChannel || !messageText.trim()) return
     setSendWarning(null)
@@ -252,6 +302,7 @@ export default function Chat() {
     }
   }
 
+  /** Submits the message on Enter (without Shift), allows Shift+Enter for newlines. */
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -264,10 +315,12 @@ export default function Chat() {
     const p = msg.profile
     const displayName = p?.display_name ?? 'Student'
     const initials = getInitials(displayName)
+    // Derive a stable avatar colour from the user ID so it's consistent across sessions.
     const color = colorForId(msg.user_id)
     const aura = p?.aura ?? 0
     const tier = p?.tier ?? 'seedling'
     const badges = p?.badges ?? []
+    // Aggregate raw reactions array into { emoji, count } pairs for compact rendering.
     const reactions = groupReactions(msg.reactions ?? [])
     const time = formatTime(msg.created_at)
     return { displayName, initials, color, aura, tier, badges, reactions, time }

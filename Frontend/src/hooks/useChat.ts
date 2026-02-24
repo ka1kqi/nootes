@@ -1,3 +1,16 @@
+/**
+ * useChat — hooks for the Nootes real-time chat system.
+ *
+ * Exports:
+ * - {@link useChannels}      — fetch and subscribe to the full channel list
+ * - {@link useMessages}      — paginated messages for a single channel with realtime updates
+ * - {@link useSendMessage}   — moderated message sending
+ * - {@link useReactions}     — emoji reactions for a message
+ * - {@link useThreadMessages}— threaded replies for a parent message
+ *
+ * Module-level caches persist channel/message data across SPA navigations so
+ * the UI feels instant when re-entering chat or switching tabs.
+ */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Channel, Message, Reaction } from '../lib/supabase'
@@ -5,6 +18,7 @@ import { useAuth } from './useAuth'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** A channel row enriched with derived UI metadata (unread count, last message, etc.). */
 export interface ChannelWithMeta extends Channel {
   unread: number
   lastMessage: string
@@ -14,15 +28,29 @@ export interface ChannelWithMeta extends Channel {
 
 // ─── Module-level caches ──────────────────────────────────────────────────────
 // Persist across SPA navigations so re-entering chat/editor shows data instantly.
+
+/** In-memory cache of the enriched channel list, populated after first fetch. */
 let _channelsCache: ChannelWithMeta[] | null = null
+/** Per-channel message cache keyed by channel ID. */
 const messagesCache = new Map<string, Message[]>()
 
+/**
+ * Returns the ID of the first channel in the cached list, or null if not yet loaded.
+ * Useful for auto-selecting a default channel on the chat page.
+ */
 export function getFirstCachedChannelId(): string | null {
   return _channelsCache?.[0]?.id ?? null
 }
 
 // ─── useChannels ─────────────────────────────────────────────────────────────
 
+/**
+ * Fetches all channels from Supabase, auto-joins the current user to any they
+ * haven't joined yet, and subscribes to realtime channel-list changes.
+ *
+ * Uses a module-level cache so subsequent renders are instant.
+ * @returns `{ channels, loading, refetch }`
+ */
 export function useChannels() {
   const { user } = useAuth()
   const [channels, setChannels] = useState<ChannelWithMeta[]>(_channelsCache ?? [])
@@ -90,9 +118,11 @@ export function useChannels() {
     const sub = supabase
       .channel('channels-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' },
+        // Re-fetch the enriched channel list whenever any channel row changes
         () => fetchChannels()
       )
       .subscribe()
+    // Tear down the realtime subscription on unmount / user change
     return () => { supabase.removeChannel(sub) }
   }, [user, fetchChannels])
 
@@ -101,8 +131,17 @@ export function useChannels() {
 
 // ─── useMessages ─────────────────────────────────────────────────────────────
 
+/** Maximum number of messages fetched per channel load. */
 const PAGE_SIZE = 50
 
+/**
+ * Fetches and subscribes to real-time messages for a given channel.
+ * Deduplicates incoming realtime inserts against existing state.
+ * Returns a `bottomRef` to attach to an element for auto-scroll.
+ *
+ * @param channelId - The channel to subscribe to, or null to skip loading.
+ * @returns `{ messages, loading, bottomRef, refetch }`
+ */
 export function useMessages(channelId: string | null) {
   const [messages, setMessages] = useState<Message[]>(() =>
     channelId ? (messagesCache.get(channelId) ?? []) : []
@@ -111,6 +150,7 @@ export function useMessages(channelId: string | null) {
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
   const fetchMessages = useCallback(async () => {
+    // Skip when no channel is selected; clear loading so the UI isn't stuck
     if (!channelId) { setLoading(false); return }
 
     const { data, error } = await supabase
@@ -156,7 +196,7 @@ export function useMessages(channelId: string | null) {
           filter: `channel_id=eq.${channelId}`,
         },
         async (payload) => {
-          // Fetch full message with profile join
+          // Fetch the full message row with profile/reactions join so the UI renders correctly
           const { data } = await supabase
             .from('messages')
             .select(`*, profile:profiles(*), reactions(*)`)
@@ -175,11 +215,13 @@ export function useMessages(channelId: string | null) {
       )
       .subscribe()
 
+    // Tear down the messages subscription on unmount or channel switch
     return () => { supabase.removeChannel(sub) }
   }, [channelId])
 
   // Auto-scroll when messages change
   useEffect(() => {
+    // Scroll the sentinel element into view so the newest message is always visible
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -188,6 +230,7 @@ export function useMessages(channelId: string | null) {
 
 // ─── useSendMessage ───────────────────────────────────────────────────────────
 
+/** Derives the backend API base URL from the `VITE_API_URL` env variable. */
 const _API_BASE = (() => {
   const url = import.meta.env.VITE_API_URL as string | undefined
   if (!url) return '/api'
@@ -196,6 +239,10 @@ const _API_BASE = (() => {
 
 const MODERATE_URL = `${_API_BASE}/moderate`
 
+/**
+ * Calls the backend moderation endpoint to check whether a message is allowed.
+ * Returns `'allowed'`, `'blocked'`, or `'error'` (treat error as blocked for safety).
+ */
 async function moderateMessage(content: string): Promise<'allowed' | 'blocked' | 'error'> {
   try {
     const res = await fetch(MODERATE_URL, {
@@ -211,6 +258,11 @@ async function moderateMessage(content: string): Promise<'allowed' | 'blocked' |
   }
 }
 
+/**
+ * Sends a moderated message to a channel.
+ * Runs the message through the backend moderation API before inserting.
+ * @returns `{ sendMessage, sending }` — `sending` is true while the API calls are in flight.
+ */
 export function useSendMessage() {
   const { user } = useAuth()
   const [sending, setSending] = useState(false)
@@ -221,6 +273,7 @@ export function useSendMessage() {
     isLatex = false,
     threadId: string | null = null
   ) => {
+    // Guard: require auth and non-empty content before hitting the moderation API
     if (!user || !content.trim()) return { error: 'Not authenticated or empty message' }
 
     setSending(true)
@@ -254,6 +307,11 @@ export function useSendMessage() {
 
 // ─── useReactions ─────────────────────────────────────────────────────────────
 
+/**
+ * Loads and manages emoji reactions for a single message.
+ * Provides a `grouped` map of `{ emoji → { count, userReacted } }` and
+ * a `toggleReaction` function for add/remove toggle behaviour.
+ */
 export function useReactions(messageId: string) {
   const { user } = useAuth()
   const [reactions, setReactions] = useState<Reaction[]>([])
@@ -267,6 +325,7 @@ export function useReactions(messageId: string) {
   }, [messageId])
 
   const toggleReaction = useCallback(async (emoji: string) => {
+    // Require auth; check for an existing identical reaction to decide add vs. remove
     if (!user) return
 
     const existing = reactions.find(
@@ -299,11 +358,17 @@ export function useReactions(messageId: string) {
 
 // ─── useThreadMessages ────────────────────────────────────────────────────────
 
+/**
+ * Fetches and subscribes to threaded replies for a parent message.
+ * @param threadId - The parent message ID, or null to skip loading.
+ * @returns `{ replies, loading, replyCount }`
+ */
 export function useThreadMessages(threadId: string | null) {
   const [replies, setReplies] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
 
   const fetchReplies = useCallback(async () => {
+    // Skip when no thread is selected; set loading flag for the spinner
     if (!threadId) return
     setLoading(true)
     const { data } = await supabase
@@ -326,6 +391,7 @@ export function useThreadMessages(threadId: string | null) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `thread_id=eq.${threadId}` },
         async (payload) => {
+          // Fetch the full reply row with profile/reactions join so the UI renders correctly
           const { data } = await supabase
             .from('messages')
             .select(`*, profile:profiles(*), reactions(*)`)
@@ -335,6 +401,7 @@ export function useThreadMessages(threadId: string | null) {
         }
       )
       .subscribe()
+    // Tear down the thread subscription on unmount or thread switch
     return () => { supabase.removeChannel(sub) }
   }, [threadId])
 
@@ -343,6 +410,10 @@ export function useThreadMessages(threadId: string | null) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Formats a date as a human-readable relative string (e.g. "5m", "2h", "3d").
+ * Used for chat timestamps in the channel list.
+ */
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime()
   const mins = Math.floor(diffMs / 60_000)

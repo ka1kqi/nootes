@@ -3,24 +3,47 @@ import { Navbar } from '../components/Navbar'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 
+/**
+ * @module Profile
+ * Authenticated user profile page. Displays the user's avatar, display name,
+ * school, tier, aura score, badges, tags, contribution graph, and recent
+ * document activity. Supports inline profile editing with optimistic tag saves.
+ */
+
 /* ------------------------------------------------------------------ */
 /* Profile Page                                                        */
 /* ------------------------------------------------------------------ */
 
+/** Aggregate stat counts fetched from Supabase for the profile header grid. */
 interface CountStats {
+  /** Total number of documents owned by the user. */
   noots: number
+  /** Total number of accepted merge requests authored by the user. */
   merges: number
+  /** Total number of nootbooks (documents) owned by the user. */
   nootbooks: number
 }
 
+/**
+ * A single row in the recent activity feed, derived from a `documents` query.
+ */
 interface ActivityItem {
+  /** Document UUID. */
   id: string
+  /** Document title. */
   title: string
+  /** Title of the parent repository / nootbook (aliased from `title`). */
   repo_title: string
+  /** ISO timestamp of the last update — used to determine `updated` vs `created` badge. */
   updated_at: string
+  /** ISO timestamp of initial creation. */
   created_at: string
 }
 
+/**
+ * Returns up to 2 uppercase initials derived from a display name.
+ * Used as the avatar fallback when no profile picture URL is available.
+ */
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -30,10 +53,18 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
+/**
+ * Formats an ISO date string as "Mon YYYY" for the "Joined" meta field.
+ * e.g. "2024-03-15T10:00:00Z" → "Mar 2024".
+ */
 function formatJoinDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
+/**
+ * Returns a compact human-readable time-ago string for activity feed rows.
+ * Falls back to {@link formatJoinDate} for timestamps older than 30 days.
+ */
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
@@ -45,6 +76,13 @@ function timeAgo(iso: string): string {
   return formatJoinDate(iso)
 }
 
+/**
+ * Small coloured pill badge indicating what kind of action an activity item represents.
+ * Maps known action strings (merged, pushed, commented, …) to Tailwind colour classes.
+ * Unknown actions fall back to a neutral forest tint.
+ *
+ * @param action - Action label string, e.g. "merged", "updated", "created".
+ */
 function ActionBadge({ action }: { action: string }) {
   const styles: Record<string, string> = {
     merged: 'bg-sage/15 text-sage',
@@ -61,6 +99,19 @@ function ActionBadge({ action }: { action: string }) {
   )
 }
 
+/**
+ * Authenticated user profile page.
+ *
+ * Fetches stat counts and recent activity from Supabase on mount once
+ * the auth session is ready. Provides:
+ * - Inline tag editing that persists immediately to Supabase on change.
+ * - A slide-in edit form (full name, handle, school, tags) with animated
+ *   enter/exit transitions; changes are written to the `profiles` table and
+ *   the page reloads to reflect them.
+ * - A read-only contribution graph placeholder (52 × 7 cells).
+ * - A recent activity feed derived from the user's documents ordered by
+ *   `updated_at` descending.
+ */
 export default function Profile() {
   const { profile, user, sessionReady } = useAuth()
   const [counts, setCounts] = useState<CountStats | null>(null)
@@ -86,13 +137,17 @@ export default function Profile() {
   }, [profile])
 
   // Animate in when editing opens, animate out before closing
+  /** Opens the edit form and triggers the CSS enter animation on the next frame. */
   function openEdit() {
     setEditing(true)
+    // Double rAF: first frame mounts the element, second frame triggers the enter transition.
     requestAnimationFrame(() => requestAnimationFrame(() => setEditVisible(true)))
   }
+  /** Triggers the CSS exit animation then unmounts the edit form after 220 ms. */
   function closeEdit() {
     setEditVisible(false)
     setSaveError(null)
+    // Allow the CSS opacity/transform exit transition to complete before removing the element.
     setTimeout(() => setEditing(false), 220)
   }
 
@@ -112,6 +167,10 @@ export default function Profile() {
   useEffect(() => {
     if (!user || !sessionReady) return
 
+    /**
+     * Fires four Supabase queries in parallel to populate the stats grid
+     * and the recent activity feed without sequential waterfalling.
+     */
     async function loadData() {
       const [nootsRes, mergesRes, nootbooksRes, activityRes] = await Promise.all([
         supabase
@@ -143,9 +202,11 @@ export default function Profile() {
 
       if (activityRes.data) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // Normalise raw Supabase rows into typed ActivityItem objects.
         setActivity(activityRes.data.map((d: any) => ({
           id: d.id,
           title: d.title ?? '',
+          // repo_title mirrors title because documents serve double-duty as repos here.
           repo_title: d.title ?? 'Untitled',
           updated_at: d.updated_at,
           created_at: d.created_at,
@@ -182,10 +243,16 @@ export default function Profile() {
 
     setSaving(false)
     closeEdit()
+    // Sync in-page tag chips immediately so the UI updates before the reload.
     setProfileTags(draftTags)
+    // Reload after the close animation completes to reflect saved profile data.
     setTimeout(() => window.location.reload(), 230)
   }
 
+  /**
+   * Persists a new tag array directly to Supabase without requiring the edit form.
+   * Called immediately whenever the always-visible inline tag list is modified.
+   */
   async function saveInlineTags(tags: string[]) {
     if (!user) return
     setTagsSaving(true)
@@ -264,7 +331,9 @@ export default function Profile() {
                         <form
                           onSubmit={e => {
                             e.preventDefault()
+                            // Normalise: lowercase and replace spaces with hyphens for URL-safe tags.
                             const tag = tagInputVal.trim().toLowerCase().replace(/\s+/g, '-')
+                            // Guard: skip empty input or duplicate tags silently.
                             if (!tag || draftTags.includes(tag)) { setTagInputVal(''); return }
                             setDraftTags(prev => [...prev, tag])
                             setTagInputVal('')
@@ -299,6 +368,7 @@ export default function Profile() {
                                 <button
                                   type="button"
                                   onClick={() => setDraftTags(prev => prev.filter(t => t !== tag))}
+                                  // Remove just the clicked tag; keep all others unchanged.
                                   className="text-forest/25 hover:text-sienna/60 transition-colors leading-none ml-0.5"
                                   title="Remove tag"
                                 >×</button>
@@ -600,6 +670,7 @@ export default function Profile() {
                   ) : (
                     <div className="space-y-0">
                       {activity.map((item) => {
+                        // If created_at equals updated_at the document was never edited — show "created" badge.
                         const isNew = item.created_at === item.updated_at
                         return (
                           <div key={item.id} className="flex items-start gap-4 py-4 border-b border-forest/[0.06] last:border-0">

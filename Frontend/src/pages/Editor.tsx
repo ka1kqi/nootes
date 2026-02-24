@@ -7,6 +7,14 @@ import { useAuth } from '../hooks/useAuth'
 import { useEditorBridge } from '../contexts/EditorBridgeContext'
 import { supabase } from '../lib/supabase'
 
+/**
+ * @module Editor
+ * Full-featured Nootes document editor page ("The Zen Canvas").
+ * Renders the personal fork and master document side-by-side, supports
+ * LaTeX / code / chemistry / diagram / table block types, PDF export,
+ * fork creation, semantic-merge submission, and document visibility controls.
+ */
+
 /* ------------------------------------------------------------------ */
 /* Design 1 — "The Zen Canvas" (refined)                              */
 /* All original functionality: toolbar, sidebars, source/preview,     */
@@ -16,6 +24,10 @@ import { supabase } from '../lib/supabase'
 /*   - floating content cards, section labels, handwritten accents    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Converts an ISO date string into a compact human-readable relative time string.
+ * e.g. "just now", "5m ago", "2h ago", "3d ago".
+ */
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60_000)
@@ -29,6 +41,10 @@ function relativeTime(iso: string): string {
 
 // ─── Toolbar helpers (scoped to this file) ────────────────────────────────────
 
+/**
+ * Generic toolbar icon button. Prevents mousedown default to avoid stealing focus
+ * from the editor. `wide` widens the button to accommodate an icon + label pair.
+ */
 function TBtn({ children, onClick, title, wide = false }: { children: React.ReactNode; onClick: () => void; title: string; wide?: boolean }) {
   return (
     <button
@@ -42,6 +58,10 @@ function TBtn({ children, onClick, title, wide = false }: { children: React.Reac
   )
 }
 
+/**
+ * Toolbar button that tracks active/inactive state — used for block-type
+ * selectors (Paragraph, H1, H2 …) that reflect the focused block's type.
+ */
 function TTypeBtn({ active, onClick, title, children }: { active: boolean; onClick: () => void; title: string; children: React.ReactNode }) {
   return (
     <button
@@ -58,6 +78,7 @@ function TTypeBtn({ active, onClick, title, children }: { active: boolean; onCli
   )
 }
 
+/** Visual separator between toolbar button groups. */
 function TDivider() {
   return <div className="w-px h-4 bg-forest/10 mx-2.5 shrink-0" />
 }
@@ -66,10 +87,20 @@ function TDivider() {
 
 import katex from 'katex'
 
+/** Escapes special HTML characters to prevent XSS in generated PDF markup. */
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+/**
+ * Serialises a single document block into an HTML string for PDF rendering.
+ * Handles all block types: headings, quote, divider, callout, code, latex,
+ * chemistry, diagram, table, bullet_list, ordered_list, and paragraph.
+ *
+ * @param block - The block object with `type`, `content`, and optional `meta`.
+ * @param latexImages - Map of block index → base64 PNG for pre-rendered LaTeX.
+ * @param idx - Block index used to look up a pre-rendered LaTeX image.
+ */
 function blockToHtml(block: { type: string; content: string; meta?: Record<string, unknown> }, latexImages?: Map<number, string>, idx = 0): string {
   const { type, content, meta } = block
   switch (type) {
@@ -150,6 +181,20 @@ function blockToHtml(block: { type: string; content: string; meta?: Record<strin
   }
 }
 
+/**
+ * Exports the current document to a multi-page PDF using html2canvas + jsPDF.
+ * Dynamically imports both libraries to keep the initial bundle lean.
+ *
+ * Pipeline:
+ *  1. Pre-renders each LaTeX block off-screen via KaTeX → html2canvas → PNG.
+ *  2. Builds a styled off-screen HTML container with all blocks serialised.
+ *  3. Captures the container with html2canvas and slices it into A4 pages.
+ *  4. Saves the PDF with a filename derived from the document title.
+ *
+ * @param title  - Document title (used for the cover and filename).
+ * @param blocks - Array of document blocks to render.
+ * @param onDone - Optional callback invoked after export completes or fails.
+ */
 async function exportDocumentToPDF(title: string, blocks: { type: string; content: string; meta?: Record<string, unknown> }[], onDone?: () => void) {
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -317,6 +362,24 @@ async function exportDocumentToPDF(title: string, blocks: { type: string; conten
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * Main editor page component ("The Zen Canvas").
+ *
+ * Loaded via the `/editor/:repoId` route. Renders two panels:
+ * - **Personal** (write tab) — the authenticated user's own fork or scratch pad,
+ *   fully editable with the BlockEditor and all toolbar block-insert controls.
+ * - **Master** (preview tab) — the read-only canonical root document, shown
+ *   when the current doc is a fork or when the user already has a personal fork.
+ *
+ * Key behaviours:
+ * - Ownership is inferred by comparing `doc.owner_user_id` to `user.id`.
+ * - Fork creation, merge submission, and tag/visibility management are
+ *   gated on ownership and the document's `merge_policy`.
+ * - PDF export runs entirely client-side via html2canvas + jsPDF.
+ * - Undo/redo is captured at the document level with Ctrl/Cmd+Z/Shift+Z.
+ * - The EditorBridge context is wired up so other components (e.g. AI agent)
+ *   can read and replace the current block array.
+ */
 export default function Design1() {
   // ── State ────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write')
@@ -431,6 +494,7 @@ export default function Design1() {
         // In production the env var points to the real backend; strip last segment
         // In dev the Vite proxy handles /api/* → localhost:3001
         if (url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
+        // Production: strip the last path segment to get the base URL.
         return url.replace(/\/[^/]+$/, '')
       })()
       const res = await fetch(`${apiBase}/merge`, {
@@ -445,6 +509,7 @@ export default function Design1() {
       })
 
       if (!res.ok) {
+        // Parse the error detail from the response body if available.
         const detail = await res.json().catch(() => ({}))
         setMergeError(detail?.detail ?? `Merge failed (${res.status})`)
         return
@@ -478,11 +543,17 @@ export default function Design1() {
     }
   }, [doc, saveNow])
   const bridge = useEditorBridge()
+  // Keep a stable ref so bridge callbacks always see the latest block array
+  // without needing to re-register on every blocks change.
   const blocksRef = useRef(doc?.blocks ?? [])
   useEffect(() => { blocksRef.current = doc?.blocks ?? [] }, [doc?.blocks])
+  // Register this editor's get/set block handlers with the shared bridge context
+  // so the AI agent panel can read and replace content programmatically.
   useEffect(() => {
     bridge.register({
+      // Expose a getter so the AI agent can read current blocks without React state coupling.
       getBlocks: () => blocksRef.current,
+      // Expose a setter that routes writes through the standard updateBlocks path.
       setBlocks: (blocks) => updateBlocks(blocks),
     })
     return () => bridge.unregister()
@@ -503,6 +574,7 @@ export default function Design1() {
           .select('id, title, version, tags, blocks, source_document_id, access_level, is_public_root, merge_policy, owner_user_id, updated_at')
           .eq('id', masterId)
           .maybeSingle()
+        // Normalise the raw Supabase row into the Document shape expected by the editor.
         setMasterDoc(data ? {
           repoId: data.id,
           userId: data.owner_user_id ?? '',
@@ -529,12 +601,14 @@ export default function Design1() {
     if (!doc?.source_document_id) { setSourceAuthor(null); return }
     ;(async () => {
       try {
+        // Two-step: first fetch the source document to get its owner_user_id.
         const { data: srcDoc } = await supabase
           .from('documents')
           .select('owner_user_id')
           .eq('id', doc.source_document_id!)
           .maybeSingle()
         if (!srcDoc?.owner_user_id) return
+        // Then fetch the profile for that owner.
         const { data: profile } = await supabase
           .from('profiles')
           .select('display_name, avatar_url')
@@ -550,6 +624,7 @@ export default function Design1() {
   useEffect(() => {
     if (!doc?.owner_user_id) { setDocOwner(null); return }
     if (doc.owner_user_id === user?.id && profile) {
+      // Short-circuit: the current user owns the doc — use the already-loaded profile.
       setDocOwner({ display_name: profile.display_name ?? 'You', avatar_url: profile.avatar_url ?? null })
       return
     }
@@ -588,8 +663,10 @@ export default function Design1() {
   // Use capture phase so we intercept before the browser's native contenteditable undo.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Only intercept Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z in write mode.
       if (!(e.ctrlKey || e.metaKey) || e.key !== 'z' || activeTab !== 'write') return
       e.preventDefault()
+      // Shift+Z → redo; plain Z → undo.
       if (e.shiftKey) redo()
       else undo()
     }
@@ -597,14 +674,19 @@ export default function Design1() {
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [undo, redo, activeTab])
 
+  // Derive heading list from whichever document panel is currently visible —
+  // used to populate the right-sidebar Table of Contents.
   const headings = useMemo(() => {
+    // Show TOC entries from the write tab's doc or the read-only master view, depending on the active tab.
     const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
     return blocks.filter(b => b.type === 'h1' || b.type === 'h2' || b.type === 'h3')
   }, [activeTab, doc?.blocks, masterDoc?.blocks])
 
   // ── Sidebar stats: block type counts + tags from active document ─────────
+  // Counts are shown in the right sidebar to give a quick content overview.
   const blockStats = useMemo(() => {
     const blocks = activeTab === 'write' ? (doc?.blocks ?? []) : (masterDoc?.blocks ?? [])
+    // Helper: count blocks matching a specific type string.
     const count = (type: string) => blocks.filter(b => b.type === type).length
     return [
       { label: 'LaTeX equations', count: count('latex') },
@@ -615,6 +697,7 @@ export default function Design1() {
     ]
   }, [activeTab, doc?.blocks, masterDoc?.blocks])
 
+  // Active tags come from the displayed document (personal fork or master).
   const activeTags = useMemo(() =>
     activeTab === 'write' ? (doc?.tags ?? []) : (masterDoc?.tags ?? []),
     [activeTab, doc?.tags, masterDoc?.tags]
@@ -627,12 +710,14 @@ export default function Design1() {
     const handleScroll = () => {
       const containerTop = scrollEl.getBoundingClientRect().top
       let activeId: string | null = null
+      // Walk headings in reverse so the last one at or above the 80px threshold wins.
       for (const h of [...headings].reverse()) {
         const el = document.getElementById(`block-${h.id}`)
         if (!el) continue
         const top = el.getBoundingClientRect().top - containerTop
         if (top <= 80) { activeId = h.id; break }
       }
+      // Fall back to the first heading when none has scrolled past the threshold.
       setActiveHeadingId(activeId ?? (headings[0]?.id ?? null))
     }
     scrollEl.addEventListener('scroll', handleScroll, { passive: true })
@@ -640,6 +725,7 @@ export default function Design1() {
     return () => scrollEl.removeEventListener('scroll', handleScroll)
   }, [headings])
 
+  /** Smoothly scrolls the editor canvas to the DOM node for the given heading block. */
   const scrollToHeading = useCallback((headingId: string) => {
     const scrollEl = scrollRef.current
     const el = document.getElementById(`block-${headingId}`)
@@ -656,6 +742,7 @@ export default function Design1() {
   const insertBlock = useCallback((type: BlockType) => {
     if (!isOwner) return
     if (activeTab !== 'write') {
+      // Stash the type so the post-tab-switch useEffect can fire it when the editor mounts.
       pendingInsertRef.current = type
       setActiveTab('write')
       setTabSwitched(true)
@@ -901,6 +988,8 @@ export default function Design1() {
                       if (!isOwner) return
                       const val = e.target.value.trim()
                       if (isScratch) {
+                        // On the scratch pad, a non-default title triggers a "promote" that creates
+                        // a permanent document and navigates away from the scratch route.
                         if (val && val !== 'Quick Notes') {
                           promoteScratch(val).then(newId => {
                             if (newId) navigate(`/editor/${newId}`, { replace: true, state: { name: val } })
@@ -908,6 +997,7 @@ export default function Design1() {
                         }
                         return
                       }
+                      // Prevent leaving a completely empty title.
                       if (!val) updateTitle('My Noots')
                     }}
                     placeholder="Untitled"
@@ -1035,6 +1125,7 @@ export default function Design1() {
                     </span>
                     <button
                       onClick={() => navigate(`/editor/${doc.source_document_id}`)}
+                      // Navigate the user to the upstream master document in a new editor view.
                       className="ml-auto font-mono text-[10px] text-sage/60 hover:text-sage transition-colors flex items-center gap-1"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
@@ -1157,6 +1248,7 @@ export default function Design1() {
               <form
                 onSubmit={e => {
                   e.preventDefault()
+                  // Normalise: lowercase, hyphens in place of spaces, skip duplicates.
                   const tag = tagInput.trim().toLowerCase().replace(/\s+/g, '-')
                   if (!tag || (doc?.tags ?? []).includes(tag)) { setTagInput(''); return }
                   updateTags([...(doc?.tags ?? []), tag])
@@ -1189,6 +1281,7 @@ export default function Design1() {
                   {activeTab === 'write' && isOwner && (
                     <button
                       onClick={() => updateTags((doc?.tags ?? []).filter(t => t !== tag))}
+                      // Remove only this tag from the document's tag array.
                       className="text-forest/20 hover:text-sienna/60 transition-colors leading-none"
                       title="Remove tag"
                     >×</button>
@@ -1210,6 +1303,7 @@ export default function Design1() {
                 {(['private', 'restricted', 'public'] as const).map(level => (
                   <button
                     key={level}
+                    // Only owners can change visibility; clicking on an already-active level is a no-op.
                     onClick={() => isOwner && updateVisibility(level)}
                     disabled={!isOwner}
                     className={`text-left w-full flex items-center gap-2 px-2.5 py-1.5 squircle-sm font-mono text-[10px] transition-all ${
@@ -1235,6 +1329,7 @@ export default function Design1() {
                   <select
                     value={doc?.merge_policy ?? 'invite_only'}
                     onChange={e => isOwner && updateMergePolicy(e.target.value as Document['merge_policy'])}
+                    // Only owners can change the merge policy.
                     disabled={!isOwner}
                     className={`w-full bg-cream border border-forest/10 squircle-sm px-2.5 py-1.5 font-mono text-[10px] text-forest/60 focus:outline-none focus:border-forest/25 transition-colors ${isOwner ? 'cursor-pointer' : 'cursor-default'}`}
                   >
@@ -1257,6 +1352,7 @@ export default function Design1() {
                   if (!window.confirm('Delete this nootbook? This cannot be undone.')) return
                   setDeleteError(null)
                   setDeleting(true)
+                  // Guard with owner_user_id in the filter so row-level security is honoured.
                   const { error } = await supabase
                     .from('documents')
                     .delete()
@@ -1267,6 +1363,7 @@ export default function Design1() {
                     setDeleteError(error.message)
                     return
                   }
+                  // On success, redirect to the repo list so the deleted card no longer appears.
                   navigate('/my-repos', { replace: true })
                 }}
                 className={`w-full font-mono text-[10px] tracking-[0.15em] uppercase px-3 py-2 squircle-sm border transition-colors ${

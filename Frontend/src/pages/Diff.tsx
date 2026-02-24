@@ -5,12 +5,16 @@ import { KaTeX } from '../components/KaTeX'
 import { supabase } from '../lib/supabase'
 import type { Block } from '../hooks/useDocument'
 
-/* ------------------------------------------------------------------ */
-/* Diff Visualizer                                                     */
-/* Dynamic side-by-side / unified diff between fork and source doc     */
-/* ------------------------------------------------------------------ */
+/**
+ * Diff.tsx — Side-by-side / unified diff visualizer.
+ *
+ * Fetches a fork document and its source, then computes a block-level diff
+ * with line-level detail using an LCS algorithm. Renders the result in split
+ * or unified view with inline LaTeX rendering and semantic change annotations.
+ */
 
 type DiffLine = {
+  /** Indicates whether this line is unchanged, added, removed, or a section info header. */
   type: 'same' | 'add' | 'remove' | 'info'
   left?: string
   right?: string
@@ -20,12 +24,22 @@ type DiffLine = {
 }
 
 type DiffSection = {
+  /** Block type identifier (e.g. 'paragraph', 'latex', 'code'). */
   blockType: string
   lines: DiffLine[]
+  /** True when at least one line in this section differs between master and fork. */
   hasChanges: boolean
 }
 
 // ── LCS-based line diff ─────────────────────────────────────────────
+/**
+ * Computes a line-level diff between two string arrays using the
+ * Longest Common Subsequence (LCS) algorithm. Returns a flat list of
+ * DiffLine objects in document order tagged as 'same', 'add', or 'remove'.
+ *
+ * @param oldLines - Lines from the master (source) document.
+ * @param newLines - Lines from the fork (modified) document.
+ */
 function computeLineDiff(oldLines: string[], newLines: string[]): DiffLine[] {
   const m = oldLines.length, n = newLines.length
   const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
@@ -52,6 +66,7 @@ function computeLineDiff(oldLines: string[], newLines: string[]): DiffLine[] {
   return temp.reverse()
 }
 
+/** Human-readable display labels for each document block type. */
 const BLOCK_TYPE_LABELS: Record<string, string> = {
   paragraph: 'Paragraph', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3',
   quote: 'Quote', latex: 'LaTeX', code: 'Code', chemistry: 'Chemistry',
@@ -59,6 +74,15 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
 }
 
 // ── Compute block-level diff with line-level detail ─────────────────
+/**
+ * Aligns master and fork block arrays by block ID, then produces a
+ * `DiffSection` per block. Blocks present only in the master are marked
+ * as removed; blocks only in the fork are marked as added; shared blocks
+ * are line-diffed with `computeLineDiff`.
+ *
+ * @param masterBlocks - Blocks from the canonical source document.
+ * @param forkBlocks   - Blocks from the user's fork.
+ */
 function computeDiff(masterBlocks: Block[], forkBlocks: Block[]): DiffSection[] {
   const masterMap = new Map(masterBlocks.map(b => [b.id, b]))
   const forkMap = new Map(forkBlocks.map(b => [b.id, b]))
@@ -141,10 +165,15 @@ function computeDiff(masterBlocks: Block[], forkBlocks: Block[]): DiffSection[] 
   return result
 }
 
+/** Derives up to 2 uppercase initials from a display name for avatar fallback. */
 function getInitials(name: string): string {
   return name.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2)
 }
 
+/**
+ * Renders a text string that may contain inline LaTeX delimited by `$…$` or `$$…$$`.
+ * Non-math spans are rendered as plain text; math spans are handed to KaTeX.
+ */
 function InlineLatex({ text }: { text: string }) {
   const parts = text.split(/(\$\$[^$]+\$\$|\$[^$]+\$)/g)
   return (
@@ -160,6 +189,15 @@ function InlineLatex({ text }: { text: string }) {
   )
 }
 
+/**
+ * Diff page — visualizes the difference between a fork document and its source.
+ *
+ * Route param: `:repoId` is the UUID of the **fork** document.
+ *
+ * Loads both the fork and its `source_document_id` master from Supabase,
+ * resolves author profiles, then renders a block-aligned diff with
+ * configurable split/unified view and the option to hide unchanged blocks.
+ */
 export default function Diff() {
   const { repoId } = useParams<{ repoId: string }>()
   const navigate = useNavigate()
@@ -187,6 +225,7 @@ export default function Diff() {
           .eq('id', repoId)
           .maybeSingle()
         if (forkErr || !fork) { if (!cancelled) { setError('Could not load document.'); setLoading(false) }; return }
+        // A diff requires a source; documents without source_document_id are roots, not forks.
         if (!fork.source_document_id) { if (!cancelled) { setError('This document is not a fork — there is nothing to diff against.'); setLoading(false) }; return }
         if (!cancelled) setForkDoc(fork as typeof forkDoc)
 
@@ -199,7 +238,7 @@ export default function Diff() {
         if (masterErr || !master) { if (!cancelled) { setError('Could not load the source document.'); setLoading(false) }; return }
         if (!cancelled) setMasterDoc(master as typeof masterDoc)
 
-        // Fetch profiles
+        // Fetch profiles for both authors in parallel to avoid waterfall
         const [forkProfile, masterProfile] = await Promise.all([
           supabase.from('profiles').select('display_name, avatar_url').eq('id', fork.owner_user_id).maybeSingle(),
           supabase.from('profiles').select('display_name, avatar_url').eq('id', master.owner_user_id).maybeSingle(),
@@ -213,20 +252,24 @@ export default function Diff() {
         if (!cancelled) { setError('An unexpected error occurred.'); setLoading(false) }
       }
     })()
+    // Cancellation flag prevents stale state updates if the component unmounts while fetching.
     return () => { cancelled = true }
   }, [repoId])
 
   // ── Compute diff ────────────────────────────────────────────────────
   const diffSections = useMemo(() => {
+    // Guard: wait for both documents before computing.
     if (!masterDoc || !forkDoc) return []
     return computeDiff(masterDoc.blocks ?? [], forkDoc.blocks ?? [])
   }, [masterDoc, forkDoc])
 
+  // Aggregate addition/deletion counts and changed-block stats for the stats bar
   const stats = useMemo(() => {
     let additions = 0, deletions = 0, changedBlocks = 0
     for (const s of diffSections) {
       if (s.hasChanges) changedBlocks++
       for (const l of s.lines) {
+        // Count each add/remove line to show the ±N summary in the stats bar.
         if (l.type === 'add') additions++
         if (l.type === 'remove') deletions++
       }
@@ -234,6 +277,7 @@ export default function Diff() {
     return { additions, deletions, changedBlocks, totalBlocks: diffSections.length }
   }, [diffSections])
 
+  // When hideUnchanged is toggled, filter out sections with no edits
   const visibleSections = hideUnchanged ? diffSections.filter(s => s.hasChanges) : diffSections
 
   // ── Loading / error states ──────────────────────────────────────────

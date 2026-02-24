@@ -1,3 +1,14 @@
+/**
+ * useDocument — core document state and persistence hook for Nootes.
+ *
+ * Handles loading, autosave (debounced), undo/redo, title/tags/visibility
+ * updates, and semantic embedding for both regular documents and the
+ * special "scratch" quick-notes pad.
+ *
+ * Storage strategy:
+ * - Scratch: Supabase Storage (JSON blob) + localStorage fallback
+ * - Real docs: Supabase `documents` table `blocks` jsonb column
+ */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { blocksToJson, jsonToBlocks } from '../lib/markdown'
@@ -5,6 +16,7 @@ import { useAuth } from './useAuth'
 
 // ─── Embed helper (fire-and-forget) ──────────────────────────────────────────
 
+/** Returns the backend API base URL, preferring `/api` for local dev. */
 function _apiBase(): string {
   const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
   if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
@@ -18,6 +30,11 @@ function _contentFingerprint(blocks: Block[]): string {
     .join('\x00')
 }
 
+/**
+ * Sends document blocks to the backend embedding API and writes the resulting
+ * vector to the `documents.embedding` column. Fire-and-forget — failures are
+ * silently swallowed so they never block the save UX.
+ */
 async function _embedAndStore(docId: string, blocks: Block[], title?: string) {
   try {
     const res = await fetch(`${_apiBase()}/embed`, {
@@ -36,6 +53,7 @@ async function _embedAndStore(docId: string, blocks: Block[], title?: string) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** All supported block types in a Nootes document. */
 export type BlockType =
   | 'paragraph'
   | 'h1'
@@ -52,13 +70,18 @@ export type BlockType =
   | 'bullet_list'
   | 'ordered_list'
 
+/** A single content block inside a document. */
 export type Block = {
+  /** Unique identifier (UUID v4). */
   id: string
   type: BlockType
+  /** The raw text/source content of the block. */
   content: string
+  /** Optional block-type-specific metadata (e.g. `{ language }` for code). */
   meta?: Record<string, unknown>
 }
 
+/** A Nootes document with metadata and a list of ordered blocks. */
 export type Document = {
   id: string
   repoId: string
@@ -75,6 +98,7 @@ export type Document = {
   updatedAt: string
 }
 
+/** Save indicator shown in the editor status bar. */
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'unsaved' | 'error' | 'offline'
 
 // ─── Module-level document cache ─────────────────────────────────────────────
@@ -83,6 +107,10 @@ const documentCache = new Map<string, Document>()
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Creates a new blank block of the given type with a fresh UUID and sensible
+ * default `meta` values (e.g. `{ language: 'python' }` for code blocks).
+ */
 export function newBlock(type: BlockType): Block {
   return {
     id: crypto.randomUUID(),
@@ -98,13 +126,27 @@ export function newBlock(type: BlockType): Block {
   }
 }
 
+/** Debounce delay (ms) between the last keystroke and the autosave write. */
 const DEBOUNCE_MS = 1200
+/** localStorage key for the scratch pad, scoped to the current user. */
 const SCRATCH_KEY = (uid: string) => `nootes-scratch-${uid}`
+/** Supabase Storage bucket name for document JSON blobs. */
 const BUCKET = 'documents'
+/** Storage object path: `{userId}/{repoId}.json` */
 const storagePath = (uid: string, rid: string) => `${uid}/${rid}.json`
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Loads, manages, and autosaves a single document identified by `repoId`.
+ *
+ * Pass `repoId = 'scratch'` for the user's ephemeral quick-notes pad.
+ * All other IDs are treated as UUID document IDs from the `documents` table.
+ *
+ * @param repoId    - Document UUID, or `'scratch'` for the quick-notes pad.
+ * @param userId    - The current user's UUID (from `useAuth`).
+ * @param repoTitle - Optional fallback title used when the DB row has no title.
+ */
 export function useDocument(repoId: string, userId: string, repoTitle?: string) {
   const { sessionReady } = useAuth()
   // ── Cache lookup ───────────────────────────────────────────────────────────
@@ -145,6 +187,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     setLoading(true)
 
     ;(async () => {
+      // Load document content; `cancelled` prevents stale state updates if the effect re-fires
       try {
         if (isScratch) {
           // Try Supabase Storage first so scratch syncs across devices
@@ -273,6 +316,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       }
     })()
 
+    // Signal the async loader to discard results if the effect re-fires before it finishes
     return () => { cancelled = true }
   }, [repoId, userId, isScratch, sessionReady])
 
@@ -300,6 +344,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
         if (uploadErr) console.warn('Scratch cloud sync failed:', uploadErr.message)
 
         setSaveStatus('saved')
+        // Reset save indicator to idle after a brief 'saved' confirmation flash
         setTimeout(() => setSaveStatus('idle'), 1500)
       } catch {
         // localStorage write failed (storage quota exceeded, etc.)
@@ -327,6 +372,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
       }
 
       setSaveStatus('saved')
+      // Reset save indicator to idle after a brief 'saved' confirmation flash
       setTimeout(() => setSaveStatus('idle'), 1500)
     } catch {
       setSaveStatus('error')
@@ -359,13 +405,16 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
   // away from the tab before the 1200 ms debounce fires (browser close also fires this)
   useEffect(() => {
     if (!userId) return
+    /** Flushes any pending debounced save when the tab becomes hidden (browser close, tab switch). */
     const handleVisibility = () => { if (document.hidden) saveNow() }
     document.addEventListener('visibilitychange', handleVisibility)
+    // Remove the visibility listener on unmount or when userId/saveNow changes
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [userId, saveNow])
 
-  // Debounced update called by editor
+  // Debounced update called by editor — pushes a new undo entry and schedules save.
   const updateBlocks = useCallback((blocks: Block[]) => {
+    // Merge new blocks into doc state while preserving all other metadata fields
     setDoc(prev => prev ? { ...prev, blocks } : prev)
     const truncated = historyRef.current.slice(0, historyIndexRef.current + 1)
     historyRef.current = [...truncated, blocks].slice(-500)
@@ -373,26 +422,31 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     scheduleSave(blocks)
   }, [scheduleSave])
 
+  /** Steps back one entry in the undo history and schedules a save. */
   // Undo
   const undo = useCallback(() => {
     if (historyIndexRef.current <= 0) return
     historyIndexRef.current -= 1
     const blocks = historyRef.current[historyIndexRef.current]
+    // Apply the previous history entry to document state
     setDoc(prev => prev ? { ...prev, blocks } : prev)
     scheduleSave(blocks)
   }, [scheduleSave])
 
+  /** Steps forward one entry in the undo history and schedules a save. */
   // Redo
   const redo = useCallback(() => {
     if (historyIndexRef.current >= historyRef.current.length - 1) return
     historyIndexRef.current += 1
     const blocks = historyRef.current[historyIndexRef.current]
+    // Apply the next history entry to document state
     setDoc(prev => prev ? { ...prev, blocks } : prev)
     scheduleSave(blocks)
   }, [scheduleSave])
 
   // Update title in local state and debounce-persist to Supabase
   const updateTitle = useCallback((title: string) => {
+    // Optimistically update title in React state and keep docRef in sync
     setDoc(prev => {
       if (!prev) return prev
       const updated = { ...prev, title }
@@ -403,6 +457,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
     if (isScratch) return // scratch has no documents row; promotion is handled via promoteScratch
 
     if (titleTimerRef.current) clearTimeout(titleTimerRef.current)
+    // Debounce the Supabase title write to avoid a round-trip per keystroke
     titleTimerRef.current = setTimeout(async () => {
       if (!docRef.current) return
       await supabase.from('documents').update({ title }).eq('id', repoId)
@@ -449,6 +504,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
 
   // Update tags in local state and persist immediately to Supabase
   const updateTags = useCallback(async (tags: string[]) => {
+    // Optimistically update tags in React state before the async Supabase write
     setDoc(prev => {
       if (!prev) return prev
       const updated = { ...prev, tags }
@@ -464,6 +520,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
   // Update access_level (and is_public_root) — persists immediately
   const updateVisibility = useCallback(async (access_level: Document['access_level']) => {
     const is_public_root = access_level !== 'private'
+    // Optimistically update visibility flags in React state before persisting
     setDoc(prev => {
       if (!prev) return prev
       const updated = { ...prev, access_level, is_public_root }
@@ -481,6 +538,7 @@ export function useDocument(repoId: string, userId: string, repoTitle?: string) 
 
   // Update merge_policy — persists immediately
   const updateMergePolicy = useCallback(async (merge_policy: Document['merge_policy']) => {
+    // Optimistically update merge policy in React state before persisting
     setDoc(prev => {
       if (!prev) return prev
       const updated = { ...prev, merge_policy }

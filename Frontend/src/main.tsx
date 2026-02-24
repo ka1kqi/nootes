@@ -1,3 +1,14 @@
+/**
+ * main.tsx — application entry point.
+ *
+ * Mounts the React app into `#root`, wraps it with global context providers
+ * (Theme → Auth → EditorBridge), and defines the client-side route tree.
+ *
+ * Provider order matters:
+ * - `ThemeProvider` must be outermost so CSS variables are set before any render.
+ * - `AuthProvider` must wrap everything that needs user/session state.
+ * - `EditorBridgeProvider` must wrap both the AI agent FAB and the Editor page.
+ */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
@@ -29,7 +40,13 @@ import HomeV3 from './pages/HomeV3.tsx'
 import HomeV4 from './pages/HomeV4.tsx'
 import HomeV5 from './pages/HomeV5.tsx'
 
-// Renders AIAgentFab on all pages except landing, login, and explore
+/**
+ * Shell component that conditionally renders the {@link AIAgentFab} on every
+ * page except landing, login, and public explore/info pages.
+ *
+ * Adjusts the FAB's bottom offset when on editor pages to avoid overlapping
+ * the editor's save-status bar.
+ */
 function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const hideOn = new Set(['/', '/login', '/explore', '/how-it-works', '/1', '/2', '/3', '/4', '/5'])

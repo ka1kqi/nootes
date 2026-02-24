@@ -1,13 +1,29 @@
+/**
+ * @file Navbar.tsx
+ * Top-level sticky navigation bar used on all authenticated pages.
+ * Renders the Nootes logo, primary nav links, and a profile avatar
+ * that opens a hover-triggered dropdown for profile, store, settings,
+ * and sign-out actions. Supports both `"light"` and `"dark"` variants
+ * to match the underlying page background.
+ */
+
 import { useState, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logoImg from '../assets/logo.png'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../contexts/ThemeContext'
 
+/**
+ * Derives up to two uppercase initials from a display name.
+ *
+ * @param name - Full display name (e.g. `"Jane Doe"`).
+ * @returns Up to two uppercase initials (e.g. `"JD"`).
+ */
 function getInitials(name: string): string {
   return name.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2)
 }
 
+/** Primary navigation links displayed in the centre of the navbar. */
 const navLinks = [
   { path: '/repos', label: 'Public Nootbooks' },
   { path: '/my-repos', label: 'My Nootbooks' },
@@ -15,12 +31,20 @@ const navLinks = [
   { path: '/chat', label: 'Chat' },
 ]
 
+/** Links rendered inside the profile hover-dropdown menu. */
 const profileDropdownLinks = [
   { path: '/profile', label: 'Profile', icon: '◉' },
   { path: '/store', label: 'Store', icon: '✦' },
   { path: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
+/**
+ * Sticky top navigation bar for authenticated views.
+ *
+ * @param variant - Colour scheme. `"light"` uses cream/forest tones;
+ *                  `"dark"` uses forest/sage tones for pages with dark
+ *                  backgrounds (e.g. the Editor page).
+ */
 export function Navbar({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -46,10 +70,13 @@ export function Navbar({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /** Opens the profile dropdown immediately, cancelling any pending close timer. */
   const handleMouseEnter = () => {
     if (hideTimeout.current) clearTimeout(hideTimeout.current)
     setDropdownOpen(true)
   }
+  /** Closes the profile dropdown after a short delay, giving the cursor
+   *  time to move into the dropdown before it disappears. */
   const handleMouseLeave = () => {
     hideTimeout.current = setTimeout(() => setDropdownOpen(false), 80)
   }
@@ -124,6 +151,7 @@ export function Navbar({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
               ))}
               <button
                 onClick={async () => {
+                  // Close the dropdown before signing out so there is no dangling open menu
                   setDropdownOpen(false)
                   await signOut()
                   navigate('/login')

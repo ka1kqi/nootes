@@ -1,13 +1,21 @@
 import { Link } from 'react-router-dom'
 import logoImg from '../assets/logo.png'
 
-/* ------------------------------------------------------------------ */
-/* Public Explore — visible before sign-in                            */
-/* Public nav (logo → landing, no wordmark, no FAB)                  */
-/* ------------------------------------------------------------------ */
+/**
+ * PublicRepos.tsx — Public explore page visible before sign-in.
+ *
+ * Displays a static grid of featured course nootbooks from various
+ * universities. All card links redirect unauthenticated visitors to the
+ * sign-up page, serving as a discovery and conversion surface.
+ */
 
+/** Organization filter options shown above the repo grid. */
 const organizations = ['All', 'NYU', 'MIT', 'Stanford', 'Berkeley', 'Columbia']
 
+/**
+ * Static seed data for featured public nootbooks.
+ * Each entry represents a real course with pre-filled metadata for the demo.
+ */
 const repos = [
   {
     id: 'nyu-cs-algo',
@@ -131,6 +139,7 @@ const repos = [
   },
 ]
 
+/** Minimal star / bookmark SVG icon used in repo stat rows. */
 function StarIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -139,6 +148,7 @@ function StarIcon() {
   )
 }
 
+/** Git-style branch SVG icon used in repo stat rows. */
 function BranchIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -147,6 +157,13 @@ function BranchIcon() {
   )
 }
 
+/**
+ * PublicRepos page — public-facing nootbook explorer.
+ *
+ * Renders a sticky nav (logo + sign-in/sign-up), a search bar with
+ * organization filter chips, and a grid of repo cards. Each card links
+ * to `/login?mode=signup` to convert anonymous visitors.
+ */
 export default function PublicRepos() {
   return (
     <div className="min-h-screen bg-cream flex flex-col">
@@ -206,6 +223,7 @@ export default function PublicRepos() {
             </div>
             <div className="flex items-center gap-1.5">
               {organizations.map(u => (
+                // Static filter chip — no state change yet; 'All' is visually active by default.
                 <button
                   key={u}
                   className={`font-mono text-[11px] px-3 py-2 squircle-sm transition-all ${u === 'All'
@@ -224,6 +242,7 @@ export default function PublicRepos() {
         <div className="max-w-5xl mx-auto px-6 pb-16">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger-fast">
             {repos.map(repo => (
+              // All repo cards link to sign-up so unauthenticated visitors are funnelled to conversion.
               <Link
                 key={repo.id}
                 to="/login?mode=signup"

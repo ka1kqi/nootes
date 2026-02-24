@@ -39,8 +39,14 @@ const cohere = new CohereClient({
   token: process.env.COHERE_API_KEY,
 });
 
+/**
+ * Determine whether a file extension is considered a supported text format.
+ *
+ * @param {string} ext - File extension including the leading dot (e.g. ".md").
+ * @returns {boolean} True if the extension is in the supported set.
+ */
 function isProbablyTextFile(ext) {
-  // Expand this list as needed
+  // Expand this list as needed to support additional file types
   return new Set([
     ".pdf",
     ".txt",
@@ -61,26 +67,52 @@ function isProbablyTextFile(ext) {
   ]).has(ext.toLowerCase());
 }
 
+/**
+ * Recursively list all file paths under a directory.
+ *
+ * @param {string} dir - Absolute path of the root directory to walk.
+ * @returns {Promise<string[]>} Flat array of absolute file paths.
+ */
 async function listFilesRecursively(dir) {
   const out = [];
   const entries = await fs.readdir(dir, { withFileTypes: true });
   for (const ent of entries) {
     const full = path.join(dir, ent.name);
-    if (ent.isDirectory()) {
+    if (ent.isDirectory()) {  // Recurse into subdirectories to collect nested files
       out.push(...(await listFilesRecursively(full)));
-    } else if (ent.isFile()) {
+    } else if (ent.isFile()) {  // Collect regular files; skip symlinks and other special entries
       out.push(full);
     }
   }
   return out;
 }
 
+/**
+ * Split an array into fixed-size chunks for batch processing.
+ *
+ * @template T
+ * @param {T[]} arr  - Source array.
+ * @param {number} size - Maximum number of elements per chunk.
+ * @returns {T[][]} Array of sub-arrays, each at most `size` elements long.
+ */
 function chunkArray(arr, size) {
   const chunks = [];
-  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));  // Advance by `size` each iteration to produce non-overlapping windows
   return chunks;
 }
 
+/**
+ * Main upload pipeline.
+ *
+ * Steps:
+ *  1. Recursively scan NOTES_DIR for supported text files.
+ *  2. Embed document content in batches via the Cohere Embed API.
+ *  3. Insert (or upsert) rows into the configured Supabase table.
+ *
+ * @returns {Promise<void>}
+ * @throws {Error} If required environment variables are missing or any
+ *   network call fails.
+ */
 async function main() {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     throw new Error("Missing SUPABASE_URL or SUPABASE_ANON_KEY in env");
@@ -101,7 +133,7 @@ async function main() {
   console.log(`Found ${textPaths.length} text files under ${NOTES_DIR}`);
 
   const docs = [];
-  for (const filePath of textPaths) {
+  for (const filePath of textPaths) {  // Build the docs array from all readable, non-empty files
     const ext = path.extname(filePath).toLowerCase();
     const name = path.basename(filePath);
 
@@ -109,13 +141,13 @@ async function main() {
     let content;
     try {
       content = await fs.readFile(filePath, "utf8");
-    } catch (e) {
+    } catch (e) {  // Skip files with permission errors or binary content that can't be decoded
       console.warn(`Skipping (read error): ${filePath}`, e?.message ?? e);
       continue;
     }
 
     // Skip empty files
-    if (!content || content.trim().length === 0) continue;
+    if (!content || content.trim().length === 0) continue;  // Don't waste embed calls on blank documents
 
     const metadata = {
       name,
@@ -139,9 +171,9 @@ async function main() {
   const docChunks = chunkArray(docs, Math.max(1, EMBED_BATCH_SIZE));
   const rowsToInsert = [];
 
-  for (let i = 0; i < docChunks.length; i++) {
+  for (let i = 0; i < docChunks.length; i++) {  // Process each batch independently to stay within Cohere's input size limits
     const batch = docChunks[i];
-    const texts = batch.map((d) => d.content);
+    const texts = batch.map((d) => d.content);  // Extract raw text strings for the Cohere embedding API
 
     const embedResp = await cohere.embed({
       texts,
@@ -151,13 +183,13 @@ async function main() {
 
     // SDK returns embeddings in `embeddings` for v2 embed
     const embeddings = embedResp.embeddings;
-    if (!embeddings || embeddings.length !== batch.length) {
+    if (!embeddings || embeddings.length !== batch.length) {  // Validate the API returned exactly one vector per document
       throw new Error(
         `Unexpected embedding response: got ${embeddings?.length} for batch size ${batch.length}`
       );
     }
 
-    for (let j = 0; j < batch.length; j++) {
+    for (let j = 0; j < batch.length; j++) {  // Pair each document with its corresponding embedding vector
       rowsToInsert.push({
         content: batch[j].content,
         metadata: batch[j].metadata,
@@ -178,7 +210,7 @@ async function main() {
   // Insert in chunks to avoid request size limits
   const insertChunks = chunkArray(rowsToInsert, 100);
 
-  for (let i = 0; i < insertChunks.length; i++) {
+  for (let i = 0; i < insertChunks.length; i++) {  // Upload rows in chunks to avoid Supabase request size limits
     const chunk = insertChunks[i];
 
     const query = UPSERT_ON_FILENAME
@@ -189,10 +221,10 @@ async function main() {
           // You can set UPSERT_ON_FILENAME=false to avoid confusion.
           onConflict: "id",
         })
-      : supabase.from(SUPABASE_TABLE).insert(chunk);
+      : supabase.from(SUPABASE_TABLE).insert(chunk);  // Plain insert when upsert is disabled
 
     const { error } = await query;
-    if (error) throw error;
+    if (error) throw error;  // Bubble up Supabase errors immediately
 
     console.log(`Uploaded chunk ${i + 1}/${insertChunks.length}`);
   }

@@ -4,24 +4,34 @@ import { Navbar } from '../components/Navbar'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
-/* ------------------------------------------------------------------ */
-/* Repository Browser                                                  */
-/* Shows public docs + restricted docs whose tags overlap user's tags */
-/* ------------------------------------------------------------------ */
+/**
+ * Repos.tsx — Authenticated public nootbook browser.
+ *
+ * Fetches public documents plus restricted documents whose tags overlap
+ * the current user's profile tags. Supports semantic search via server-side
+ * embeddings (cosine similarity) with a title/tag substring fallback while
+ * the embedding request is in-flight, and access-level filter chips.
+ */
 
+/** Shape of a discoverable document row returned from the Supabase query. */
 interface RepoDoc {
   id: string
   title: string
+  /** Free-form topic tags used for access gating and display. */
   tags: string[]
   access_level: 'public' | 'restricted'
+  /** Controls who can submit merge requests to this document. */
   merge_policy: string
   owner_user_id: string
   created_at: string
   updated_at: string
+  /** Pre-computed vector embedding for semantic search (may be null). */
   embedding: number[] | null
+  /** Resolved owner display name (joined client-side). */
   ownerName?: string
 }
 
+/** Converts an ISO timestamp to a short relative label (e.g. "5h ago", "Jan 2024"). */
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
@@ -33,6 +43,11 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
+/**
+ * Small pill badge showing a document's access level with colour-coded styling.
+ * - `public`     → sage green
+ * - `restricted` → amber
+ */
 function AccessBadge({ level }: { level: string }) {
   const styles: Record<string, string> = {
     public: 'text-sage/70     bg-sage/[0.08]     border-sage/15',
@@ -45,6 +60,10 @@ function AccessBadge({ level }: { level: string }) {
   )
 }
 
+/**
+ * Static seed data mirroring the public explore page.
+ * Displayed as fallback / demo content alongside live Supabase documents.
+ */
 const repos = [
   {
     id: 'nyu-cs-algo',
@@ -168,6 +187,7 @@ const repos = [
   },
 ]
 
+/** Minimal star SVG icon used in repo card stat rows. */
 function StarIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -176,6 +196,7 @@ function StarIcon() {
   )
 }
 
+/** Git-style branch SVG icon used in repo card stat rows. */
 function BranchIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -184,6 +205,12 @@ function BranchIcon() {
   )
 }
 
+/**
+ * Computes cosine similarity between two equal-length numeric vectors.
+ * Used to rank documents against the query embedding from the server.
+ *
+ * @returns Score in [-1, 1]; 0 when either vector has zero magnitude.
+ */
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0
   for (let i = 0; i < a.length; i++) {
@@ -195,12 +222,28 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom
 }
 
+/**
+ * Resolves the embedding API base URL.
+ * Returns `/api` for local development; strips the trailing path segment
+ * for production URLs specified via `VITE_API_URL`.
+ */
 function apiBase(): string {
   const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
   if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
   return url.replace(/\/[^/]+$/, '')
 }
 
+/**
+ * Repos page — authenticated public nootbook browser.
+ *
+ * On mount, fetches all public documents plus restricted documents
+ * whose `tags` overlap the current user's profile tags, then resolves
+ * owner display names in a second query.
+ *
+ * Search uses server-side embeddings (semantic ranking) with a
+ * title/tag substring fallback during the embedding round-trip.
+ * An access-level filter (all / public / restricted) is applied on top.
+ */
 export default function Repos() {
   const { user, profile } = useAuth()
   const [docs, setDocs] = useState<RepoDoc[]>([])
@@ -221,8 +264,10 @@ export default function Repos() {
         let query = supabase
           .from('documents')
           .select('id, title, tags, access_level, merge_policy, owner_user_id, created_at, updated_at, embedding')
-          .neq('owner_user_id', user.id) // exclude own docs
+          .neq('owner_user_id', user.id) // exclude own docs — shown in MyRepos instead
 
+        // Use a Supabase OR filter: always include public; include restricted only when
+        // the user's profile tags overlap the document's required tags (array overlap `.ov`)
         if (userTags.length > 0) {
           query = query.or(
             `access_level.eq.public,and(access_level.eq.restricted,tags.ov.{${userTags.join(',')}})`
@@ -235,13 +280,14 @@ export default function Repos() {
 
         if (error || !data) { setLoading(false); return }
 
-        // Fetch owner display names
+        // Collect unique owner IDs so we can batch-fetch display names in one query.
         const ownerIds = [...new Set(data.map(d => d.owner_user_id))]
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, display_name')
           .in('id', ownerIds)
 
+        // Build id → display_name lookup for O(1) joins when mapping each document row.
         const nameMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p.display_name]))
 
         setDocs(data.map(d => ({ ...d, ownerName: nameMap[d.owner_user_id] ?? 'unknown' })))
@@ -281,7 +327,7 @@ export default function Repos() {
 
     const base = docs.filter(d => filter === 'all' || d.access_level === filter)
 
-    // Semantic mode: rank by cosine similarity, fall back to title/tag substring
+    // Semantic mode: rank by cosine similarity; docs missing an embedding score -1
     if (queryEmbedding) {
       return [...base]
         .map(d => ({
@@ -289,11 +335,11 @@ export default function Repos() {
           score: d.embedding ? cosineSimilarity(queryEmbedding, d.embedding) : -1,
         }))
         .filter(() => true)
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => b.score - a.score)  // descending: highest similarity first
         .map(({ doc }) => doc)
     }
 
-    // Embedding in-flight: substring fallback
+    // Embedding in-flight: substring fallback on title and tags
     return base.filter(d =>
       d.title.toLowerCase().includes(search.toLowerCase()) ||
       d.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))

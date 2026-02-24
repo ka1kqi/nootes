@@ -10,6 +10,15 @@ import { useAuth } from '../hooks/useAuth'
 /* Bauhaus geometric composition with warm botanical palette           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Positions and math strings for the decorative floating LaTeX equations
+ * rendered in the background of the login page.
+ * @property math  - LaTeX expression string passed to KaTeX
+ * @property x     - CSS `left` value (percentage or px) for absolute positioning
+ * @property y     - CSS `top` value for absolute positioning
+ * @property delay - CSS animation-delay applied to the float keyframe
+ * @property size  - Tailwind text-size class controlling rendered font size
+ */
 const floatingEquations = [
   { math: 'e^{i\\pi} + 1 = 0', x: '8%', y: '18%', delay: '0s', size: 'text-xs' },
   { math: '\\nabla \\times \\mathbf{E} = -\\frac{\\partial \\mathbf{B}}{\\partial t}', x: '72%', y: '12%', delay: '0.5s', size: 'text-[10px]' },
@@ -19,23 +28,40 @@ const floatingEquations = [
   { math: 'P(A|B) = \\frac{P(B|A)P(A)}{P(B)}', x: '12%', y: '45%', delay: '1.2s', size: 'text-[10px]' },
 ]
 
+/**
+ * Login / Sign-up page.
+ *
+ * Supports two modes toggled via the `?mode=signin|signup` query param:
+ *  - "signin" — email + password authentication via Supabase
+ *  - "signup" — account creation via Supabase
+ *
+ * Layout: decorative dark-green left panel (hidden on mobile) + right-side form.
+ * On successful auth (or if the user is already logged in), navigates to the
+ * page they came from, or falls back to /home.
+ */
 export default function Login() {
   const { user, signInWithGoogle, signInWithEmail, signUp } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  // Honour the "from" redirect set by ProtectedRoute so users land back where they started
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/home'
 
   // Redirect authenticated users (handles post-OAuth callback)
   useEffect(() => {
+    // Navigate to the originating page (or /home) whenever a user session is confirmed.
     if (user) navigate(from, { replace: true })
   }, [user, navigate, from])
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // Shown when a non-.edu email is detected, hinting that school features require .edu
   const [showEduPrompt, setShowEduPrompt] = useState(false)
+  // Stores the latest auth error message to display inline near the submit button
   const [authError, setAuthError] = useState<string | null>(null)
+  // Prevents double-submission while an async auth request is in flight
   const [authLoading, setAuthLoading] = useState(false)
   const searchParams = new URLSearchParams(location.search)
+  // Initialise mode from the URL query param so deep-links work correctly
   const [mode, setMode] = useState<'signin' | 'signup'>(
     searchParams.get('mode') === 'signup' ? 'signup' : 'signin'
   )
@@ -43,7 +69,7 @@ export default function Login() {
   async function handleGoogleSignIn() {
     setAuthError(null)
     await signInWithGoogle()
-    // Redirect happens via OAuth callback
+    // Redirect happens via OAuth callback — no manual navigation needed here
   }
 
   async function handleEmailSubmit(e: React.FormEvent) {
@@ -51,12 +77,15 @@ export default function Login() {
     if (!email || !password) return
     setAuthError(null)
     setAuthLoading(true)
+    // Dynamically choose signUp or signInWithEmail based on current mode
     const fn = mode === 'signup' ? signUp : signInWithEmail
     const { error } = await fn(email, password)
     setAuthLoading(false)
     if (error) {
+      // Surface the error message from Supabase directly to the user
       setAuthError(error)
     } else {
+      // On success, navigate to the originating page the user tried to access.
       navigate(from, { replace: true })
     }
   }
@@ -176,6 +205,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value)
+                  // Show the .edu hint once the user has typed enough to have a valid-looking domain
                   setShowEduPrompt(e.target.value.length > 3 && !e.target.value.endsWith('.edu'))
                 }}
                 placeholder="you@org.com"

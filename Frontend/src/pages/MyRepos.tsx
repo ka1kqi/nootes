@@ -4,11 +4,16 @@ import { Navbar } from '../components/Navbar'
 import { useUserDocuments, deleteDocument } from '../hooks/useMyRepos'
 import { NewNootModal } from '../components/NewNootModal'
 
-/* ------------------------------------------------------------------ */
-/* Your Nootbooks — Personal Dashboard                                 */
-/* Shows nootbooks you own, contribute to, and have forked             */
-/* ------------------------------------------------------------------ */
+/**
+ * MyRepos.tsx — Personal nootbook dashboard.
+ *
+ * Lists all documents owned by the authenticated user with semantic search
+ * (cosine similarity against server-side embeddings) and a title substring
+ * fallback. Provides inline delete with a confirmation overlay and a modal
+ * for creating new nootbooks.
+ */
 
+/** Converts a UTC date string to a human-friendly relative time label (e.g. "3d ago"). */
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
@@ -21,6 +26,12 @@ function timeAgo(dateStr: string): string {
   return `${months}mo ago`
 }
 
+/**
+ * Computes the cosine similarity between two equal-length numeric vectors.
+ * Used to rank documents by semantic relevance to a query embedding.
+ *
+ * @returns A score in [-1, 1]; returns 0 when either vector is the zero vector.
+ */
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0
   for (let i = 0; i < a.length; i++) {
@@ -32,6 +43,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom
 }
 
+/**
+ * Resolves the base URL for the embedding API.
+ * Uses `/api` proxy for local development; strips the trailing path segment
+ * for production deployments where VITE_API_URL points to a specific endpoint.
+ */
 function apiBase(): string {
   const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
   if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
@@ -42,6 +58,12 @@ function apiBase(): string {
 /* Main page                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * MyRepos page — personal nootbook dashboard.
+ *
+ * Renders the full list of the user's documents with semantic search,
+ * per-document delete (with inline confirmation), and a "New Nootbook" modal.
+ */
 export default function MyRepos() {
   const { docs, loading, refetch } = useUserDocuments()
   const navigate = useNavigate()
@@ -62,6 +84,7 @@ export default function MyRepos() {
     embedTimerRef.current = setTimeout(async () => {
       setEmbedding(true)
       try {
+        // Request a vector embedding for the search query from the backend.
         const res = await fetch(`${apiBase()}/embed/query`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -69,6 +92,7 @@ export default function MyRepos() {
         })
         if (res.ok) {
           const { embedding: vec } = await res.json()
+          // Only store valid arrays; guard against unexpected API shapes.
           setQueryEmbedding(Array.isArray(vec) ? vec : null)
         }
       } catch { /* non-fatal */ }
@@ -87,10 +111,11 @@ export default function MyRepos() {
       return [...docs]
         .map(d => ({
           doc: d,
+          // Docs that have no stored embedding get score -1 so they sink to the bottom
           score: d.embedding ? cosineSimilarity(queryEmbedding, d.embedding) : -1,
         }))
         .filter(() => true)
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => b.score - a.score)  // descending: highest similarity first
         .map(({ doc }) => doc)
     }
 

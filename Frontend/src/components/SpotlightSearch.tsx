@@ -1,3 +1,23 @@
+/**
+ * @file SpotlightSearch.tsx
+ * Full-featured AI search and chat panel with two rendering modes:
+ *  - **inline** — static, rendered as part of the page layout
+ *  - **overlay** — a draggable/resizable floating panel (no backdrop blur)
+ *
+ * Communicates with three backend endpoints:
+ *  - `/api/noot`    — general AI chat (returns markdown or structured actions)
+ *  - `/api/prompt`  — knowledge-graph expansion
+ *  - `/api/explain` — node-level explanation for graph nodes
+ *
+ * The AI can return special response types recognised by `parse*Response()`
+ * helpers: `[GRAPH]` JSON for task graphs, `[WRITE_TO_EDITOR]` for inserting
+ * blocks, `[NAVIGATE]` to route the user, `[CREATE_REPO]` to create a
+ * nootbook, and `[MESSAGE]` for plain text.
+ *
+ * Also exports {@link SpotlightFAB} — a standalone ⌘K FAB that wraps the
+ * overlay panel.
+ */
+
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import GraphView, { type TaskItem, type ExpandFn, type QueryFn } from '../pages/GraphView'
@@ -11,6 +31,7 @@ import { useEditorBridge, type BlockSpec } from '../contexts/EditorBridgeContext
 import { supabase } from '../lib/supabase'
 import { createDocument } from '../hooks/useMyRepos'
 
+/** Metadata for a file the user has attached to the current prompt. */
 interface AttachedFile {
   name: string
   size: number
@@ -25,12 +46,22 @@ interface AttachedFile {
 /* ------------------------------------------------------------------ */
 
 // ─── API CONFIG ─────────────────────────────────────────────────────────
+/** Base URL for all backend API calls, derived from `VITE_API_URL` env var. */
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt').replace(/\/api\/prompt$/, '')
+/** Endpoint for the main noot AI agent (chat, actions). */
 const NOOT_API_URL = `${API_BASE}/api/noot`
+/** Endpoint for knowledge-graph prompt expansion. */
 const GRAPH_API_URL  = `${API_BASE}/api/prompt`
+/** Endpoint for per-node explanation queries. */
 const EXPLAIN_API_URL = `${API_BASE}/api/explain`
 
 // ─── PARSE GRAPH RESPONSE ──────────────────────────────────────────────
+/**
+ * Removes duplicate task items from a parsed graph array, keying by `name`.
+ *
+ * @param parsed - Raw array of task items returned by the AI.
+ * @returns De-duplicated array preserving first occurrence of each name.
+ */
 function dedupeItems(parsed: TaskItem[]): TaskItem[] {
   const seen = new Set<string>()
   return parsed.filter(it => {
@@ -40,6 +71,13 @@ function dedupeItems(parsed: TaskItem[]): TaskItem[] {
   })
 }
 
+/**
+ * Parses AI responses that use the text-format task schema instead of JSON.
+ * Each item is expected to match: `name  text: "..."  depends_on: [...]`
+ *
+ * @param content - Raw text content from the AI response.
+ * @returns Parsed items + summary string, or `null` if no items were found.
+ */
 function parseTextFormat(content: string): { items: TaskItem[]; summary: string } | null {
   const re = /^(.+?)\s+text:\s+"((?:[^"\\]|\\.)*)"\s+depends_on:\s+(\[[^\]]*\])/gm
   const items: TaskItem[] = []
@@ -52,10 +90,21 @@ function parseTextFormat(content: string): { items: TaskItem[]; summary: string 
   }
   if (items.length === 0) return null
   const summaryLines: string[] = []
-  content.split(/\n+/).forEach(line => { const t = line.trim(); if (t && !re.test(t)) summaryLines.push(t) })
+  content.split(/\n+/).forEach(line => {
+    // Collect lines that aren't task-item definitions as the summary text
+    const t = line.trim(); if (t && !re.test(t)) summaryLines.push(t)
+  })
   return { items: dedupeItems(items), summary: summaryLines.join(' ').trim() }
 }
 
+/**
+ * Normalises the raw body of a response before JSON parsing.
+ * Strips leading metadata tags like `[GRAPH_RESPONSE]` and extracts
+ * the JSON array from `{…}` or `[{…}]` wrapped strings.
+ *
+ * @param raw - Raw string to normalise.
+ * @returns `body` — the JSON-like portion; `suffix` — any trailing text.
+ */
 function normaliseContent(raw: string): { body: string; suffix: string } {
   const stripped = raw.replace(/^\s*\[[A-Z_a-z\s]+\]\s*/g, '').trim()
   if (stripped.startsWith('{')) {
@@ -67,6 +116,14 @@ function normaliseContent(raw: string): { body: string; suffix: string } {
   return { body: stripped, suffix: '' }
 }
 
+/**
+ * Attempts to parse a `[GRAPH]` AI response into a task-graph structure.
+ * Tries JSON parsing first (with LaTeX-backslash fixing); falls back to
+ * the text-format parser if JSON fails.
+ *
+ * @param content - Full AI response string, potentially prefixed with `[GRAPH]`.
+ * @returns Task items + summary string, or `null` if parsing fails.
+ */
 function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
   // Strip optional [GRAPH] marker before parsing
   const stripped = content.replace(/^\s*\[GRAPH\]\s*/i, '')
@@ -106,6 +163,14 @@ function fixLatexJson(str: string): string {
   )
 }
 
+/**
+ * Parses a `[WRITE_TO_EDITOR]` AI response into a list of block specs
+ * and a human-readable confirmation message.
+ * Also normalises informal list type names (e.g. `"ul"` → `"bullet_list"`).
+ *
+ * @param content - Full AI response string.
+ * @returns Block specs + confirmation, or `null` if the marker is absent.
+ */
 function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
   if (!/^\s*\[WRITE_TO_EDITOR\]/i.test(content)) return null
   try {
@@ -122,6 +187,7 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
       ul: 'bullet_list', ol: 'ordered_list', steps: 'ordered_list',
       list: 'bullet_list', numbered_list: 'ordered_list',
     }
+    // Normalise informal list aliases (e.g. "ul", "steps") to canonical BlockSpec type names
     const blocks = parsed.map((b: BlockSpec) => ({ ...b, type: (TYPE_MAP[b.type] ?? b.type) as BlockSpec['type'] }))
     const confirmation = body.slice(end + 1).trim() || `Wrote ${blocks.length} block(s) to your notes.`
     return { blocks, confirmation }
@@ -130,6 +196,14 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
   }
 }
 
+/**
+ * Parses a `[NAVIGATE]` AI response into a route path and display message.
+ * The route may contain a `__SEARCH:title__` placeholder that the caller
+ * resolves against the user's documents.
+ *
+ * @param content - Full AI response string.
+ * @returns Route + message, or `null` if the marker is absent.
+ */
 function parseNavigateResponse(content: string): { route: string; message: string } | null {
   if (!/^\s*\[NAVIGATE\]/i.test(content)) return null
   try {
@@ -142,6 +216,12 @@ function parseNavigateResponse(content: string): { route: string; message: strin
   }
 }
 
+/**
+ * Parses a `[CREATE_REPO]` AI response into nootbook creation parameters.
+ *
+ * @param content - Full AI response string.
+ * @returns Creation params + confirmation message, or `null` if marker is absent.
+ */
 function parseCreateRepoResponse(content: string): {
   title: string; description?: string; visibility?: string
   tags?: string[]; initial_blocks?: BlockSpec[]; message: string
@@ -164,6 +244,12 @@ function parseCreateRepoResponse(content: string): {
   }
 }
 
+/**
+ * Parses a `[MESSAGE]` AI response into a plain text message object.
+ *
+ * @param content - Full AI response string.
+ * @returns `{ message }` or `null` if the marker is absent or JSON is invalid.
+ */
 function parseMessageResponse(content: string): { message: string } | null {
   if (!/^\s*\[MESSAGE\]/i.test(content)) return null
   try {
@@ -174,10 +260,23 @@ function parseMessageResponse(content: string): { message: string } | null {
   } catch { return null }
 }
 
+/**
+ * Escapes special HTML characters for safe insertion into a generated HTML string.
+ *
+ * @param str - Raw string that may contain `&`, `<`, `>`, `"`, or `'`.
+ * @returns HTML-escaped string.
+ */
 function escHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
+/**
+ * Opens a new browser tab containing a print-ready HTML document of the
+ * conversation and triggers the browser's print dialog after a short delay.
+ * The document uses the Nootes Botanical colour palette and Gamja Flower font.
+ *
+ * @param messages - The full chat message array to export.
+ */
 function exportToPDF(messages: ChatMessage[]) {
   const userMessages = messages.filter(m => m.role === 'user')
   const mainPrompt = userMessages[0]?.content ?? 'Noot Conversation'
@@ -196,6 +295,7 @@ function exportToPDF(messages: ChatMessage[]) {
       bodyHtml += `<section class="graph-section">`
       bodyHtml += `<h2 class="section-title">Tasks · group ${graphIndex}</h2><ul class="task-list">`
       msg.graphData.items.forEach(item => {
+        // Render each task as an HTML list item with its name and descriptive text
         bodyHtml += `<li class="task-item"><div class="task-name">${escHtml(item.name)}</div><div class="task-text">${escHtml(item.text)}</div></li>`
       })
       bodyHtml += `</ul>`
@@ -237,10 +337,19 @@ ${bodyHtml}</body></html>`
   const win = window.open('', '_blank')
   if (!win) return
   win.document.write(html)
+  // Trigger the browser's print dialog after styles and fonts have had time to load
   win.onload = () => setTimeout(() => win.print(), 600)
   win.document.close()
 }
 
+/**
+ * Copies the full conversation as a structured plain-text string to the clipboard.
+ * Different message types (graph, navigate, write, plain) are serialised into
+ * readable ASCII blocks.
+ *
+ * @param messages - The full chat message array to copy.
+ * @returns `true` if the clipboard write succeeded, `false` otherwise.
+ */
 async function copyAsText(messages: ChatMessage[]): Promise<boolean> {
   const lines: string[] = ['═══ Noot Conversation ═══', `Generated: ${new Date().toLocaleString()}`, '']
   for (const msg of messages) {
@@ -249,6 +358,7 @@ async function copyAsText(messages: ChatMessage[]): Promise<boolean> {
     } else if (msg.graphData) {
       lines.push('▸ Noot [Graph]:')
       msg.graphData.items.forEach((item, i) => {
+        // Serialize each task as a numbered entry with its name, description, and deps
         lines.push(`  ${i + 1}. ${item.name}`)
         lines.push(`     ${item.text}`)
         if (item.depends_on?.length) lines.push(`     → ${item.depends_on.join(', ')}`)
@@ -262,6 +372,7 @@ async function copyAsText(messages: ChatMessage[]): Promise<boolean> {
     } else if (msg.writeData) {
       lines.push('▸ Noot [Written to Editor]:')
       msg.writeData.blocks.forEach((b, i) => {
+        // List each written block with its type and truncated content preview
         lines.push(`  ${i + 1}. [${b.type}] ${b.content}`)
       })
       lines.push('', `  ${msg.writeData.confirmation}`, '')
@@ -272,16 +383,22 @@ async function copyAsText(messages: ChatMessage[]): Promise<boolean> {
   try { await navigator.clipboard.writeText(lines.join('\n')); return true } catch { return false }
 }
 
+/** A single turn in the spotlight chat history. */
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  /** Present when the AI returned a `[GRAPH]` knowledge-graph response. */
   graphData?: { items: TaskItem[]; summary: string } | null
+  /** Present when the AI returned a `[WRITE_TO_EDITOR]` block-insertion response. */
   writeData?: { blocks: BlockSpec[]; confirmation: string } | null
+  /** Present when the AI returned a `[NAVIGATE]` routing response. */
   navigateData?: { route: string; message: string } | null
+  /** Present when the AI returned a `[CREATE_REPO]` nootbook creation response. */
   createRepoData?: { title: string; message: string; repoId?: string } | null
 }
 
+/** Preset prompt suggestions shown when the chat is empty. */
 const SUGGESTIONS = [
   'Explain the chain rule',
   'Plan a study schedule for finals',
@@ -289,15 +406,33 @@ const SUGGESTIONS = [
   "What is Bayes' theorem?",
 ]
 
+/** Props for the {@link SpotlightSearch} component. */
 interface SpotlightSearchProps {
+  /** Rendering mode: `"inline"` embeds in the page; `"overlay"` floats. */
   mode: 'inline' | 'overlay'
+  /** Whether the overlay is currently visible (overlay mode only). */
   open?: boolean
+  /** Called when the overlay should close (Escape key or × button). */
   onClose?: () => void
+  /** Placeholder text shown in the search/chat input. */
   placeholder?: string
+  /** Visual theme for the panel. */
   variant?: 'light' | 'dark'
+  /** Additional CSS class applied to the root wrapper (inline mode only). */
   className?: string
 }
 
+/**
+ * AI search and chat panel.
+ *
+ * Maintains a conversation history (`historyRef`) that is sent to the
+ * backend on each turn to preserve multi-turn context. Parses structured
+ * action responses from the AI and executes side-effects (editor insert,
+ * navigation, document creation) automatically.
+ *
+ * In `"overlay"` mode the panel is draggable and resizable. In `"inline"`
+ * mode it renders as a static element within the page flow.
+ */
 export function SpotlightSearch({
   mode,
   open = true,
@@ -335,6 +470,7 @@ export function SpotlightSearch({
 
   // Focus input when overlay opens
   useEffect(() => {
+    // Focus input when the overlay opens (short delay avoids animation glitch)
     if (mode === 'overlay' && open) {
       setTimeout(() => inputRef.current?.focus(), 80)
     }
@@ -342,9 +478,16 @@ export function SpotlightSearch({
 
   // Auto-scroll messages
   useEffect(() => {
+    // Keep the latest message in view after every update or when loading state changes
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  /**
+   * Sends the current input to the noot AI endpoint, parses the response
+   * for structured action types (write, navigate, create-repo, message,
+   * graph), and dispatches the appropriate side-effect before appending
+   * the reply to the message list.
+   */
   const sendMessage = useCallback(async () => {
     const text = input.trim()
     if (!text || loading) return
@@ -470,6 +613,7 @@ export function SpotlightSearch({
               } else if (docId) {
                 createdId = docId
                 if (repoData.initial_blocks?.length) {
+                  // Assign unique stable IDs to each initial block before persisting
                   const blocksWithIds = repoData.initial_blocks.map((b, i) => ({
                     id: `init-${Date.now()}-${i}`,
                     type: b.type,
@@ -481,6 +625,7 @@ export function SpotlightSearch({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ blocks: blocksWithIds, title: repoData.title }),
                   }).catch(() => {
+                    // Non-fatal: the nootbook exists even if initial blocks failed to persist
                     repoMessage += '\n\n⚠ Nootbook created but initial content could not be saved.'
                   })
                 }
@@ -518,6 +663,16 @@ export function SpotlightSearch({
   }, [input, loading, navigate, user, editorBridge])
 
   // ── Expand a graph node into subtasks ──────────────────────────────
+  /**
+   * Fetches a sub-graph for a specific task node by calling the graph API
+   * with the full ancestor chain as context. Used by `GraphView` when the
+   * user clicks "expand" on a node.
+   *
+   * @param item      - The task node to expand.
+   * @param context   - Optional additional context string.
+   * @param ancestors - Ordered list of ancestor nodes (parent → grandparent…).
+   * @returns Parsed sub-task items and summary.
+   */
   const expandTask: ExpandFn = useCallback(async (item, context, ancestors) => {
     const userMessages = historyRef.current.filter(m => m.role === 'user')
     const topLevelPrompt = userMessages[0]?.content ?? ''
@@ -547,6 +702,16 @@ export function SpotlightSearch({
   }, [])
 
   // ── Query/explain a graph node ────────────────────────────────────
+  /**
+   * Asks the explain API a question about a specific graph node.
+   * Provides the full task hierarchy as context so the model can give
+   * a relevant, focused answer.
+   *
+   * @param item      - The task node being queried.
+   * @param question  - The user's question about this node.
+   * @param ancestors - Ordered ancestor chain for context.
+   * @returns Plain-text explanation string.
+   */
   const queryNode: QueryFn = useCallback(async (item, question, ancestors) => {
     const userMessages = historyRef.current.filter(m => m.role === 'user')
     const topLevelPrompt = userMessages[0]?.content ?? ''
@@ -572,11 +737,13 @@ export function SpotlightSearch({
     return data.content?.trim() ?? 'No response.'
   }, [])
 
+  /** Fills the input field with a suggestion chip text and focuses the input. */
   const handleSuggestion = useCallback((s: string) => {
     setInput(s)
     setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
+  /** Reads selected files from the file picker and appends them to `attachedFiles`. */
   const handleFileAttach = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     setAttachedFiles(prev => [
@@ -586,14 +753,20 @@ export function SpotlightSearch({
     e.target.value = ''
   }, [])
 
+  /** Removes a previously attached file by name from `attachedFiles`. */
   const removeFile = useCallback((name: string) => {
     setAttachedFiles(prev => prev.filter(f => f.name !== name))
   }, [])
 
+  /**
+   * Clears all messages, files, and conversation history with a brief
+   * fade animation (`clearing` flag triggers the CSS transition).
+   */
   const clearChat = useCallback(() => {
     if (clearing) return
     setClearing(true)
     setTimeout(() => {
+      // Execute the wipe after the CSS fade-out animation finishes (250 ms)
       setMessages([])
       setAttachedFiles([])
       setExpanded(false)
@@ -603,6 +776,13 @@ export function SpotlightSearch({
   }, [clearing])
 
   // ── Drag ────────────────────────────────────────────────────────────
+  /**
+   * Initiates a drag operation for the overlay panel.
+   * Attaches temporary `mousemove`/`mouseup` listeners to `window` and
+   * updates `pos` to keep the panel within the viewport bounds.
+   *
+   * @param e - The mousedown event on the drag handle bar.
+   */
   const handleDragStart = (e: React.MouseEvent) => {
     // Don't drag when clicking interactive children
     if ((e.target as HTMLElement).closest('button, input, a')) return
@@ -610,12 +790,14 @@ export function SpotlightSearch({
     const sx = e.clientX, sy = e.clientY
     const spx = pos.x, spy = pos.y
     const pw = panelWidth
+    /** Updates panel position on every mousemove, clamping to viewport bounds. */
     const onMove = (ev: MouseEvent) => {
       setPos({
         x: Math.max(16, Math.min(window.innerWidth - pw - 16, spx + ev.clientX - sx)),
         y: Math.max(16, Math.min(window.innerHeight - 60, spy + ev.clientY - sy)),
       })
     }
+    /** Removes temporary window listeners once the drag ends. */
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
@@ -625,15 +807,24 @@ export function SpotlightSearch({
   }
 
   // ── Resize ──────────────────────────────────────────────────────────
+  /**
+   * Initiates a resize operation from the bottom-right corner handle.
+   * Clamps `panelWidth` to `[360, viewport - 32]` and `chatHeight` to
+   * `[160, 600]` to prevent the panel from becoming unusable.
+   *
+   * @param e - The mousedown event on the resize handle.
+   */
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     const sx = e.clientX, sy = e.clientY
     const sw = panelWidth, sh = chatHeight
+    /** Adjusts panel width and chat area height while clamping to allowed ranges. */
     const onMove = (ev: MouseEvent) => {
       setPanelWidth(Math.max(360, Math.min(window.innerWidth - 32, sw + ev.clientX - sx)))
       setChatHeight(Math.max(160, Math.min(600, sh + ev.clientY - sy)))
     }
+    /** Removes temporary window listeners once the resize ends. */
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
@@ -860,6 +1051,7 @@ export function SpotlightSearch({
               {!editorBridge.isEditorActive && msg.writeData && (
                 <button
                   onClick={() => {
+                    // Serialise each block to its Markdown equivalent then copy to clipboard
                     const text = msg.writeData!.blocks.map(b => {
                       if (b.type === 'h1') return `# ${b.content}`
                       if (b.type === 'h2') return `## ${b.content}`
@@ -1101,12 +1293,19 @@ export function SpotlightSearch({
 /* Bottom-left floating button. Click or ⌘K opens spotlight overlay.  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Standalone floating action button that toggles the {@link SpotlightSearch}
+ * overlay. Registers a global ⌘K / Ctrl+K keyboard shortcut.
+ *
+ * @param variant - Visual theme passed through to `SpotlightSearch`.
+ */
 export function SpotlightFAB({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
   const [open, setOpen] = useState(false)
   const isDark = variant === 'dark'
 
   // ⌘K / Ctrl+K shortcut
   useEffect(() => {
+    /** Toggles the spotlight overlay and prevents the default browser shortcut. */
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()

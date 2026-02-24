@@ -13,9 +13,11 @@ import { useAuth } from '../hooks/useAuth'
 
 // ── Preview tabs ─────────────────────────────────────────────────────
 
+/** Ordered list of feature preview tabs shown in the right-side card. */
 const PREVIEW_TABS = ['Write', 'Merge', 'Study'] as const
 type PreviewTab = typeof PREVIEW_TABS[number]
 
+/** Demonstrates live LaTeX rendering inside the editor preview card. */
 function WritePreview() {
   return (
     <div>
@@ -29,6 +31,7 @@ function WritePreview() {
   )
 }
 
+/** Illustrates the AI semantic merge flow: two contributor snippets collapsed into one synthesized result. */
 function MergePreview() {
   return (
     <div className="space-y-2">
@@ -67,6 +70,7 @@ function MergePreview() {
   )
 }
 
+/** Shows sample AI-generated flashcard Q&A pairs to preview the study tools feature. */
 function StudyPreview() {
   const cards = [
     { q: 'What is the chain rule?', a: 'd/dx[f(g(x))] = f′(g(x)) · g′(x)' },
@@ -89,10 +93,20 @@ function StudyPreview() {
 
 // ── Main page ─────────────────────────────────────────────────────────
 
+/**
+ * Public landing page — entry point for unauthenticated visitors.
+ *
+ * Layout: sticky nav + two-column body (hero left, interactive preview card right) + footer.
+ * The preview card auto-rotates through Write → Merge → Study tabs every 3 s,
+ * with a 180 ms crossfade between tab panels. Manual tab clicks reset the rotation timer.
+ * Authenticated users are immediately redirected to /home.
+ */
 export default function Landing() {
   const { user, loading } = useAuth()
   const [activeTab, setActiveTab] = useState<PreviewTab>('Write')
+  // `displayedTab` lags behind `activeTab` by 180 ms to allow the exit animation to finish
   const [displayedTab, setDisplayedTab] = useState<PreviewTab>('Write')
+  // Controls the fade-out CSS class; set to true while the old content exits
   const [isExiting, setIsExiting] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -100,6 +114,7 @@ export default function Landing() {
   // Crossfade when activeTab changes
   useEffect(() => {
     if (transitionRef.current) clearTimeout(transitionRef.current)
+    // Trigger exit animation immediately, then swap content after 180 ms.
     setIsExiting(true)
     transitionRef.current = setTimeout(() => {
       setDisplayedTab(activeTab)
@@ -109,9 +124,11 @@ export default function Landing() {
   }, [activeTab])
 
   const startRotation = () => {
+    // Clear any existing interval before starting a fresh one
     if (intervalRef.current) clearInterval(intervalRef.current)
     intervalRef.current = setInterval(() => {
       setActiveTab(prev => {
+        // Advance to the next tab, wrapping back to index 0 after the last
         const idx = PREVIEW_TABS.indexOf(prev)
         return PREVIEW_TABS[(idx + 1) % PREVIEW_TABS.length]
       })
@@ -119,12 +136,14 @@ export default function Landing() {
   }
 
   useEffect(() => {
+    // Start auto-rotation on mount and clear the interval on unmount to prevent memory leaks.
     startRotation()
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [])
 
   const handleTabClick = (tab: PreviewTab) => {
     setActiveTab(tab)
+    // Reset the auto-rotation timer so the clicked tab gets the full 3 s before advancing
     startRotation()
   }
 

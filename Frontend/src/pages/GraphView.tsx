@@ -22,15 +22,34 @@ import {
 import '@xyflow/react/dist/style.css'
 import { motion, AnimatePresence } from 'framer-motion'
 
+/**
+ * GraphView — interactive hub-and-spoke knowledge graph powered by ReactFlow.
+ *
+ * Arranges TaskItems as animated circular nodes in concentric rings (BFS depth
+ * from root). Supports click-to-expand (AI-generated subtasks), free-form Q&A
+ * on any node, manual child-node creation, and staggered entrance animations.
+ * Calls `onGraphChanged` whenever the graph structure changes so the parent can
+ * persist the latest state.
+ */
+
 // ─── TYPES ───────────────────────────────────────────────────────────────────
+/**
+ * A single task / concept node rendered as a circle in the graph.
+ * @property name       - Unique display label shown on the node.
+ * @property text       - Full description displayed in the side-panel.
+ * @property depends_on - Names of other TaskItems this node points to (source of outgoing edges).
+ */
 export interface TaskItem {
   name: string
   text: string
   depends_on?: string[]
 }
 
+/** Fetches AI-generated child nodes for a given task; `context` is optional free-text from the user. */
 export type ExpandFn       = (item: TaskItem, context: string, ancestors: TaskItem[]) => Promise<{ items: TaskItem[]; summary: string }>
+/** Answers a free-form question about a specific node in the context of its ancestor chain. */
 export type QueryFn        = (item: TaskItem, question: string, ancestors: TaskItem[]) => Promise<string>
+/** Called after every structural change to the graph (expand, manual node) so the parent can persist. */
 export type GraphChangedFn = (nodes: Node[], edges: Edge[]) => void
 type CircleNodeData = {
   label: string
@@ -49,6 +68,10 @@ type CircleNodeType = Node<CircleNodeData, 'circle'>
 // ─── CUSTOM CURVED EDGE ───────────────────────────────────────────────────────
 // ReactFlow's built-in 'bezier' ignores data.curvature; this custom edge uses it
 // so that edges between far-apart nodes get higher curvature and don't all pile up.
+/**
+ * Custom bezier edge that reads `data.curvature` to vary bend intensity per edge.
+ * Passed to ReactFlow via `edgeTypes` so all 'curved' type edges use this renderer.
+ */
 const CurvedEdge = ({
   id, sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition,
@@ -76,6 +99,12 @@ const HS = {
 }
 
 // ─── CIRCLE NODE ─────────────────────────────────────────────────────────────
+/**
+ * Custom ReactFlow node rendered as a styled circle.
+ * - Root node (depth 0): larger circle with the label rendered inside.
+ * - Child nodes: smaller circle showing a zero-padded index; label appears below.
+ * - While `data.isGenerating` is true, an animated loading indicator appears beneath.
+ */
 const CircleNode = ({ data, selected }: NodeProps<CircleNodeType>) => {
   const acc  = '#A3B18A'
   const bg   = selected ? '#264635' : '#E9E4D4'
@@ -258,6 +287,19 @@ const nodeTypes: NodeTypes = { circle: CircleNode }
 // Root node(s) sit at the centre; children radiate outward in concentric rings.
 // Nodes at depth ≥ 2 are clustered near their parent's angular position so the
 // graph reads as a true spoke/wheel rather than concentric circles.
+/**
+ * Converts a flat list of TaskItems into ReactFlow nodes and edges laid out in a
+ * hub-and-spoke / concentric-ring arrangement.
+ *
+ * Algorithm:
+ *  1. Build adjacency lists from `depends_on` fields (falls back to a linear chain).
+ *  2. BFS from root(s) to assign each node a depth and animation-delay order.
+ *  3. Place depth-1 nodes evenly around the root; deeper nodes cluster near their
+ *     parent's angle to preserve readability.
+ *
+ * @param items - Deduplicated list of task nodes to render.
+ * @returns ReactFlow-compatible `nodes` and `edges` arrays.
+ */
 function buildCircularLayout(items: TaskItem[]) {
   // Deduplicate by name defensively (AI can emit duplicate nodes)
   const seenNames = new Set<string>()
@@ -400,6 +442,19 @@ function buildCircularLayout(items: TaskItem[]) {
 // Arrange expansion nodes in a ring centred at (parentCx, parentCy), using the
 // same topo-sort → clockwise logic as buildCircularLayout.
 // Returns a map from item name → canvas centre {x, y} (brand-new items only).
+/**
+ * Calculates canvas positions for a newly-expanded set of child nodes.
+ *
+ * The ring is offset outward from the parent so children don't overlap existing
+ * nodes. Only items whose names are NOT in `existingNames` receive positions;
+ * already-present nodes are reused in-place.
+ *
+ * @param parentCx      - Canvas X centre of the expanded parent node.
+ * @param parentCy      - Canvas Y centre of the expanded parent node.
+ * @param items         - All child items returned by the expansion call.
+ * @param existingNames - Set of node labels already on the canvas.
+ * @returns Map from item name to canvas centre coordinates for brand-new items.
+ */
 function getExpansionCircularPositions(
   parentCx: number, parentCy: number,
   items: TaskItem[],
@@ -463,6 +518,10 @@ function getExpansionCircularPositions(
 }
 
 // ─── PANEL STATE ─────────────────────────────────────────────────────────────
+/**
+ * State held for the right-hand node detail panel.
+ * Includes both the expand-subtasks workflow and the explain/Q&A workflow.
+ */
 interface PanelState {
   item: TaskItem
   nodeId: string
@@ -485,6 +544,15 @@ interface PanelState {
 }
 
 // ─── GRAPH VIEW ──────────────────────────────────────────────────────────────
+/**
+ * Main graph component. Initialises ReactFlow with a circular layout built from
+ * `items`, and manages the node detail panel for expand / explain / create actions.
+ *
+ * @param items           - Task nodes to render on first mount (re-renders reset the layout).
+ * @param onExpand        - Callback to fetch AI-generated children for a node.
+ * @param onQuery         - Callback to answer a free-form question about a node.
+ * @param onGraphChanged  - Optional callback fired after every structural graph change.
+ */
 export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: { items: TaskItem[]; onExpand: ExpandFn; onQuery: QueryFn; onGraphChanged?: GraphChangedFn }) {
   const [panel, setPanel] = useState<PanelState | null>(null)
   const expCounter = useRef(0)
@@ -501,11 +569,12 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
   // Refs so async callbacks can read current state without stale closures
   const nodesRef = useRef<Node[]>(nodes)
   const edgesRef = useRef<Edge[]>(edges)
-  useEffect(() => { nodesRef.current = nodes }, [nodes])
-  useEffect(() => { edgesRef.current = edges }, [edges])
+  useEffect(() => { /** Keep nodesRef in sync so async handlers never read stale node state. */ nodesRef.current = nodes }, [nodes])
+  useEffect(() => { /** Keep edgesRef in sync so async handlers never read stale edge state. */ edgesRef.current = edges }, [edges])
 
   // Sync ReactFlow state when items reference changes (e.g. new graph with same length)
   useEffect(() => {
+    /** Replace the entire graph when the parent passes a new items array. */
     setNodes(initNodes)
     setEdges(initEdges)
   }, [initNodes, initEdges, setNodes, setEdges])
@@ -513,12 +582,14 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
   // Re-fit after the parent container animation completes (e.g. spotlight-expand starts
   // at max-height:0 so ReactFlow measures 0 dimensions on first mount).
   useEffect(() => {
+    /** Delay fitView until after the container's expand animation (350 ms) so ReactFlow has real dimensions. */
     const t = setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.18 }), 350)
     return () => clearTimeout(t)
   }, [initNodes, initEdges])
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     const d = node.data as CircleNodeData
+    // Toggle: clicking the already-open node closes the panel; clicking a new node opens it.
     setPanel(prev =>
       prev?.nodeId === node.id
         ? null
@@ -548,6 +619,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
 
     // Mark the parent node as "generating" so it shows the loading animation
     setNodes(prev => prev.map(nd =>
+      // Only flip the isGenerating flag on the node being expanded; leave all others unchanged.
       nd.id === panel.nodeId
         ? { ...nd, data: { ...nd.data, isGenerating: true } }
         : nd
@@ -568,6 +640,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
       let brandNewIdx = 0
       const nameToId = new Map<string, string>()
       newItems.forEach(item => {
+        // Reuse the existing ReactFlow node ID for items already on the canvas; mint a new one for genuinely new items.
         if (existingByLabel.has(item.name)) {
           nameToId.set(item.name, existingByLabel.get(item.name)!)
         } else {
@@ -597,14 +670,18 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
       const existingEdgeSet = new Set<string>()
       const edgesToAdd: Edge[] = []
       const sourceOutCount = new Map<string, number>()
+      // Alternate edges left/right and increase bend per additional edge from the same source
+      // to prevent multiple outgoing edges from a single node from overlapping each other.
       const getNextCurvature = (src: string) => {
         const n = sourceOutCount.get(src) ?? 0
         sourceOutCount.set(src, n + 1)
+        // Alternate sign so successive edges fan out on alternating sides; increase magnitude per pair.
         const side = n % 2 === 0 ? 1 : -1
         return side * (0.2 + Math.floor(n / 2) * 0.15)
       }
       const addEdge = (src: string, tgt: string, idx: number): Edge | null => {
         const key = `${src}→${tgt}`
+        // Skip duplicate edges that are already present in the current edge set.
         if (existingEdgeSet.has(key)) return null
         existingEdgeSet.add(key)
         return {
@@ -672,6 +749,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
           const nodeEdges = dedupedEdgesToAdd.filter(e => e.target === node.id)
           if (nodeEdges.length > 0) {
             setEdges(prev => {
+              // Guard against racing with another stagger tick that already added the same edges.
               const seen = new Set(prev.map(e => `${e.source}→${e.target}`))
               const fresh = nodeEdges.filter(e => !seen.has(`${e.source}→${e.target}`))
               return fresh.length > 0 ? [...prev, ...fresh] : prev
@@ -692,6 +770,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
       )
       // Clear the generating animation on error
       setNodes(prev => prev.map(nd =>
+        // Remove the spinner from the node that failed to expand.
         nd.id === panel.nodeId
           ? { ...nd, data: { ...nd.data, isGenerating: false } }
           : nd
@@ -724,6 +803,7 @@ export default function GraphView({ items, onExpand, onQuery, onGraphChanged }: 
     // Place new node offset from parent
     const angle = Math.random() * Math.PI * 2
     const dist = 250
+    // Offset in a random direction so manual nodes don't stack on top of each other.
     const nx = panel.cx + Math.cos(angle) * dist - NODE_W / 2
     const ny = panel.cy + Math.sin(angle) * dist - NODE_H / 2
 

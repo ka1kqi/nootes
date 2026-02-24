@@ -8,6 +8,10 @@ import logoImg from '../assets/logo.png'
 
 // ── Inline mockup components ─────────────────────────────────────────
 
+/**
+ * Mock repository browser shown beside Step 01 (Discover).
+ * Renders a static list of seeded course repos with access badges and tags.
+ */
 function DiscoverMockup() {
   const repos = [
     { code: 'CS-UA 310', name: 'Intro to Algorithms', org: 'NYU', contributors: 47, notes: 23, tags: ['exam-relevant', 'midterm'], access: 'public' },
@@ -27,6 +31,7 @@ function DiscoverMockup() {
       {/* repo list */}
       <div className="divide-y divide-forest/[0.05]">
         {repos.map((r, i) => (
+          // Each repo row shows code, name, access badge, contributor count, and tags.
           <div key={i} className="px-4 py-3 hover:bg-forest/[0.02] transition-colors">
             <div className="flex items-start justify-between gap-2 mb-1">
               <div>
@@ -41,6 +46,7 @@ function DiscoverMockup() {
               <span className="font-mono text-[8px] text-forest/25">{r.contributors} contributors · {r.notes} notes</span>
               <div className="flex gap-1">
                 {r.tags.map((t, j) => (
+                  // Render each tag as a small pill badge.
                   <span key={j} className="font-mono text-[7px] bg-forest/[0.04] text-forest/30 px-1.5 py-0.5 squircle-sm">{t}</span>
                 ))}
               </div>
@@ -56,6 +62,10 @@ function DiscoverMockup() {
   )
 }
 
+/**
+ * Mock editor showing a forked document beside Step 02 (Fork & Contribute).
+ * Illustrates master content (dimmed) alongside a user's new addition and code block.
+ */
 function ForkMockup() {
   return (
     <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)]">
@@ -109,6 +119,10 @@ function ForkMockup() {
   )
 }
 
+/**
+ * Mock merge UI shown beside Step 03 (AI Merge).
+ * Shows two contributor snippets converging through the AI merge step into a synthesized result.
+ */
 function MergeMockup() {
   return (
     <div className="bg-parchment border border-forest/10 squircle-xl p-5 shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)] space-y-3">
@@ -161,6 +175,10 @@ function MergeMockup() {
   )
 }
 
+/**
+ * Mock Noot AI assistant chat shown beside Step 04 (Learn with Noot).
+ * Demonstrates the graph-mode response with a mini concept graph and "Add to my notes" CTA.
+ */
 function NootMockup() {
   return (
     <div className="bg-parchment border border-forest/10 squircle-xl overflow-hidden shadow-[0_4px_32px_-8px_rgba(38,70,53,0.08)]">
@@ -225,6 +243,16 @@ function NootMockup() {
 }
 // ── Step data ─────────────────────────────────────────────────────────
 
+/**
+ * Ordered workflow steps rendered as alternating text + mockup sections.
+ * @property number   - Zero-padded step number used as the section ID anchor
+ * @property eyebrow  - Short ALL-CAPS label rendered above the step title
+ * @property title    - Primary heading for the step
+ * @property body     - Paragraph description of the step
+ * @property details  - Bullet-point feature list shown below the body text
+ * @property mockup   - Inline React element (one of the *Mockup components above)
+ * @property flip     - When true, the mockup appears on the left and text on the right
+ */
 const steps = [
   {
     number: '01',
@@ -266,6 +294,13 @@ const steps = [
 
 // ── Main page ─────────────────────────────────────────────────────────
 
+/**
+ * HowItWorks marketing page — walks visitors through the 4-step Nootes workflow:
+ * Discover → Fork & Contribute → AI Merge → Learn with Noot.
+ *
+ * Each step is an alternating two-column section (text + interactive mockup).
+ * Includes a supporting features strip and a final sign-up CTA.
+ */
 export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-cream flex flex-col">

@@ -1,13 +1,29 @@
+/**
+ * @file NewNootModal.tsx
+ * Dialog modal for creating a new nootbook (document).
+ * Collects a title and optional tags, calls {@link createDocument},
+ * then notifies the parent of the new document ID via `onCreated`.
+ */
+
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { createDocument } from '../hooks/useMyRepos'
 
+/** Props for the {@link NewNootModal} component. */
 interface Props {
+  /** Whether the modal is currently visible. */
   open: boolean
+  /** Called when the modal should close (cancel or after successful creation). */
   onClose: () => void
+  /** Called with the new document's UUID once creation succeeds. */
   onCreated: (docId: string) => void
 }
 
+/**
+ * Modal dialog for creating a new nootbook.
+ * Renders a backdrop + centred card with title/tag inputs and a submit button.
+ * Returns `null` when `open` is `false` so the DOM node is fully unmounted.
+ */
 export function NewNootModal({ open, onClose, onCreated }: Props) {
   const { user } = useAuth()
   const [title, setTitle] = useState('')
@@ -16,16 +32,25 @@ export function NewNootModal({ open, onClose, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /** Adds the current `tagInput` value to `tags` (lowercased, de-duped) and clears the input. */
   const addTag = () => {
     const t = tagInput.trim().toLowerCase()
     if (t && !tags.includes(t)) setTags(prev => [...prev, t])
     setTagInput('')
   }
+  /** Removes a specific tag from the `tags` list by value. */
   const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag))
 
+  /** Resets all form fields and clears any validation error. */
   const reset = () => { setTitle(''); setTags([]); setTagInput(''); setError(null) }
+  /** Resets the form then delegates to the parent's `onClose` callback. */
   const handleClose = () => { reset(); onClose() }
 
+  /**
+   * Handles the form submission: creates the document via Supabase,
+   * then either surfaces the error inline or closes the modal and
+   * calls `onCreated` with the new document's ID.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim() || !user) return

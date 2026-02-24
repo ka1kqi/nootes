@@ -5,13 +5,25 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { useTheme, THEMES } from '../contexts/ThemeContext'
 
+/**
+ * @module Settings
+ * User settings page with five sections: Account, Appearance, Notifications,
+ * Privacy, and Danger Zone. Appearance and notification/privacy preferences are
+ * persisted in localStorage; account/password changes are written to Supabase.
+ */
+
 /* ------------------------------------------------------------------ */
 /* Settings Page                                                        */
 /* Account, appearance, notifications, privacy, and danger zone        */
 /* ------------------------------------------------------------------ */
 
+/** Union of all settings section identifiers, used to drive the active nav state. */
 type Section = 'account' | 'appearance' | 'notifications' | 'privacy' | 'danger'
 
+/**
+ * Navigation items rendered in the left sidebar.
+ * Each entry maps a section ID to a display label and decorative icon character.
+ */
 const sections: { id: Section; label: string; icon: string }[] = [
   { id: 'account', label: 'Account', icon: '◉' },
   { id: 'appearance', label: 'Appearance', icon: '◈' },
@@ -20,6 +32,11 @@ const sections: { id: Section; label: string; icon: string }[] = [
   { id: 'danger', label: 'Danger Zone', icon: '⚠' },
 ]
 
+/**
+ * Accessible ARIA switch toggle.
+ * @param checked   - Current on/off state.
+ * @param onChange  - Callback invoked with the new boolean value on click.
+ */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -35,6 +52,15 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   )
 }
 
+/**
+ * Horizontal row layout used inside a SectionCard.
+ * Renders a label + optional description on the left and arbitrary children
+ * (typically a Toggle) on the right, separated by a thin border.
+ *
+ * @param label        - Primary setting label text.
+ * @param description  - Optional mono-spaced explanatory sub-text.
+ * @param children     - Control element(s) placed on the right.
+ */
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between py-4 border-b border-forest/[0.06] last:border-0">
@@ -47,6 +73,11 @@ function SettingRow({ label, description, children }: { label: string; descripti
   )
 }
 
+/**
+ * Rounded card container used to group related settings rows under a heading.
+ * @param title    - Section heading displayed in display-font style.
+ * @param children - SettingRow elements or any other content.
+ */
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-parchment border border-forest/10 squircle-xl p-6 shadow-[0_2px_24px_-8px_rgba(38,70,53,0.06)]">
@@ -75,6 +106,15 @@ function ThemeCircle({ colors, size = 40 }: { colors: [string, string, string, s
   )
 }
 
+/**
+ * Main Settings page component.
+ *
+ * State is split by concern:
+ * - Account fields (full name, handle, school) are synced from the Supabase profile.
+ * - Password fields are local and submitted directly to `supabase.auth.updateUser`.
+ * - Notification and privacy toggles are persisted in localStorage only.
+ * - Appearance (theme, font scale, compact mode, LaTeX preview) lives in ThemeContext.
+ */
 export default function Settings() {
   const [activeSection, setActiveSection] = useState<Section>('account')
   const navigate = useNavigate()
@@ -111,20 +151,21 @@ export default function Settings() {
   // Sync profile fields when profile loads
   useEffect(() => {
     if (profile) {
+      // Populate editable fields from the latest loaded profile to avoid stale defaults.
       setFullName(profile.full_name ?? '')
       setHandle(profile.display_name ?? '')
       setSchool(profile.organization ?? '')
     }
   }, [profile])
 
-  // Persist notification prefs
+  // Persist notification prefs — each effect writes a single key to localStorage on change.
   useEffect(() => { localStorage.setItem('nootes-notify-merges', String(notifyMerges)) }, [notifyMerges])
   useEffect(() => { localStorage.setItem('nootes-notify-comments', String(notifyComments)) }, [notifyComments])
   useEffect(() => { localStorage.setItem('nootes-notify-aura', String(notifyAura)) }, [notifyAura])
   useEffect(() => { localStorage.setItem('nootes-notify-digest', String(notifyDigest)) }, [notifyDigest])
   useEffect(() => { localStorage.setItem('nootes-notify-email', String(emailNotifications)) }, [emailNotifications])
 
-  // Persist privacy prefs
+  // Persist privacy prefs — each effect writes a single key to localStorage on change.
   useEffect(() => { localStorage.setItem('nootes-privacy-public', String(profilePublic)) }, [profilePublic])
   useEffect(() => { localStorage.setItem('nootes-privacy-activity', String(activityVisible)) }, [activityVisible])
   useEffect(() => { localStorage.setItem('nootes-privacy-repos-public', String(reposPublicDefault)) }, [reposPublicDefault])
@@ -134,16 +175,19 @@ export default function Settings() {
     if (!user) return
     setSavingProfile(true)
     setSaveProfileMsg(null)
+    // Patch only the editable profile fields; email is managed by Supabase Auth.
     const { error } = await supabase
       .from('profiles')
       .update({ full_name: fullName, display_name: handle, organization: school })
       .eq('id', user.id)
     setSavingProfile(false)
+    // Show a transient success or error message that auto-clears after 3 s.
     setSaveProfileMsg(error ? `Error: ${error.message}` : 'Changes saved.')
     setTimeout(() => setSaveProfileMsg(null), 3000)
   }
 
   async function updatePassword() {
+    // Client-side validation before hitting the API
     if (newPassword !== confirmPassword) {
       setPasswordMsg("Passwords don't match.")
       return
@@ -154,16 +198,20 @@ export default function Settings() {
     }
     setSavingPassword(true)
     setPasswordMsg(null)
+    // Supabase handles the actual credential update; current password is not
+    // re-verified client-side because the user is already authenticated.
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     setSavingPassword(false)
     if (error) {
       setPasswordMsg(`Error: ${error.message}`)
     } else {
       setPasswordMsg('Password updated successfully.')
+      // Clear all password fields on success
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     }
+    // Auto-dismiss the password feedback message after 4 s.
     setTimeout(() => setPasswordMsg(null), 4000)
   }
 
@@ -206,6 +254,7 @@ export default function Settings() {
               <div className="mt-3 pt-3 border-t border-forest/[0.08]">
                 <button
                   onClick={async () => {
+                    // Sign out via Supabase Auth, then redirect to the login page.
                     await signOut()
                     navigate('/login')
                   }}
@@ -346,6 +395,7 @@ export default function Settings() {
                     <label className="font-mono text-[10px] text-forest/30 tracking-wider uppercase block mb-4">Color Theme</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                       {THEMES.map(theme => {
+                        // Check active state outside JSX to keep the return clean.
                         const active = themeId === theme.id
                         return (
                           <button
@@ -458,6 +508,17 @@ export default function Settings() {
 /* Danger Zone sub-component with confirmation states                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Danger Zone settings card. Provides three destructive actions:
+ * - **Export data** — generates a JSON stub (production would call a server endpoint).
+ * - **Deactivate account** — invokes `onSignOut` after a two-step confirmation.
+ * - **Delete account** — two-step confirmation; permanently removes the account.
+ *
+ * Each destructive button requires an explicit confirmation click to prevent
+ * accidental activation.
+ *
+ * @param onSignOut - Optional callback from the parent to sign the user out.
+ */
 function DangerZone({ onSignOut }: { onSignOut?: () => void }) {
   const [exportLoading, setExportLoading] = useState(false)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
@@ -467,11 +528,14 @@ function DangerZone({ onSignOut }: { onSignOut?: () => void }) {
     setExportLoading(true)
     // Simulate export (would call a real API in production)
     setTimeout(() => {
+      // Build a placeholder JSON blob; a real implementation would fetch all
+      // user documents, merge requests, and profile data from the backend.
       const data = {
         exported_at: new Date().toISOString(),
         note: 'Full data export would be generated server-side.',
       }
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      // Trigger a browser download using a temporary object URL.
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url

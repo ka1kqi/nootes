@@ -1,3 +1,19 @@
+/**
+ * @file BlockEditor.tsx
+ * Rich block-based document editor built on contenteditable + custom
+ * React components. Supports text blocks (paragraph, h1–h3, quote),
+ * rich blocks (LaTeX, code, chemistry, table, callout, diagram), an
+ * interactive bullet-list block, and a divider block.
+ *
+ * Key behaviours:
+ * - Cross-block text selection (click-drag, Shift+Arrow, Shift+Click)
+ * - Markdown shortcuts (`# `, `## `, `### `, `> `) inside text blocks
+ * - Enter splits text blocks; Backspace at offset 0 merges with the
+ *   previous block (Google-Docs style)
+ * - Undo/redo handled externally by the parent through `blocks`/`onChange`
+ * - Exposes `insertBlock` and `setCurrentType` via an imperative ref handle
+ */
+
 import {
   useState,
   useRef,
@@ -14,17 +30,28 @@ import type { Block, BlockType } from '../hooks/useDocument'
 // minor fix
 // ─── Public handle exposed via ref ───────────────────────────────────────────
 
+/**
+ * Imperative handle returned to parent components via `ref`.
+ * Lets toolbar buttons insert blocks and change the focused block's type
+ * without the parent managing block-array state directly.
+ */
 export type BlockEditorHandle = {
+  /** Inserts a new block of `type` after the currently focused block. */
   insertBlock: (type: BlockType) => void
+  /** Changes the type of the currently focused *text* block. */
   setCurrentType: (type: BlockType) => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+/** Block types that render as contenteditable text elements. */
 const TEXT_TYPES: BlockType[] = ['paragraph', 'h1', 'h2', 'h3', 'quote']
+/** Block types that open a source/preview split-pane editor on click. */
 const RICH_TYPES: BlockType[] = ['latex', 'code', 'chemistry', 'table', 'callout', 'diagram', 'ordered_list']
+/** Block types that manage their own internal item focus. */
 const BULLET_TYPES: BlockType[] = ['bullet_list']
 
+/** Human-readable display names for the toolbar and edit-mode header. */
 const TYPE_LABEL: Record<string, string> = {
   paragraph: 'Paragraph',
   h1: 'Heading 1',
@@ -42,8 +69,10 @@ const TYPE_LABEL: Record<string, string> = {
   ordered_list: 'Numbered List',
 }
 
+/** Ordered list of valid callout variant keys. */
 const CALLOUT_VARIANTS = ['info', 'tip', 'warning', 'important'] as const
 
+/** Per-variant Tailwind classes and metadata for callout blocks. */
 const CALLOUT_STYLE: Record<string, { bg: string; border: string; icon: string; label: string }> = {
   info:      { bg: 'bg-blue-50',   border: 'border-blue-200',  icon: 'ℹ',  label: 'Info' },
   tip:       { bg: 'bg-sage/10',   border: 'border-sage/30',   icon: '💡', label: 'Tip' },
@@ -53,6 +82,13 @@ const CALLOUT_STYLE: Record<string, { bg: string; border: string; icon: string; 
 
 // ─── BlockPreview — pure render, no interaction ───────────────────────────────
 
+/**
+ * Read-only renderer for a single block.
+ * Used both in the `readOnly` editor mode and as the live-preview pane
+ * inside the `RichBlock` edit modal.
+ *
+ * @param block - The block data to render.
+ */
 export function BlockPreview({ block }: { block: Block }) {
   if (block.type === 'paragraph') {
     return <p className="font-[family-name:var(--font-body)] text-base text-forest/85 leading-relaxed mb-5">{block.content || <span className="opacity-0">.</span>}</p>
@@ -153,6 +189,13 @@ export function BlockPreview({ block }: { block: Block }) {
           return { text: line.trimStart(), indent: Math.floor(spaces / 2) }
         })
     if (!items.length) return null
+    /**
+     * Recursively builds a nested `<ul>` tree from the flat `items` array.
+     * Items at `parentIndent` become `<li>` entries; deeper items are
+     * collected by a recursive call and attached as nested `<ul>` children.
+     * Returns the rendered element and the count of items consumed so the
+     * caller can advance its index past the nested group.
+     */
     const renderItems = (parentIndent: number, startIdx: number): { el: React.ReactNode; consumed: number } => {
       const listItems: React.ReactNode[] = []
       let i = startIdx
@@ -216,6 +259,11 @@ export function BlockPreview({ block }: { block: Block }) {
 // Uses contenteditable so users can select text across multiple blocks.
 // Markdown shortcuts: "# ", "## ", "### ", "> " at block start change the type.
 
+/**
+ * Contenteditable text block supporting paragraph, heading, and quote types.
+ * Handles cross-block keyboard navigation, markdown shortcuts, paste
+ * normalisation, and Shift+Click cross-block selection extension.
+ */
 function TextBlock({
   block,
   focused,
@@ -230,23 +278,38 @@ function TextBlock({
   onArrowDown,
   onCursorChange,
 }: {
+  /** The block data to render and edit. */
   block: Block
+  /** Whether this block currently holds the logical focus. */
   focused: boolean
+  /** Where to place the cursor when focus is set: `"start"`, `"end"`, or a character offset. */
   focusEdge: 'start' | 'end' | number | null
+  /** Called when the user clicks or tabs into this block. */
   onFocus: () => void
+  /** Called with the updated text content on every input event. */
   onChange: (content: string) => void
+  /** Called when a markdown prefix shortcut changes the block type. */
   onTypeChange: (type: BlockType) => void
+  /** Called when the user presses Enter (non-shift) to split the block. */
   onEnter: () => void
+  /** Called when Backspace is pressed on an empty block to delete it. */
   onBackspaceEmpty: () => void
+  /** Called when Backspace is pressed at offset 0 to merge with the previous block. */
   onBackspaceMerge: () => void
+  /** Called when ArrowUp should move focus to the previous block. */
   onArrowUp: () => void
+  /** Called when ArrowDown should move focus to the next block. */
   onArrowDown: () => void
+  /** Called with the current cursor character offset on key/select events. */
   onCursorChange?: (pos: number) => void
 }) {
   const divRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
 
-  // Read cursor offset as plain-text character position
+  /**
+   * Reads the current selection's start offset as a plain-text character
+   * index within the contenteditable element (ignoring HTML structure).
+   */
   const getCursorPos = useCallback((): number => {
     const el = divRef.current
     if (!el) return 0
@@ -259,7 +322,12 @@ function TextBlock({
     return pre.toString().length
   }, [])
 
-  // Set cursor to a plain-text character offset
+  /**
+   * Moves the browser caret to the given plain-text character offset by
+   * walking the DOM tree of the contenteditable element.
+   *
+   * @param pos - Target character offset (clamped to `[0, textLength]`).
+   */
   const setCursorPos = useCallback((pos: number) => {
     const el = divRef.current
     if (!el) return
@@ -269,6 +337,8 @@ function TextBlock({
     const range = document.createRange()
     let rem = clamped
     let placed = false
+    /** Traverses DOM text nodes, subtracting their lengths from `rem` until the
+     *  target position is reached, then sets the range start on that text node. */
     const walk = (node: Node): boolean => {
       if (node.nodeType === Node.TEXT_NODE) {
         const len = (node as Text).length
@@ -318,6 +388,12 @@ function TextBlock({
     setCursorPos(pos)
   }, [focused, focusEdge, setCursorPos])
 
+  /**
+   * Fires on every `input` event (excluding IME composition).
+   * Checks for markdown prefix shortcuts at the start of the line and
+   * converts the block type if one is detected; otherwise propagates
+   * the raw text content to `onChange`.
+   */
   const handleInput = useCallback(() => {
     if (composingRef.current) return
     const el = divRef.current
@@ -336,6 +412,10 @@ function TextBlock({
     onChange(raw)
   }, [onChange, onTypeChange, setCursorPos])
 
+  /**
+   * Handles keyboard events for navigation and structural editing:
+   * Enter → split, Backspace → delete/merge, ArrowUp/Down → cross-block nav.
+   */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const el = divRef.current
     if (!el) return
@@ -366,6 +446,7 @@ function TextBlock({
       }
       // Not on first line — let browser move up, then check boundary in RAF
       requestAnimationFrame(() => {
+        // If focus left the element or the cursor didn't move, we've hit the top edge
         if (document.activeElement !== el) return
         const newPos = getCursorPos()
         if (newPos === 0 || newPos === savedPos) { onCursorChange?.(savedPos); onArrowUp() }
@@ -386,6 +467,7 @@ function TextBlock({
       }
       // Not on last line — let browser move down, then check boundary in RAF
       requestAnimationFrame(() => {
+        // If focus left the element or the cursor didn't advance, we've hit the bottom edge
         if (document.activeElement !== el) return
         const newPos = getCursorPos()
         if (newPos === (el.textContent || '').length || newPos === savedPos) { onCursorChange?.(savedPos); onArrowDown() }
@@ -393,6 +475,10 @@ function TextBlock({
     }
   }
 
+  /**
+   * Strips HTML from clipboard data and inserts plain text at the caret,
+   * preserving the existing selection behaviour.
+   */
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault()
     const text = e.clipboardData.getData('text/plain')
@@ -407,7 +493,11 @@ function TextBlock({
     handleInput()
   }
 
-  // Shift+click: extend selection across blocks
+  /**
+   * Extends an existing cross-block selection when Shift+Click lands on a
+   * different block than the selection anchor. Falls through to the browser
+   * for same-block shift-clicks.
+   */
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!e.shiftKey) return
     const sel = window.getSelection()
@@ -460,6 +550,12 @@ function TextBlock({
 // ─── Rich block (latex / code / chemistry / table / callout) ─────────────────
 // Click to edit — live split-pane with realtime rendered preview
 
+/**
+ * Wrapper for structured blocks that require a source editor.
+ * In preview mode, renders the block via {@link BlockPreview} with
+ * hover/keyboard action buttons. In edit mode, shows a split-pane with
+ * a textarea source editor and a live-rendered preview below.
+ */
 function RichBlock({
   block,
   onUpdate,
@@ -469,12 +565,19 @@ function RichBlock({
   onArrowUp,
   onArrowDown,
 }: {
+  /** The block data to render. */
   block: Block
+  /** Called with partial updates when the user commits an edit. */
   onUpdate: (updates: Partial<Block>) => void
+  /** Called when the user clicks the Delete button. */
   onDelete: () => void
+  /** When `true`, enters edit mode immediately on mount (used after toolbar insertion). */
   autoEdit?: boolean
+  /** When `true`, the block renders its keyboard-focus ring. */
   selected?: boolean
+  /** Called when ArrowUp should move focus to the previous block. */
   onArrowUp?: () => void
+  /** Called when ArrowDown should move focus to the next block. */
   onArrowDown?: () => void
 }) {
   const [editing, setEditing] = useState(autoEdit)
@@ -495,27 +598,32 @@ function RichBlock({
     }
   }, [block.content, block.meta, editing])
 
+  /** Opens edit mode, copying block content/meta into local draft state. */
   const openEdit = () => {
     setDraft(block.content)
     setDraftMeta(block.meta ?? {})
     setEditing(true)
   }
 
+  /** Saves draft changes back to the block and exits edit mode. */
   const commit = () => {
     onUpdate({ content: draft, meta: draftMeta })
     setEditing(false)
   }
 
+  /** Discards draft changes and exits edit mode, restoring original block data. */
   const cancel = () => {
     setDraft(block.content)
     setDraftMeta(block.meta ?? {})
     setEditing(false)
   }
 
+  /** Updates a single meta field in the draft without affecting `draft` content. */
   const updateMeta = (key: string, value: unknown) =>
     setDraftMeta(prev => ({ ...prev, [key]: value }))
 
   // Escape to close
+  /** Commits the draft on Escape or Shift+Enter, preventing bubbling to the block editor. */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.stopPropagation(); commit() }
     if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); commit() }
@@ -636,6 +744,7 @@ function RichBlock({
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Tab') {
+              // Insert a literal tab character at the cursor instead of shifting focus
               e.preventDefault()
               const el = e.currentTarget
               const start = el.selectionStart
@@ -661,6 +770,10 @@ function RichBlock({
 }
 
 // Lightweight live preview — same as BlockPreview but wrapped in error boundary
+/**
+ * Wraps {@link BlockPreview} in a try/catch so a rendering error in the
+ * live-preview pane doesn't crash the entire editor.
+ */
 function LivePreview({ block }: { block: Block }) {
   try {
     return <BlockPreview block={block} />
@@ -671,8 +784,16 @@ function LivePreview({ block }: { block: Block }) {
 
 // ─── Bullet list block — interactive, indentable ─────────────────────────────
 
+/** An individual item in an interactive bullet list. */
 type BulletItem = { id: string; text: string; indent: number }
 
+/**
+ * Parses a block into an array of {@link BulletItem} objects.
+ * Prefers structured items stored in `block.meta.items`; falls back to
+ * parsing the legacy newline-separated `block.content` string.
+ *
+ * @param block - The bullet_list block to parse.
+ */
 function parseBulletItems(block: Block): BulletItem[] {
   const raw = block.meta?.items as BulletItem[] | undefined
   if (Array.isArray(raw) && raw.length > 0) return raw
@@ -684,25 +805,44 @@ function parseBulletItems(block: Block): BulletItem[] {
   })
 }
 
+/**
+ * Serialises a list of {@link BulletItem} objects back into a newline-separated
+ * string using leading spaces to encode indent level (2 spaces per level).
+ *
+ * @param items - Structured bullet items to serialise.
+ */
 function serializeBulletContent(items: BulletItem[]): string {
   return items.map(item => '  '.repeat(item.indent) + item.text).join('\n')
 }
 
+/**
+ * A single row in an interactive bullet list.
+ * Uses `forwardRef` so the parent {@link BulletListBlock} can focus
+ * specific rows programmatically via a `Map` of refs.
+ */
 const BulletItemRow = forwardRef<
   HTMLDivElement,
   {
+    /** The bullet item data for this row. */
     item: BulletItem
+    /** Called when the user types to update the item's text. */
     onTextChange: (text: string) => void
+    /** Called when Enter is pressed to insert a sibling item below. */
     onEnter: () => void
+    /** Called with `+1` or `-1` when Tab/Shift+Tab changes indent level. */
     onIndent: (delta: number) => void
+    /** Called when Backspace is pressed on an empty item to remove it. */
     onRemove: () => void
+    /** Called when ArrowUp at the first visual line should move to the previous item/block. */
     onArrowUp: () => void
+    /** Called when ArrowDown at the last visual line should move to the next item/block. */
     onArrowDown: () => void
   }
 >(function BulletItemRow({ item, onTextChange, onEnter, onIndent, onRemove, onArrowUp, onArrowDown }, ref) {
   const innerRef = useRef<HTMLDivElement>(null)
 
   // Merge forwarded ref with local ref
+  /** Assigns the DOM element to both the local `innerRef` and the forwarded parent `ref`. */
   const setRef = (el: HTMLDivElement | null) => {
     (innerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
     if (typeof ref === 'function') ref(el)
@@ -711,6 +851,7 @@ const BulletItemRow = forwardRef<
 
   // Sync DOM only when text changes externally (undo, indent, etc.)
   useEffect(() => {
+    // Skip when this element is focused — the user is actively typing, don't overwrite
     const el = innerRef.current
     if (!el || el === document.activeElement) return
     if ((el.textContent ?? '') !== item.text) el.textContent = item.text
@@ -718,6 +859,7 @@ const BulletItemRow = forwardRef<
 
   // Initial DOM content
   useEffect(() => {
+    // Seed the contenteditable with the item's text on first mount
     const el = innerRef.current
     if (el && el.textContent !== item.text) el.textContent = item.text
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -744,6 +886,7 @@ const BulletItemRow = forwardRef<
           if (e.key === 'Tab') { e.preventDefault(); onIndent(e.shiftKey ? -1 : 1); return }
           if (e.key === 'Backspace' && text === '') { e.preventDefault(); if (item.indent > 0) { onIndent(-1) } else { onRemove() } return }
           if (e.key === 'ArrowUp') {
+            // Navigate to the previous item/block when caret is on the first visual line
             const sel = window.getSelection()
             if (sel?.rangeCount) {
               const r = sel.getRangeAt(0)
@@ -753,6 +896,7 @@ const BulletItemRow = forwardRef<
             }
           }
           if (e.key === 'ArrowDown') {
+            // Navigate to the next item/block when caret is on the last visual line
             const sel = window.getSelection()
             if (sel?.rangeCount) {
               const r = sel.getRangeAt(0)
@@ -763,6 +907,7 @@ const BulletItemRow = forwardRef<
           }
         }}
         onPaste={e => {
+          // Strip HTML from pasted content and insert plain text only
           e.preventDefault()
           const text = e.clipboardData.getData('text/plain')
           document.execCommand('insertText', false, text)
@@ -772,6 +917,11 @@ const BulletItemRow = forwardRef<
   )
 })
 
+/**
+ * Interactive bullet-list block that manages its own array of {@link BulletItem}s.
+ * Supports Tab/Shift+Tab indenting, Enter to add items, Backspace to remove,
+ * and ArrowUp/Down to move between items or escape to adjacent blocks.
+ */
 function BulletListBlock({
   block,
   selected,
@@ -781,12 +931,19 @@ function BulletListBlock({
   onArrowUp,
   onArrowDown,
 }: {
+  /** The block data (type must be `"bullet_list"`). */
   block: Block
+  /** Whether this block has keyboard focus in the parent editor. */
   selected?: boolean
+  /** Called when any item in the list receives focus. */
   onFocus?: () => void
+  /** Called with partial block updates (content + meta) when items change. */
   onUpdate: (updates: Partial<Block>) => void
+  /** Called when the list should be removed from the document. */
   onDelete: () => void
+  /** Called when ArrowUp on the first item should escape to the previous block. */
   onArrowUp?: () => void
+  /** Called when ArrowDown on the last item should escape to the next block. */
   onArrowDown?: () => void
 }) {
   const [items, setItems] = useState<BulletItem[]>(() => parseBulletItems(block))
@@ -796,6 +953,7 @@ function BulletListBlock({
 
   // Sync from external changes (undo, etc.) — skip our own writes
   useEffect(() => {
+    // Bail early when the change originated here (lastCommittedRef fingerprint matches)
     const ext = JSON.stringify(block.meta?.items ?? block.content)
     if (ext === lastCommittedRef.current) return
     const parsed = parseBulletItems(block)
@@ -805,6 +963,7 @@ function BulletListBlock({
 
   // When block becomes selected via keyboard nav, focus appropriate item
   useEffect(() => {
+    // Only act on the rising edge of `selected` to avoid re-focusing on every re-render
     if (selected && !prevSelectedRef.current) {
       const first = items[0]
       if (first) focusItemId(first.id, 'start')
@@ -812,8 +971,16 @@ function BulletListBlock({
     prevSelectedRef.current = selected
   }, [selected, items])
 
+  /**
+   * Focuses a bullet item row by ID and positions the caret at the
+   * specified edge. Uses `requestAnimationFrame` so the DOM is ready.
+   *
+   * @param id   - The `BulletItem.id` to focus.
+   * @param edge - `"start"` places the caret at offset 0; `"end"` at the end.
+   */
   const focusItemId = (id: string, edge: 'start' | 'end' = 'end') => {
     requestAnimationFrame(() => {
+      // Defer until React has committed the DOM so the element definitely exists
       const el = rowRefs.current.get(id)
       if (!el) return
       el.focus()
@@ -834,6 +1001,12 @@ function BulletListBlock({
     })
   }
 
+  /**
+   * Persists the updated item array to the parent block, serialising
+   * to both `meta.items` (structured) and `content` (plain-text fallback).
+   *
+   * @param newItems - The new array of bullet items after a user action.
+   */
   const commit = (newItems: BulletItem[]) => {
     lastCommittedRef.current = JSON.stringify(newItems)
     setItems(newItems)
@@ -852,27 +1025,32 @@ function BulletListBlock({
         <BulletItemRow
           key={item.id}
           ref={el => {
+            // Register or deregister the row's DOM node so focusItemId can reach it
             if (el) rowRefs.current.set(item.id, el)
             else rowRefs.current.delete(item.id)
           }}
           item={item}
           onTextChange={text => {
+            // Update only this item's text while preserving all other items unchanged
             const next = items.map((it, i) => i === idx ? { ...it, text } : it)
             commit(next)
           }}
           onEnter={() => {
+            // Insert a sibling item at the same indent level immediately below this one
             const newItem: BulletItem = { id: crypto.randomUUID(), text: '', indent: item.indent }
             const next = [...items.slice(0, idx + 1), newItem, ...items.slice(idx + 1)]
             commit(next)
             focusItemId(newItem.id, 'start')
           }}
           onIndent={delta => {
+            // Clamp new indent to [0, 6], then re-focus the same item after the commit
             const newIndent = Math.max(0, Math.min(6, item.indent + delta))
             const next = items.map((it, i) => i === idx ? { ...it, indent: newIndent } : it)
             commit(next)
             focusItemId(item.id, 'end')
           }}
           onRemove={() => {
+            // Delete the whole list when this is the last item; otherwise remove just this row
             if (items.length <= 1) { onDelete(); return }
             const next = items.filter((_, i) => i !== idx)
             commit(next)
@@ -880,10 +1058,12 @@ function BulletListBlock({
             focusItemId(targetId, 'end')
           }}
           onArrowUp={() => {
+            // Move to the previous list item, or escape upward to the block above this list
             if (idx > 0) focusItemId(items[idx - 1].id, 'end')
             else onArrowUp?.()
           }}
           onArrowDown={() => {
+            // Move to the next list item, or escape downward to the block below this list
             if (idx < items.length - 1) focusItemId(items[idx + 1].id, 'start')
             else onArrowDown?.()
           }}
@@ -895,13 +1075,22 @@ function BulletListBlock({
 
 // ─── Divider block ────────────────────────────────────────────────────────────
 
+/**
+ * Simple horizontal rule block with keyboard-delete support and a hover/focus
+ * action button that matches the style of {@link RichBlock}.
+ */
 function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
+  /** Called when the divider should be removed from the document. */
   onDelete: () => void
+  /** Whether the block has keyboard focus (shows the delete button). */
   selected?: boolean
+  /** Called when ArrowUp should move focus to the previous block. */
   onArrowUp?: () => void
+  /** Called when ArrowDown should move focus to the next block. */
   onArrowDown?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  // Grab DOM focus when keyboard-selected so onKeyDown events reach this element
   useEffect(() => { if (selected) ref.current?.focus() }, [selected])
   return (
     <div
@@ -909,6 +1098,7 @@ function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
       tabIndex={-1}
       className="relative my-2 group cursor-pointer outline-none"
       onKeyDown={e => {
+        // Arrow keys navigate between blocks; Delete/Backspace removes the divider
         if (e.key === 'ArrowUp' && !e.shiftKey)   { e.preventDefault(); onArrowUp?.() }
         if (e.key === 'ArrowDown' && !e.shiftKey) { e.preventDefault(); onArrowDown?.() }
         if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); onDelete() }
@@ -931,6 +1121,23 @@ function DividerBlock({ onDelete, selected = false, onArrowUp, onArrowDown }: {
 
 // ─── Main BlockEditor ─────────────────────────────────────────────────────────
 
+/**
+ * Root block editor component.
+ *
+ * Renders an ordered list of blocks, delegating to {@link TextBlock},
+ * {@link RichBlock}, {@link BulletListBlock}, or {@link DividerBlock} based
+ * on `block.type`. Manages focus tracking, cursor position, cross-block
+ * selection, and exposes an imperative handle for toolbar integration.
+ *
+ * When `readOnly` is `true`, all blocks are rendered via {@link BlockPreview}
+ * with no interactive elements.
+ *
+ * @param blocks          - The ordered array of blocks to render.
+ * @param onChange        - Called with the updated block array after any mutation.
+ * @param readOnly        - Disables all editing interactions when `true`.
+ * @param onFocusChange   - Called with the focused block's type when it changes
+ *                          (only for text-type blocks; `null` otherwise).
+ */
 export const BlockEditor = forwardRef<
   BlockEditorHandle,
   { blocks: Block[]; onChange: (blocks: Block[]) => void; readOnly?: boolean; onFocusChange?: (type: BlockType | null) => void }
@@ -940,6 +1147,12 @@ export const BlockEditor = forwardRef<
   const [autoEditId, setAutoEditId] = useState<string | null>(null)
   const cursorPosRef = useRef<number>(0)
 
+  /**
+   * Sets the logically focused block ID and cursor-placement hint.
+   *
+   * @param id   - Block ID to focus, or `null` to clear focus.
+   * @param edge - Where to place the cursor: `"start"`, `"end"`, or a character offset.
+   */
   const focusBlock = useCallback((id: string | null, edge: 'start' | 'end' | number | null = 'end') => {
     setFocusEdge(edge)
     setFocusedId(id)
@@ -947,6 +1160,7 @@ export const BlockEditor = forwardRef<
 
   // Notify parent of the focused block's type so the toolbar can reflect it
   useEffect(() => {
+    // Resolve text-type vs non-text-type and report to the parent toolbar callback
     const block = blocks.find(b => b.id === focusedId)
     onFocusChange?.(block && TEXT_TYPES.includes(block.type) ? block.type : null)
   }, [focusedId, blocks, onFocusChange])
@@ -1005,10 +1219,22 @@ export const BlockEditor = forwardRef<
     },
   }), [blocks, focusedId, focusBlock, onChange])
 
+  /**
+   * Applies partial updates to a block by ID, merging them into the existing block data.
+   *
+   * @param id      - ID of the block to update.
+   * @param updates - Partial block fields to merge.
+   */
   const updateBlock = useCallback((id: string, updates: Partial<Block>) => {
     onChange(blocks.map(b => b.id === id ? { ...b, ...updates } : b))
   }, [blocks, onChange])
 
+  /**
+   * Removes a block by ID. If it would leave the document empty, replaces it
+   * with a fresh paragraph and focuses it.
+   *
+   * @param id - ID of the block to remove.
+   */
   const deleteBlock = useCallback((id: string) => {
     if (blocks.length <= 1) {
       const fresh = newBlock('paragraph')
@@ -1023,6 +1249,12 @@ export const BlockEditor = forwardRef<
     focusBlock(focusTarget?.id ?? null, 'end')
   }, [blocks, focusBlock, onChange])
 
+  /**
+   * Inserts a new paragraph block immediately after `afterId` and focuses it.
+   *
+   * @param afterId - ID of the block after which the new block is inserted.
+   * @param type    - Type of the new block (defaults to `"paragraph"`).
+   */
   const insertAfter = useCallback((afterId: string, type: BlockType = 'paragraph') => {
     const idx = blocks.findIndex(b => b.id === afterId)
     const nb = newBlock(type)
@@ -1031,7 +1263,14 @@ export const BlockEditor = forwardRef<
     setTimeout(() => focusBlock(nb.id, 'start'), 0)
   }, [blocks, focusBlock, onChange])
 
-  // Split a text block at the cursor position (Enter key — like Google Docs)
+  /**
+   * Splits a text block at the current cursor position (Enter key behaviour).
+   * - Empty block → insert empty paragraph below and focus it.
+   * - Cursor at start → insert empty paragraph *above* and focus the new line.
+   * - Cursor mid-text → split into two blocks at the cursor.
+   *
+   * @param id - ID of the text block to split.
+   */
   const splitBlock = useCallback((id: string) => {
     const idx = blocks.findIndex(b => b.id === id)
     if (idx === -1) return
@@ -1075,7 +1314,14 @@ export const BlockEditor = forwardRef<
     setTimeout(() => focusBlock(nb.id, 'start'), 0)
   }, [blocks, focusBlock, onChange])
 
-  // Merge current text block with previous (Backspace at position 0 — like Google Docs)
+  /**
+   * Merges a text block with the one above it (Backspace at offset 0).
+   * If the previous block is also a text type, concatenates their content
+   * and focuses the merge point. If the previous block is rich/divider,
+   * keyboard-selects it instead.
+   *
+   * @param id - ID of the block whose content should be merged upward.
+   */
   const mergeUp = useCallback((id: string) => {
     const idx = blocks.findIndex(b => b.id === id)
     if (idx <= 0) return
@@ -1095,7 +1341,13 @@ export const BlockEditor = forwardRef<
     }
   }, [blocks, focusBlock, onChange])
 
-  // Navigate one block at a time — lands on rich/divider blocks too (gives them keyboard focus)
+  /**
+   * Moves keyboard focus one block up or down.
+   * Preserves the horizontal cursor column when navigating between text blocks.
+   * Rich and divider blocks receive DOM focus via their own `useEffect`.
+   *
+   * @param direction - `"up"` or `"down"`.
+   */
   const arrowNav = useCallback((direction: 'up' | 'down') => {
     if (!focusedId) return
     const idx = blocks.findIndex(b => b.id === focusedId)
@@ -1112,7 +1364,11 @@ export const BlockEditor = forwardRef<
     }
   }, [blocks, focusedId, focusBlock])
 
-  // Click on bottom empty area → focus last block or add paragraph
+  /**
+   * Handles clicks on the empty space below all blocks.
+   * Focuses the last block if it is a text type; otherwise appends a new
+   * paragraph and focuses it, so the editor always accepts cursor input.
+   */
   const handleBottomClick = useCallback(() => {
     const last = blocks[blocks.length - 1]
     if (last && TEXT_TYPES.includes(last.type)) {
@@ -1124,6 +1380,12 @@ export const BlockEditor = forwardRef<
     }
   }, [blocks, focusBlock, onChange])
 
+  /**
+   * Inserts a new paragraph block at a specific index in the block array
+   * (used by the click-zones between adjacent non-text blocks).
+   *
+   * @param idx - Array index at which to insert the new block.
+   */
   const insertAt = useCallback((idx: number) => {
     const nb = newBlock('paragraph')
     const next = [...blocks.slice(0, idx), nb, ...blocks.slice(idx)]
@@ -1134,27 +1396,40 @@ export const BlockEditor = forwardRef<
   // ── Cross-block selection handler (capture phase) ─────────────────────────
   // Fires before individual block key handlers so we can intercept cross-block
   // actions: delete / type-to-replace / Shift+Arrow extension.
+  /**
+   * Capture-phase keydown handler for the editor root.
+   * Intercepts two cross-block scenarios before inner block handlers see the event:
+   * 1. Delete / character-key on a multi-block selection → collapses blocks and
+   *    merges surrounding text.
+   * 2. Shift+ArrowUp/Down → extends the selection focus end across block
+   *    boundaries when the browser's default behaviour would fail or corrupt it.
+   */
   const handleCrossBlockKeyDown = useCallback((e: React.KeyboardEvent) => {
     const sel = window.getSelection()
     if (!sel || !sel.rangeCount) return
     const range = sel.getRangeAt(0)
 
+    /** Returns the nearest `[data-block-id]` ancestor element for a given DOM node. */
     const blockElOf = (node: Node | null): HTMLElement | null => {
       if (!node) return null
       const el = node instanceof Element ? node : node.parentElement
       return el?.closest('[data-block-id]') as HTMLElement | null
     }
+    /** Finds the first text node inside a block element via a forward TreeWalker. */
     const getFirstText = (el: Element): Text | null => {
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
       return w.nextNode() as Text | null
     }
+    /** Finds the last text node inside a block element by exhausting a forward TreeWalker. */
     const getLastText = (el: Element): Text | null => {
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
       let last: Text | null = null; let n = w.nextNode()
       while (n) { last = n as Text; n = w.nextNode() }
       return last
     }
+    /** Extends the selection focus to the very end of a block element. */
     const extendToEnd   = (el: Element) => { const lt = getLastText(el);  lt ? sel.extend(lt, lt.length) : sel.extend(el, el.childNodes.length) }
+    /** Extends the selection focus to the very start of a block element. */
     const extendToStart = (el: Element) => { const ft = getFirstText(el); ft ? sel.extend(ft, 0)          : sel.extend(el, 0) }
 
     // ── Delete / type-to-replace on a cross-block selection ─────────────────
@@ -1234,6 +1509,7 @@ export const BlockEditor = forwardRef<
     // block first, then check in a RAF whether the focus reached the boundary.
     const key = e.key
     requestAnimationFrame(() => {
+      // Check after the browser has moved the selection focus end within its own block
       const s = window.getSelection()
       if (!s) return
       const fe = blockElOf(s.focusNode)
@@ -1277,6 +1553,7 @@ export const BlockEditor = forwardRef<
       onClick={e => { if (e.target === e.currentTarget) handleBottomClick() }}
       onKeyDownCapture={handleCrossBlockKeyDown}
       onMouseMove={e => {
+        // Extend a cross-block drag-selection as the pointer moves over other block elements
         if (!(e.buttons & 1)) return  // primary button not held
         const sel = window.getSelection()
         if (!sel || !sel.anchorNode) return
@@ -1300,6 +1577,7 @@ export const BlockEditor = forwardRef<
         <div className="h-2 cursor-text" onClick={() => insertAt(0)} />
       )}
       {blocks.map((block, idx) => {
+        // Resolve the correct interactive component for this block's type
         const blockEl = (() => {
           if (TEXT_TYPES.includes(block.type)) {
             return (
@@ -1326,6 +1604,7 @@ export const BlockEditor = forwardRef<
                 autoEdit={autoEditId === block.id}
                 selected={focusedId === block.id}
                 onUpdate={updates => { updateBlock(block.id, updates); setAutoEditId(null) }}
+                // Also clear autoEditId so re-opening the block doesn't re-trigger auto-edit mode
                 onDelete={() => { deleteBlock(block.id); setAutoEditId(null) }}
                 onArrowUp={() => arrowNav('up')}
                 onArrowDown={() => arrowNav('down')}

@@ -1,3 +1,10 @@
+/**
+ * @file AIAgentFab.tsx
+ * Floating Action Button (FAB) anchored to the bottom-left corner.
+ * Clicking the button — or pressing ⌘K / Ctrl+K — opens the
+ * SpotlightSearch overlay so the user can interact with noot AI.
+ */
+
 import { useState, useEffect } from 'react'
 import { SpotlightSearch } from './SpotlightSearch'
 
@@ -6,11 +13,18 @@ import { SpotlightSearch } from './SpotlightSearch'
 /* Bottom-left FAB. Click or ⌘K opens spotlight search overlay.       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Floating noot mascot button that toggles the AI spotlight overlay.
+ *
+ * @param bottomClass - Tailwind class controlling vertical position
+ *   (default `"bottom-6"`). Useful when other bottom bars are present.
+ */
 export function AIAgentFab({ bottomClass = 'bottom-6' }: { bottomClass?: string }) {
   const [open, setOpen] = useState(false)
 
   // ⌘K / Ctrl+K shortcut
   useEffect(() => {
+    /** Toggles the spotlight overlay and prevents the browser's default address-bar shortcut. */
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()

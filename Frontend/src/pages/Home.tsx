@@ -28,12 +28,28 @@ import { createDocument } from '../hooks/useMyRepos'
 /* ------------------------------------------------------------------ */
 
 // ── AI modes ─────────────────────────────────────────────────────────
-
+/** Available AI response modes; selected via the pill buttons beneath the chat input. */
 const AI_MODES = ['Write', 'Graphs', 'Concise', 'Deep Analysis'] as const
 type AIMode = typeof AI_MODES[number]
 
 // ── Card data ─────────────────────────────────────────────────────────
 
+/**
+ * Data shape for a single recommended knowledge card (NootTile / NootModal).
+ * @property id          - Unique identifier.
+ * @property title       - Short concept name shown in the tile header.
+ * @property source      - Course or textbook the card is from.
+ * @property subject     - Broad subject area (e.g. "Mathematics", "Computer Science").
+ * @property content     - Short summary (≤120 chars) shown in tile and modal body.
+ * @property excerpt     - Optional longer excerpt shown in the modal below the summary.
+ * @property latex       - Optional LaTeX string rendered in the tile/modal.
+ * @property code        - Optional code snippet shown in the tile/modal.
+ * @property codeLabel   - Language label for the code snippet (e.g. "python").
+ * @property contributor - Display name of the contributor.
+ * @property initials    - Two-letter initials for the avatar circle.
+ * @property aura        - Contributor's aura point total shown as a badge.
+ * @property color       - Hex accent colour for the sidebar stripe and avatar background.
+ */
 interface NootCardData {
   id: string
   title: string
@@ -50,6 +66,7 @@ interface NootCardData {
   color: string
 }
 
+/** Curated set of knowledge cards surfaced in the drawer to inspire exploration. */
 const RECOMMENDED: NootCardData[] = [
   {
     id: '1',
@@ -396,7 +413,11 @@ const RECOMMENDED: NootCardData[] = [
 ]
 
 // ── NootTile — compact icon card ──────────────────────────────────────
-
+/**
+ * Compact card tile shown in the marquee drawer rows.
+ * Displays the concept title, subject, contributor avatar, and aura badge.
+ * Clicking the tile calls `onSelect` to open the full `NootModal`.
+ */
 function NootTile({ card, onSelect }: { card: NootCardData; onSelect: (c: NootCardData) => void }) {
   const icon = card.latex ? '📐' : card.code ? '💻' : '📝'
 
@@ -447,7 +468,11 @@ function NootTile({ card, onSelect }: { card: NootCardData; onSelect: (c: NootCa
 }
 
 // ── NootModal — full card detail overlay ──────────────────────────────
-
+/**
+ * Full-detail overlay modal for a knowledge card.
+ * Shows title, subject/source, full content, optional excerpt, and contributor info.
+ * Clicking the backdrop or the ✕ button calls `onClose`.
+ */
 function NootModal({ card, onClose }: { card: NootCardData; onClose: () => void }) {
   return (
     <div
@@ -524,7 +549,12 @@ const ROW_H = DRAWER_HEADER_H + ROW_PADDING_TOP + CARD_H  // 220 px
 
 // ── Marquee rows (expanded state) ─────────────────────────────────────
 
+/** Number of cards per horizontal marquee row in the expanded drawer. */
 const CARDS_PER_ROW = 7
+/**
+ * RECOMMENDED cards split into rows of `CARDS_PER_ROW` for the alternating
+ * left/right marquee animation in the drawer.
+ */
 const CARD_ROWS: NootCardData[][] = (() => {
   const rows: NootCardData[][] = []
   for (let i = 0; i < RECOMMENDED.length; i += CARDS_PER_ROW) {
@@ -535,6 +565,12 @@ const CARD_ROWS: NootCardData[][] = (() => {
 
 // ── Time-based greeting ────────────────────────────────────────────────
 
+/**
+ * Returns a randomised, time-of-day-aware greeting for the home page hero.
+ * The greeting is stable within a given hour to prevent flickering on re-renders.
+ *
+ * @param name - First name of the current user.
+ */
 function getTimeGreeting(name: string): string {
   const hour = new Date().getHours()
   let prompts: string[]
@@ -571,12 +607,20 @@ function getTimeGreeting(name: string): string {
 
 // ── Tool-response parsers (mirrors SpotlightSearch.tsx) ──────────────────────
 
+/**
+ * Escapes bare backslashes in a JSON string that contains LaTeX notation,
+ * preventing `JSON.parse` from failing on sequences like `\frac` or `\alpha`.
+ */
 function fixLatexJson(str: string): string {
   return str.replace(/\\(\\|["\\/nrtu]|.)/g, (_m, c: string) =>
     (c === '\\' || '"\\/nrtu'.includes(c)) ? _m : '\\\\' + c
   )
 }
 
+/**
+ * Detects a `[WRITE_TO_EDITOR]` AI action and extracts the blocks array and
+ * confirmation message. Returns `null` if the content is not a write action.
+ */
 function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmation: string } | null {
   if (!/^\s*\[WRITE_TO_EDITOR\]/i.test(content)) return null
   try {
@@ -599,6 +643,10 @@ function parseWriteResponse(content: string): { blocks: BlockSpec[]; confirmatio
   } catch { return null }
 }
 
+/**
+ * Detects a `[NAVIGATE]` AI action and extracts the target route and message.
+ * Returns `null` if the content is not a navigate action.
+ */
 function parseNavigateResponse(content: string): { route: string; message: string } | null {
   if (!/^\s*\[NAVIGATE\]/i.test(content)) return null
   try {
@@ -609,6 +657,10 @@ function parseNavigateResponse(content: string): { route: string; message: strin
   } catch { return null }
 }
 
+/**
+ * Detects a `[CREATE_REPO]` AI action and extracts the document creation payload.
+ * Returns `null` if the content is not a create-repo action.
+ */
 function parseCreateRepoResponse(content: string): {
   title: string; description?: string; tags?: string[]; initial_blocks?: BlockSpec[]; message: string
 } | null {
@@ -627,6 +679,10 @@ function parseCreateRepoResponse(content: string): {
   } catch { return null }
 }
 
+/**
+ * Detects a `[MESSAGE]` AI action and extracts the plain display message.
+ * Returns `null` if the content is not a message action.
+ */
 function parseMessageResponse(content: string): { message: string } | null {
   if (!/^\s*\[MESSAGE\]/i.test(content)) return null
   try {
@@ -642,12 +698,22 @@ function parseMessageResponse(content: string): { message: string } | null {
 interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string }
 interface ConversationSummary { id: string; title: string | null; created_at: string; preview: string }
 
+/** Resolves the base API URL, defaulting to `/api` for local development. */
 function apiBase(): string {
   const url = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
   if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.')) return '/api'
   return url.replace(/\/[^/]+$/, '')
 }
 
+/**
+ * Home page — AI chatbox with a sliding knowledge-card drawer.
+ *
+ * - Shows a greeting and prompt input on the empty state.
+ * - Once conversation starts, the drawer hides and the chat thread expands.
+ * - The drawer contains recommended knowledge cards in auto-scrolling marquee rows.
+ * - Supports multiple AI modes (Write, Graphs, Concise, Deep Analysis).
+ * - Persists conversations to Supabase (`conversations` + `conversation_turns`).
+ */
 export default function Home() {
   const { profile, user, sessionReady } = useAuth()
   const editorBridge = useEditorBridge()
@@ -681,16 +747,23 @@ export default function Home() {
   const dragStartOffset = useRef(0)
 
   // Direct DOM mutation for high-frequency updates (avoids 60fps re-renders)
+  /**
+   * Moves the drawer to vertical offset `y` by setting `transform: translateY(y)` directly
+   * on the DOM node, bypassing React state for smooth 60fps drag performance.
+   * Also syncs the `isExpanded` React state when crossing the fully-open threshold.
+   */
   const applyOffset = useCallback((y: number, withTransition = false) => {
     const el = drawerRef.current
     if (!el) return
     const wasExpanded = offsetRef.current < 2
     const willExpand = y < 2
     offsetRef.current = y
+    // Only add a CSS transition when snapping; suppress it during live drag for instant response.
     el.style.transition = withTransition
       ? 'transform 0.52s cubic-bezier(0.16,1,0.3,1)'
       : 'none'
     el.style.transform = `translateY(${y}px)`
+    // Sync React expanded state only when crossing the threshold to avoid extra renders.
     if (wasExpanded !== willExpand) setIsExpanded(willExpand)
   }, [])
 
@@ -700,9 +773,11 @@ export default function Home() {
     if (!el) return
     const measure = () => {
       const h = el.offsetHeight
+      // Maximum translateY: fully-collapsed state where only ROW_H is visible at the bottom.
       const mo = Math.max(0, h - ROW_H)
       maxOffsetRef.current = mo
       if (!measuredRef.current && mo > 0) {
+        // First measurement: start collapsed so the drawer peeks at the bottom.
         measuredRef.current = true
         applyOffset(mo)   // start collapsed
       }
@@ -717,6 +792,7 @@ export default function Home() {
   const snapToEdge = useCallback(() => {
     const cur = offsetRef.current
     const mo = maxOffsetRef.current
+    // If the drawer is past the halfway point, snap fully open; otherwise snap fully closed.
     const to = cur < mo / 2 ? 0 : mo
     applyOffset(to, true)
   }, [applyOffset])
@@ -724,16 +800,19 @@ export default function Home() {
   // ── Drag handle pointer events ─────────────────────────────────────
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Capture the pointer so drag events are received even outside the element.
     e.currentTarget.setPointerCapture(e.pointerId)
     isDragging.current = true
     dragStartY.current = e.clientY
     dragStartOffset.current = offsetRef.current
+    // Disable text selection during drag to prevent accidental highlights.
     if (drawerRef.current) drawerRef.current.style.userSelect = 'none'
   }, [])
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging.current) return
     const deltaY = e.clientY - dragStartY.current
+    // Clamp offset to [0, maxOffset] so the drawer can't be dragged off-screen.
     const next = Math.max(0, Math.min(maxOffsetRef.current, dragStartOffset.current + deltaY))
     applyOffset(next)
   }, [applyOffset])
@@ -744,11 +823,13 @@ export default function Home() {
     if (drawerRef.current) drawerRef.current.style.userSelect = ''
     const totalDelta = Math.abs(e.clientY - dragStartY.current)
     if (totalDelta < 6) {
+      // Treat as a tap: toggle between fully open and fully closed.
       const target = offsetRef.current < maxOffsetRef.current / 2
         ? maxOffsetRef.current
         : 0
       applyOffset(target, true)
     } else {
+      // Treat as a drag: snap to whichever edge is closer.
       snapToEdge()
     }
   }, [applyOffset, snapToEdge])
@@ -770,6 +851,7 @@ export default function Home() {
 
   // ── Conversation persistence ───────────────────────────────────────
 
+  /** Returns the current conversation ID, creating a new one in Supabase if needed. */
   const ensureConversation = useCallback(async (): Promise<string> => {
     if (conversationId) return conversationId
     const { data } = await supabase
@@ -782,6 +864,7 @@ export default function Home() {
     return newId
   }, [conversationId, profile?.id])
 
+  /** Persists a single conversation turn (user or assistant) to `conversation_turns`. */
   const saveTurn = useCallback(async (
     convId: string, role: 'user' | 'assistant', content: string, index: number
   ) => {
@@ -811,6 +894,7 @@ export default function Home() {
       .in('conversation_id', convs.map(c => c.id))
       .eq('role', 'user')
       .eq('turn_index', 0)
+    // Build a map of conversation_id → first-user-message for preview text.
     const previewMap = Object.fromEntries((turns ?? []).map(t => [t.conversation_id, t.content]))
     setHistoryList(convs.map(c => ({
       id: c.id, title: c.title, created_at: c.created_at,
@@ -830,10 +914,12 @@ export default function Home() {
       .map((t: any) => ({ id: t.id, role: t.role as 'user' | 'assistant', content: t.content }))
     setMessages(msgs)
     setConversationId(convId)
+    // Restore turnIndex so subsequent turns are numbered correctly after the loaded history.
     turnIndexRef.current = data?.length ?? 0
     historyRef.current = msgs.map(m => ({ role: m.role, content: m.content }))
     setShowHistory(false)
     setTimeout(() => {
+      // Wait a tick for messages to render before scrolling to the latest message.
       const el = messagesEndRef.current
       if (el) el.scrollTop = el.scrollHeight
     }, 80)
@@ -851,6 +937,7 @@ export default function Home() {
   const clearHistory = useCallback(async () => {
     // Delete from DB first, then reset local state
     if (conversationId) {
+      // Remove both the turns and the conversation header so history is fully purged.
       await supabase.from('conversation_turns').delete().eq('conversation_id', conversationId)
       await supabase.from('conversations').delete().eq('id', conversationId)
     }
@@ -905,6 +992,7 @@ export default function Home() {
     historyRef.current = [...historyRef.current, { role: 'user', content: q }]
 
     const scrollToBottom = () => {
+      /** Scrolls to the latest message; called after adding user message and after AI response. */
       const el = messagesEndRef.current
       if (el) el.scrollTop = el.scrollHeight
     }
@@ -916,6 +1004,7 @@ export default function Home() {
     saveTurn(convId, 'user', q, userTurnIdx)
 
     try {
+      // Prepend a mode-specific system hint to the user message content
       const modeHints: Record<AIMode, string> = {
         'Write': '',
         'Graphs': '[Always respond with a concept graph in Mode B JSON format. Never use plain text.] ',
@@ -924,6 +1013,7 @@ export default function Home() {
       }
       const modeHint = modeHints[activeMode]
       const payload = next.map(m =>
+        // Inject the mode hint only into user messages so system framing is always respected.
         m.role === 'user'
           ? { role: m.role, content: modeHint + m.content }
           : { role: m.role, content: m.content }
@@ -939,6 +1029,7 @@ export default function Home() {
       historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
       saveTurn(convId, 'assistant', reply, turnIndexRef.current++)
       if (userTurnIdx === 0) {
+        // Update the conversation title with the first user message for easy history identification.
         supabase.from('conversations').update({ title: q.slice(0, 80) }).eq('id', convId)
       }
 
@@ -946,9 +1037,11 @@ export default function Home() {
       const writeData = parseWriteResponse(reply)
       if (writeData) {
         if (editorBridge.isEditorActive) {
+          // Editor is mounted — pipe blocks in directly via the bridge.
           editorBridge.insertBlocks(writeData.blocks)
           setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: writeData.confirmation }])
         } else {
+          // No active editor — create a new document in Supabase and navigate to it.
           const blocks = writeData.blocks.map(b => ({ ...b, id: crypto.randomUUID() }))
           const h1Block = blocks.find(b => b.type === 'h1')
           const rawTitle = (h1Block?.content as string | undefined) || q
@@ -980,6 +1073,7 @@ export default function Home() {
         let navMessage = navData.message
         const searchMatch = resolvedRoute.match(/__SEARCH:(.+?)__/)
         if (searchMatch && user) {
+          // Resolve dynamic __SEARCH:title__ placeholder to a real document ID.
           const { data: found } = await supabase
             .from('documents').select('id')
             .eq('owner_user_id', user.id).ilike('title', `%${searchMatch[1]}%`)
@@ -1036,11 +1130,13 @@ export default function Home() {
   useEffect(() => {
     if (!sessionReady) return
     async function loadStats() {
+      // Fetch document count, profile count, and public nootbook count in parallel
       const [{ count: nootCount }, { count: userCount }, { count: repoCount }] = await Promise.all([
         supabase.from('documents').select('*', { count: 'exact', head: true }),
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('documents').select('*', { count: 'exact', head: true }).eq('is_public_root', true),
       ])
+      // Update the three live stats displayed in the empty state footer.
       setStats([
         { value: (nootCount ?? 0).toLocaleString(), label: 'nootes shared' },
         { value: (userCount ?? 0).toLocaleString(), label: 'active learners' },

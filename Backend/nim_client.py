@@ -44,9 +44,17 @@ TIMEOUT = float(os.environ.get("NIM_TIMEOUT", "120"))
 # ─── Internal client ────────────────────────────────────────────────────────
 
 def _headers(api_key: str | None = None) -> dict[str, str]:
+    """Build HTTP request headers, optionally injecting a Bearer token.
+
+    Args:
+        api_key: Override the global NIM_API_KEY for this request.
+
+    Returns:
+        Dict of HTTP headers ready to pass to httpx.
+    """
     key = api_key if api_key is not None else NIM_API_KEY
     h = {"Content-Type": "application/json"}
-    if key:
+    if key:  # Only add Authorization header when an API key is available
         h["Authorization"] = f"Bearer {key}"
     return h
 
@@ -59,11 +67,11 @@ async def _post(
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """POST to a NIM endpoint and return the parsed JSON response."""
-    root = (base_url or NIM_BASE_URL).rstrip("/")
+    root = (base_url or NIM_BASE_URL).rstrip("/")  # Normalize base URL to prevent double slashes
     url = f"{root}{path}"
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:  # Per-request client; connection is closed after the response
         resp = await client.post(url, headers=_headers(api_key), json=payload)
-    resp.raise_for_status()
+    resp.raise_for_status()  # Raise httpx.HTTPStatusError for 4xx/5xx responses
     return resp.json()
 
 
@@ -131,8 +139,7 @@ async def nim_embed(texts: list[str]) -> list[list[float]]:
         "input_type": "passage",
     }
     data = await _post("/v1/embeddings", body, base_url=EMBED_BASE_URL, api_key=EMBED_API_KEY)
-    # Sort by index to guarantee order matches input
-    items = sorted(data.get("data", []), key=lambda d: d.get("index", 0))
+    items = sorted(data.get("data", []), key=lambda d: d.get("index", 0))  # Sort by index to guarantee order matches input
     return [item["embedding"] for item in items]
 
 
@@ -185,13 +192,13 @@ async def nim_moderate(message: str) -> dict[str, Any]:
         )
         result = result.strip().upper()
 
-        if result.startswith("SAFE"):
+        if result.startswith("SAFE"):  # Model confirmed the content is safe
             return {"allowed": True, "category": None}
 
         # Parse UNSAFE|category
-        if result.startswith("UNSAFE"):
+        if result.startswith("UNSAFE"):  # Model flagged the content — extract the violation category
             parts = result.split("|", 1)
-            category = parts[1].strip().lower() if len(parts) > 1 else "unspecified"
+            category = parts[1].strip().lower() if len(parts) > 1 else "unspecified"  # Category follows the pipe; default if absent
             return {"allowed": False, "category": category}
 
         # Fallback: if model output doesn't match expected format, allow

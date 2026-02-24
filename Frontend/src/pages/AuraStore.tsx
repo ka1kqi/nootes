@@ -8,6 +8,15 @@ import { useAuth } from '../hooks/useAuth'
 /* Bauhaus geometric cards with warm botanical accents                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Aura tier definitions — ordered by ascending threshold.
+ * Each tier permanently unlocks features once the user's aura reaches its threshold.
+ * @property threshold  - Minimum aura points required to unlock the tier
+ * @property label      - Human-readable tier name
+ * @property color      - Hex color used for the tier's icon and progress indicator
+ * @property icon       - Unicode glyph rendered in the progress bar and tier list
+ * @property description - Short summary of what the tier unlocks
+ */
 const auraTiers = [
   { threshold: 0,    label: 'Seedling',    color: '#8B6E4E', icon: '○', description: 'Full editor, forking, contributing, basic chat, limited AI.' },
   { threshold: 100,  label: 'Sprout',      color: '#A3B18A', icon: '◐', description: 'AI-generated flashcards from nootbook content.' },
@@ -16,6 +25,13 @@ const auraTiers = [
   { threshold: 1000, label: 'Ancient Oak', color: '#1a2f26', icon: '✦', description: 'Trusted Contributor — moderation privileges, cross-school access.' },
 ]
 
+/**
+ * Purchasable aura point bundles displayed in the "Aura Packs" section.
+ * @property amount  - Number of aura points granted
+ * @property price   - Display price string shown on the buy button
+ * @property popular - When true, renders a "MOST POPULAR" badge and highlighted border
+ * @property savings - Savings label (e.g. "15% off") shown in the top-right corner, or null
+ */
 const auraPacks = [
   { amount: 50, price: '$2.99', popular: false, savings: null },
   { amount: 150, price: '$7.99', popular: true, savings: '11% off' },
@@ -23,6 +39,18 @@ const auraPacks = [
   { amount: 750, price: '$29.99', popular: false, savings: '25% off' },
 ]
 
+/**
+ * Cosmetic item catalogue, grouped into categories.
+ * Items are purchased with aura points (depleting) and affect visual identity only.
+ * @property category - Display name for the category group
+ * @property items    - Array of purchasable cosmetic items
+ *   @property name        - Item name displayed on the card
+ *   @property cost        - Aura cost to purchase (depletes the balance)
+ *   @property preview     - Emoji/symbol preview, or null if the item uses a color swatch
+ *   @property color       - Hex color swatch for username-color items (optional)
+ *   @property rarity      - One of "common" | "rare" | "epic" | "legendary", drives border/tag styling
+ *   @property description - Flavour text shown on the card
+ */
 const cosmetics = [
   {
     category: 'Profile Badges',
@@ -52,6 +80,13 @@ const cosmetics = [
   },
 ]
 
+/**
+ * Feature cards rendered inside the "Premium" section.
+ * Each entry describes one benefit included with a premium subscription.
+ * @property icon  - SVG element used as the feature icon
+ * @property title - Short feature name
+ * @property desc  - One-sentence description of the feature
+ */
 const premiumFeatures = [
   {
     icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" /></svg>,
@@ -75,6 +110,11 @@ const premiumFeatures = [
   },
 ]
 
+/**
+ * Returns the Tailwind border classes for a cosmetic card based on its rarity.
+ * Higher rarities get brighter border colors to signal collectability.
+ * @param rarity - "common" | "rare" | "epic" | "legendary"
+ */
 function rarityBorderClass(rarity: string): string {
   const map: Record<string, string> = {
     common: 'border-forest/10 hover:border-forest/20',
@@ -85,6 +125,11 @@ function rarityBorderClass(rarity: string): string {
   return map[rarity] || map.common
 }
 
+/**
+ * Returns the Tailwind background + text classes for the rarity pill badge
+ * shown beneath each cosmetic item's name.
+ * @param rarity - "common" | "rare" | "epic" | "legendary"
+ */
 function rarityTagClass(rarity: string): string {
   const map: Record<string, string> = {
     common: 'bg-forest/[0.06] text-forest/40',
@@ -95,12 +140,23 @@ function rarityTagClass(rarity: string): string {
   return map[rarity] || map.common
 }
 
+/**
+ * AuraStore page — lets users purchase aura point packs, browse and buy
+ * cosmetic items, and subscribe to premium plans.
+ *
+ * Reads the current user's aura balance from `useAuth` and computes tier
+ * unlock state client-side without an extra network request.
+ */
 export default function AuraStore() {
   const { profile } = useAuth()
+  // Which top-level section tab is currently visible: packs | cosmetics | premium
   const [activeSection, setActiveSection] = useState<'packs' | 'cosmetics' | 'premium'>('packs')
 
+  // Fall back to 0 aura for unauthenticated or loading states
   const currentAura = profile?.aura ?? 0
+  // Annotate each tier with whether the user has reached its threshold.
   const tiers = auraTiers.map(t => ({ ...t, unlocked: currentAura >= t.threshold }))
+  // The next locked tier to show progress toward; clamps to the final tier if fully unlocked.
   const nextTier = tiers.find(t => !t.unlocked) ?? tiers[tiers.length - 1]
 
   return (
@@ -153,6 +209,7 @@ export default function AuraStore() {
             <div className="mt-6 relative z-10">
               <div className="flex items-center justify-between mb-2">
                 {tiers.map((tier, i) => (
+                  // Each pip shows the tier icon and threshold; grayed out until unlocked.
                   <div key={tier.threshold} className="flex flex-col items-center">
                     <span
                       className={`text-sm mb-1 ${tier.unlocked ? 'opacity-80' : 'opacity-25'}`}
@@ -184,6 +241,7 @@ export default function AuraStore() {
             ].map(tab => (
               <button
                 key={tab.key}
+                // Switch the visible content section on click.
                 onClick={() => setActiveSection(tab.key)}
                 className={`font-[family-name:var(--font-body)] text-sm px-5 py-2.5 squircle transition-all flex items-center gap-2 ${
                   activeSection === tab.key

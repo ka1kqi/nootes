@@ -1,9 +1,27 @@
+/**
+ * @file CodeBlock.tsx
+ * Syntax-highlighted, copy-enabled code block component.
+ * Performs a simple single-pass Python tokeniser for inline highlighting;
+ * non-Python languages are rendered without colour but still respect
+ * line numbers, filename labels, and the light/dark theme prop.
+ */
+
 import { useState, useCallback } from 'react'
 
+/** Semantic category assigned to each token during Python tokenisation. */
 type TokenType = 'keyword' | 'string' | 'comment' | 'function' | 'number' | 'operator' | 'decorator' | 'builtin' | 'plain'
 
+/** A single syntactic token produced by the Python tokeniser. */
 interface Token { text: string; type: TokenType }
 
+/**
+ * Tokenises a single line of Python source into {@link Token} objects.
+ * The tokeniser works left-to-right with a greedy priority:
+ * comment → decorator → string → number → word (keyword/builtin/function/plain) → operator → fallback.
+ *
+ * @param line - One line of source code (no trailing newline).
+ * @returns Ordered array of tokens covering the entire input string.
+ */
 function tokenizePython(line: string): Token[] {
   const tokens: Token[] = []
   const keywords = ['def', 'return', 'if', 'elif', 'else', 'while', 'for', 'in', 'import', 'from', 'class', 'with', 'as', 'try', 'except', 'finally', 'raise', 'yield', 'lambda', 'and', 'or', 'not', 'is', 'True', 'False', 'None', 'pass', 'break', 'continue']
@@ -33,6 +51,7 @@ function tokenizePython(line: string): Token[] {
   return tokens
 }
 
+/** Maps each token type to its hex/rgba colour used in dark-theme renders. */
 const colorMap: Record<TokenType, string> = {
   comment: '#5C7A6B',
   keyword: '#A3B18A',
@@ -45,20 +64,34 @@ const colorMap: Record<TokenType, string> = {
   plain: 'rgba(233,228,212,0.9)',
 }
 
+/**
+ * Renders a syntax-highlighted code block with line numbers and a copy button.
+ *
+ * @param code     - Raw source code string (newline-separated lines).
+ * @param language - Language identifier shown in the header (e.g. `"python"`).
+ * @param filename - Optional filename label shown instead of the language.
+ * @param theme    - Visual theme; `"dark"` uses the forest palette,
+ *                   `"light"` uses cream/parchment tones.
+ */
 export function CodeBlock({
   code,
   language,
   filename,
   theme = 'dark',
 }: {
+  /** Raw source code to display. */
   code: string
+  /** Language identifier for the header label. */
   language: string
+  /** Optional filename shown in place of the language label. */
   filename?: string
+  /** Light or dark colour theme. Defaults to `"dark"`. */
   theme?: 'dark' | 'light'
 }) {
   const [copied, setCopied] = useState(false)
   const lines = code.split('\n')
 
+  /** Copies the full source code to the clipboard and shows a brief "copied!" confirmation. */
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code)
     setCopied(true)
@@ -90,12 +123,15 @@ export function CodeBlock({
             <span className={`${lineNumColor} w-10 shrink-0 select-none text-right pr-4 text-xs leading-relaxed`}>{i + 1}</span>
             <span className="flex-1" style={{ whiteSpace: 'pre' }}>
               {(() => {
+                // Preserve leading whitespace as a raw span so indentation renders correctly
                 const leading = line.match(/^(\s*)/)?.[0] || ''
                 const trimmed = line.slice(leading.length)
+                // Tokenise only the non-whitespace portion to avoid mangling indentation
                 const tokens = tokenizePython(trimmed)
                 return (
                   <>
                     {leading && <span>{leading}</span>}
+                    {/* Render each token with its language-aware colour */}
                     {tokens.map((tok, j) => (
                       <span key={j} style={{ color: theme === 'dark' ? colorMap[tok.type] : undefined }} className={theme === 'light' ? (tok.type === 'keyword' ? 'text-forest font-semibold' : tok.type === 'comment' ? 'text-sage' : tok.type === 'string' || tok.type === 'number' ? 'text-amber' : tok.type === 'function' ? 'text-forest' : 'text-forest/80') : undefined}>
                         {tok.text}

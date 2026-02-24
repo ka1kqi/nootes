@@ -1,8 +1,21 @@
+/**
+ * @file Mermaid.tsx
+ * React wrapper for the Mermaid diagram library.
+ * Initialises Mermaid exactly once (module-level flag) with the Nootes
+ * Botanical colour palette, then renders each chart into an SVG string
+ * that is injected via `dangerouslySetInnerHTML`.
+ */
+
 import { useEffect, useState } from 'react'
 import mermaid from 'mermaid'
 
+/** Tracks whether `mermaid.initialize()` has been called yet (module singleton). */
 let initialized = false
 
+/**
+ * Calls `mermaid.initialize()` with the Botanical theme variables the first
+ * time it is invoked; subsequent calls are no-ops.
+ */
 function ensureInit() {
   if (initialized) return
   initialized = true
@@ -22,8 +35,18 @@ function ensureInit() {
   })
 }
 
+/** Monotonically increasing counter used to generate unique Mermaid render IDs. */
 let uid = 0
 
+/**
+ * Renders a Mermaid diagram string to an SVG.
+ *
+ * Mermaid's async `render()` API appends a temporary sandbox element to
+ * `<body>`; this component cleans it up after the SVG is obtained.
+ * Displays a compact error badge if the diagram syntax is invalid.
+ *
+ * @param chart - Mermaid diagram source (e.g. `"graph TD; A-->B"`).
+ */
 export function Mermaid({ chart }: { chart: string }) {
   const [svg, setSvg] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +68,9 @@ export function Mermaid({ chart }: { chart: string }) {
     }
 
     mermaid.render(id, chart)
+      /** Store the rendered SVG string and remove the sandbox element. */
       .then(({ svg: rendered }) => { cleanup(); setSvg(rendered) })
+      /** Show only the first line of the mermaid error (subsequent lines are verbose). */
       .catch((err: Error) => {
         cleanup()
         setError(err.message?.split('\n')[0] ?? 'Diagram error')

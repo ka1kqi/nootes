@@ -1,5 +1,20 @@
+"""
+Nootes Backend API — FastAPI application entry point.
+
+Exposes REST endpoints for:
+  - Repository and document CRUD (backed by JSON files in data/docs/)
+  - Semantic merge of fork documents via Nemotron Nano 8B
+  - Noot AI agent (Nemotron Super 49B) for writing assistance
+  - Content moderation via Nemotron Content Safety 4B
+  - Document / query embedding via Nemotron Embed VL 1B
+  - Node explanation using a lightweight prompt
+
+All NIM calls are delegated to nim_client.py.
+Document serialization helpers live in doc_utils.py.
+"""
+
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv()  # Load .env before any os.environ reads
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -89,6 +104,7 @@ def write_doc(doc: dict):
 
 
 def now_iso() -> str:
+    """Return the current UTC timestamp as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -98,11 +114,11 @@ def list_all_docs() -> list[dict]:
     for path in DOCS_DIR.glob("*.json"):
         key = path.stem  # e.g. "cs-ua-310--master"
         parts = key.split("--", 1)
-        if len(parts) != 2:
+        if len(parts) != 2:  # Skip files that don't follow the repo_id--user_id naming convention
             continue
         repo_id, user_id = parts
         doc = read_doc(repo_id, user_id)
-        if doc:
+        if doc:  # Only include successfully parsed documents
             docs.append(doc)
     return docs
 
@@ -124,6 +140,7 @@ check_seed_data()
 
 @app.get("/api/repos")
 def list_repos():
+    """Return a deduplicated list of all repositories with metadata sourced from master docs."""
     docs = list_all_docs()
     seen: set[str] = set()
     repos = []
@@ -135,9 +152,11 @@ def list_repos():
 
     for doc in docs:
         repo_id = doc["repoId"]
+        # Skip repos already added (deduplication across master + fork files)
         if repo_id in seen:
             continue
         seen.add(repo_id)
+        # Prefer master doc for display metadata; fall back to any available doc
         master = masters.get(repo_id, doc)
         repos.append({
             "id": repo_id,
@@ -154,6 +173,7 @@ def list_repos():
 
 @app.get("/api/repos/{repo_id}/master")
 def get_master(repo_id: str):
+    """Fetch the canonical master document for a repository."""
     doc = read_doc(repo_id, "master")
     if not doc:
         raise HTTPException(status_code=404, detail="Master document not found")
@@ -162,33 +182,35 @@ def get_master(repo_id: str):
 
 @app.get("/api/repos/{repo_id}/personal/{user_id}")
 def get_personal(repo_id: str, user_id: str):
+    """Fetch a user's personal fork of a repo, auto-creating it from master if absent."""
     doc = read_doc(repo_id, user_id)
     if not doc:
         # Auto-fork from master
         master = read_doc(repo_id, "master")
         if not master:
             raise HTTPException(status_code=404, detail="Repo not found")
-        forked = copy.deepcopy(master)
-        forked["id"] = str(uuid.uuid4())
+        forked = copy.deepcopy(master)  # Deep copy so edits don't mutate the master dict in memory
+        forked["id"] = str(uuid.uuid4())  # Assign a fresh unique ID for the fork
         forked["userId"] = user_id
-        forked["title"] = f"{master['title']} — My Notes"
-        forked["version"] = f"{master.get('version', '1.0')}+personal"
-        forked["tags"] = list(master.get("tags", [])) + ["personal"]
+        forked["title"] = f"{master['title']} — My Notes"  # Distinguish the fork's title from the master
+        forked["version"] = f"{master.get('version', '1.0')}+personal"  # Tag version to indicate personal fork
+        forked["tags"] = list(master.get("tags", [])) + ["personal"]  # Inherit master tags and add 'personal'
         forked["createdAt"] = now_iso()
         forked["updatedAt"] = now_iso()
-        write_doc(forked)
+        write_doc(forked)  # Persist the new fork immediately so subsequent GETs find it
         return {"data": forked}
     return {"data": doc}
 
 
 @app.put("/api/repos/{repo_id}/personal/{user_id}")
 async def update_personal(repo_id: str, user_id: str, body: UpdateDocRequest):
+    """Persist edits to a user's personal fork and trigger a background embedding."""
     doc = read_doc(repo_id, user_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if body.blocks is not None:
+    if body.blocks is not None:  # Only replace blocks when the client explicitly sent new ones
         doc["blocks"] = [b.model_dump() for b in body.blocks]
-    if body.title is not None:
+    if body.title is not None:  # Only update title when explicitly provided in the request
         doc["title"] = body.title
     doc["updatedAt"] = now_iso()
     write_doc(doc)
@@ -208,6 +230,14 @@ _PROMPT_DIRS = [
 
 
 def _find_prompt(filename: str) -> Path | None:
+    """Search known prompt directories for a prompt file.
+
+    Args:
+        filename: Prompt filename, e.g. "gpt_prompt.txt".
+
+    Returns:
+        The first matching Path, or None if not found in any directory.
+    """
     for d in _PROMPT_DIRS:
         p = d / filename
         if p.exists():
@@ -221,6 +251,7 @@ GRAPH_PROMPT_PATH = _find_prompt("gpt_prompt.txt")
 
 
 def _load_graph_prompt() -> str:
+    """Load the graph/task-flow system prompt from disk, or fall back to a default."""
     if GRAPH_PROMPT_PATH:
         return GRAPH_PROMPT_PATH.read_text(encoding="utf-8").strip()
     return "You are a graph task flow generation assistant."
@@ -240,6 +271,7 @@ SIMPLE_PROMPT_PATH = _find_prompt("gpt_prompt_simple.txt")
 
 
 def _load_simple_prompt() -> str:
+    """Load the brief node-explanation system prompt, or fall back to a default."""
     if SIMPLE_PROMPT_PATH:
         return SIMPLE_PROMPT_PATH.read_text(encoding="utf-8").strip()
     return "Explain the concept in 1–2 sentences. Plain text only."
@@ -254,9 +286,8 @@ async def explain_node(body: PromptRequest):
         messages = messages[1:]
     messages.insert(0, {"role": "system", "content": _load_simple_prompt()})
     try:
-        content = await nim_graph(messages)
+        content = await nim_graph(messages)  # Use the Super 49B model for concise node explanations
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"NIM explain failed: {e}")
     return {"content": content.strip()}
 
 
@@ -321,10 +352,11 @@ def _fix_latex_backslashes(s: str) -> str:
     etc.  Note content never contains literal form-feed or backspace bytes.
     """
     def _repl(m: re.Match) -> str:
+        # Inner replacement callback — invoked by re.sub for every \X or \\X sequence
         c = m.group(1)
-        if c in ('"', '\\', '/', 'n', 'r', 't', 'u'):
+        if c in ('"', '\\', '/', 'n', 'r', 't', 'u'):  # Standard JSON escape — leave unchanged
             return m.group(0)
-        return '\\\\' + c
+        return '\\\\' + c  # Bare LaTeX command (e.g. \frac) — double the backslash for valid JSON
     return re.sub(r'\\(\\|["\\/nrtu]|.)', _repl, s)
 
 
@@ -343,36 +375,36 @@ def _normalise_noot_response(raw: str) -> str:
 
     # --- Resolve marker --------------------------------------------------
     m = re.match(r'^\[([A-Z_a-z0-9 ]+)\]', text)
-    if not m:
+    if not m:  # No tool marker found — treat the entire response as a plain message
         marker = "MESSAGE"
         body = text
     else:
         raw_token = m.group(1).upper().strip()
         body = text[m.end():].lstrip("\n").lstrip()
         marker = "MESSAGE"  # default — safer than WRITE_TO_EDITOR
-        for hint, tool in _NOOT_TOOL_HINTS:
-            if hint in raw_token:
+        for hint, tool in _NOOT_TOOL_HINTS:  # Walk hint table to resolve typo-tolerant marker
+            if hint in raw_token:  # First matching hint wins
                 marker = tool
                 break
 
     # --- Trim body to correct opening bracket ----------------------------
     # Use "[{" for array tools to skip any duplicate "[MARKER]" tokens the
     # model may have emitted before the actual JSON array.
-    if marker in ("GRAPH", "WRITE_TO_EDITOR"):
+    if marker in ("GRAPH", "WRITE_TO_EDITOR"):  # Array-type tools — trim to first [{ to skip re-emitted marker tokens
         start = body.find("[{")
-        if start != -1:
+        if start != -1:  # Prefer [{ to skip stray [ before the actual objects
             body = body[start:]
         else:
             start = body.find("[")
-            if start != -1:
+            if start != -1:  # Fall back to any [ if [{ not found
                 body = body[start:]
-    elif marker in ("NAVIGATE", "CREATE_REPO", "MESSAGE"):
+    elif marker in ("NAVIGATE", "CREATE_REPO", "MESSAGE"):  # Object-type tools — trim to first {
         start = body.find("{")
         if start != -1:
             body = body[start:]
 
     # --- Sanitise latex block content in WRITE_TO_EDITOR -----------------
-    if marker == "WRITE_TO_EDITOR":
+    if marker == "WRITE_TO_EDITOR":  # Sanitise LaTeX block content so KaTeX receives clean input
         try:
             arr_end = body.rfind("]")
             if arr_end != -1:
@@ -380,7 +412,7 @@ def _normalise_noot_response(raw: str) -> str:
                 # and already-doubled \\frac without breaking either).
                 json_str = _fix_latex_backslashes(body[:arr_end + 1])
                 blocks = json.loads(json_str)
-                for block in blocks:
+                for block in blocks:  # Iterate blocks to strip $ delimiters from latex content
                     if isinstance(block, dict) and block.get("type") == "latex":
                         block["content"] = _sanitise_latex_content(
                             str(block.get("content", ""))
@@ -395,6 +427,7 @@ def _normalise_noot_response(raw: str) -> str:
 
 
 def _load_noot_prompt() -> str:
+    """Load the Noot agent system prompt from disk, or fall back to a default."""
     if NOOT_PROMPT_PATH:
         return NOOT_PROMPT_PATH.read_text(encoding="utf-8").strip()
     return "You are Noot, a helpful AI study companion."
@@ -404,11 +437,11 @@ def _load_noot_prompt() -> str:
 async def noot_chat(body: PromptRequest):
     """Noot agent endpoint — decides between plain text and graph responses."""
     messages = [m.model_dump() for m in body.messages]
-    if not messages or messages[0].get("role") != "system":
+    if not messages or messages[0].get("role") != "system":  # Inject Noot system prompt if not already present
         messages.insert(0, {"role": "system", "content": _load_noot_prompt()})
     try:
-        content = await nim_graph(messages)
-        content = _normalise_noot_response(content)
+        content = await nim_graph(messages)  # Call Super 49B for full agent reasoning
+        content = _normalise_noot_response(content)  # Normalize tool markers and fix LaTeX/JSON encoding
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"NIM noot failed: {e}")
     return {"content": content}
@@ -437,12 +470,12 @@ async def _embed_document_safe(repo_id: str, user_id: str, doc: dict):
     """Legacy fire-and-forget — kept for compatibility."""
     try:
         markdown = blocks_to_markdown(doc.get("blocks", []), title=doc.get("title"))
-        if not markdown.strip():
+        if not markdown.strip():  # Nothing to embed — skip silently
             return
         vector = await nim_embed_single(markdown)
         logger.info("Embedded doc %s/%s — %d dims", repo_id, user_id, len(vector))
     except Exception as e:
-        logger.error("Background embed failed for %s/%s: %s", repo_id, user_id, e)
+        logger.error("Background embed failed for %s/%s: %s", repo_id, user_id, e)  # Log but don't propagate — fire-and-forget
 
 
 @app.post("/api/embed")
@@ -451,9 +484,9 @@ async def embed_document(body: EmbedRequest):
     texts = [
         str(b.get("content", "") or "").strip()
         for b in body.blocks
-        if isinstance(b, dict) and str(b.get("content", "") or "").strip()
+        if isinstance(b, dict) and str(b.get("content", "") or "").strip()  # Filter non-dict entries and blank blocks
     ]
-    if not texts:
+    if not texts:  # Reject requests where all blocks are empty or non-text
         raise HTTPException(status_code=400, detail="Document has no content to embed")
 
     markdown = blocks_to_markdown(body.blocks, title=body.title)
@@ -488,6 +521,7 @@ MERGE_PROMPT_PATH = _find_prompt("merge_prompt.txt")
 
 
 def _load_merge_prompt() -> str:
+    """Load the document-merge system prompt from disk, or fall back to a default."""
     if MERGE_PROMPT_PATH:
         return MERGE_PROMPT_PATH.read_text(encoding="utf-8").strip()
     return (
@@ -502,7 +536,7 @@ def _format_merge_input(master: dict, forks: list[dict]) -> str:
     master_json = blocks_to_json_str(master.get("blocks", []))
     parts = [f"## MASTER DOCUMENT\n\n{master_json}"]
 
-    for i, fork in enumerate(forks, 1):
+    for i, fork in enumerate(forks, 1):  # Enumerate from 1 for human-readable FORK-1, FORK-2 labels
         fork_json = blocks_to_json_str(fork.get("blocks", []))
         user_id = fork.get("userId", "unknown")
         parts.append(f"## FORK-{i} (contributor: {user_id})\n\n{fork_json}")
@@ -528,17 +562,17 @@ def _parse_merge_result(result: str) -> tuple[list[dict], str]:
 
     # ── Strategy 1: find a JSON array ────────────────────────────────────────
     bracket_idx = merged_raw.find("[")
-    if bracket_idx >= 0:
+    if bracket_idx >= 0:  # Found a JSON array in the response — attempt direct parse
         candidate = merged_raw[bracket_idx:]
         try:
             blocks = json.loads(candidate)
-            if isinstance(blocks, list):
-                for b in blocks:
+            if isinstance(blocks, list):  # Valid array — assign IDs and return immediately
+                for b in blocks:  # Ensure every block has the required fields
                     b["id"] = uuid.uuid4().hex[:8]
                     b.setdefault("type", "paragraph")
                     b.setdefault("content", "")
                 return blocks, summary.strip()
-        except json.JSONDecodeError:
+        except json.JSONDecodeError:  # Not valid JSON — fall through to strategy 2
             pass
 
     # ── Strategy 2: model returned ---\n{obj}\n--- delimited blocks ──────────
@@ -548,32 +582,32 @@ def _parse_merge_result(result: str) -> tuple[list[dict], str]:
     current: list[str] = []
     for line in lines:
         stripped = line.strip()
-        if stripped == "---":
-            if current:
+        if stripped == "---":  # Delimiter found — flush the accumulated block
+            if current:  # Only flush when there's content to flush
                 json_chunks.append("\n".join(current).strip())
                 current = []
         else:
-            if stripped:
+            if stripped:  # Skip blank lines within a block
                 current.append(line)
-    if current:
+    if current:  # Flush any remaining block that wasn't followed by a ---
         json_chunks.append("\n".join(current).strip())
 
     blocks: list[dict] = []
     for chunk in json_chunks:
-        if not chunk:
+        if not chunk:  # Skip empty strings from consecutive --- delimiters
             continue
         # Each chunk may be a single object or a JSON array
         try:
             parsed = json.loads(chunk)
-            if isinstance(parsed, list):
+            if isinstance(parsed, list):  # Chunk is a JSON array of blocks — extend the list
                 blocks.extend(parsed)
-            elif isinstance(parsed, dict):
+            elif isinstance(parsed, dict):  # Chunk is a single block object — append it
                 blocks.append(parsed)
         except json.JSONDecodeError:
             continue
 
     if blocks:
-        for b in blocks:
+        for b in blocks:  # Normalize each parsed block before returning
             b["id"] = uuid.uuid4().hex[:8]
             b.setdefault("type", "paragraph")
             b.setdefault("content", "")
@@ -584,7 +618,7 @@ def _parse_merge_result(result: str) -> tuple[list[dict], str]:
     for obj_str in objects:
         try:
             b = json.loads(obj_str)
-            if "type" in b or "content" in b:
+            if "type" in b or "content" in b:  # Only include objects that look like valid block dicts
                 b["id"] = uuid.uuid4().hex[:8]
                 b.setdefault("type", "paragraph")
                 b.setdefault("content", "")
@@ -615,9 +649,9 @@ async def merge_documents(repo_id: str):
     # 2. Find all forks
     forks = [
         doc for doc in list_all_docs()
-        if doc["repoId"] == repo_id and doc.get("userId") != "master"
+        if doc["repoId"] == repo_id and doc.get("userId") != "master"  # Collect all non-master forks for this repo
     ]
-    if not forks:
+    if not forks:  # Nothing to merge — abort early
         raise HTTPException(status_code=400, detail="No forks to merge")
 
     # 3. Build prompt
@@ -698,9 +732,9 @@ def _bump_version(version: str) -> str:
     """Increment the patch version: 1.0.0 → 1.0.1."""
     try:
         parts = version.split(".")
-        if len(parts) == 3:
-            parts[2] = str(int(parts[2]) + 1)
+        if len(parts) == 3:  # Only bump if the version string follows semver (X.Y.Z) format
+            parts[2] = str(int(parts[2]) + 1)  # Increment the patch segment
             return ".".join(parts)
-    except (ValueError, IndexError):
+    except (ValueError, IndexError):  # Malformed patch segment — return the version unchanged
         pass
     return version

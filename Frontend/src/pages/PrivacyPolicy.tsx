@@ -5,8 +5,15 @@ import logoImg from '../assets/logo.png'
 /* Privacy Policy                                                      */
 /* ------------------------------------------------------------------ */
 
+/** ISO-formatted date string shown in the page header and footer. Update whenever the policy changes. */
 const LAST_UPDATED = 'February 22, 2026'
 
+/**
+ * Privacy policy section definitions rendered in order.
+ * @property number - Zero-padded section number used as the anchor ID (`section-XX`)
+ * @property title  - Section heading
+ * @property body   - Array of paragraph strings rendered as separate `<p>` elements
+ */
 const sections = [
   {
     number: '01',
@@ -107,6 +114,14 @@ const sections = [
   },
 ]
 
+/**
+ * PrivacyPolicy page — static legal page explaining data collection, usage,
+ * and user rights.
+ *
+ * Layout: sticky nav → hero + key-commitment strip → jump-link table of contents
+ * → numbered policy sections → footer.
+ * All section anchors use the pattern `#section-XX` to support direct linking.
+ */
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-cream flex flex-col">
@@ -159,6 +174,7 @@ export default function PrivacyPolicy() {
               { icon: '✕', label: 'No advertising cookies' },
               { icon: '✓', label: 'You control your content' },
             ].map((item, i) => (
+              // ✓ items render in sage green; ✕ items are dimmed to signal absence.
               <div key={i} className="flex items-center gap-2.5">
                 <span className={`font-mono text-xs font-bold ${item.icon === '✓' ? 'text-sage' : 'text-forest/25'}`}>{item.icon}</span>
                 <span className="font-[family-name:var(--font-body)] text-xs text-forest/55 leading-snug">{item.label}</span>
@@ -173,6 +189,7 @@ export default function PrivacyPolicy() {
             <span className="font-mono text-[9px] text-forest/30 tracking-[0.3em] uppercase block mb-3">Contents</span>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
               {sections.map(s => (
+                // Jump link anchors to the section using its zero-padded number as an ID.
                 <a
                   key={s.number}
                   href={`#section-${s.number}`}
@@ -189,6 +206,7 @@ export default function PrivacyPolicy() {
         {/* ── Sections ─────────────────────────────────────────────── */}
         <div className="max-w-3xl mx-auto px-6 pb-24 space-y-8">
           {sections.map(s => (
+            // Each section is an anchor target with scroll-mt to account for the sticky header.
             <section key={s.number} id={`section-${s.number}`} className="scroll-mt-20">
               <div className="flex items-start gap-4 mb-3">
                 <span className="font-[family-name:var(--font-display)] text-4xl text-forest/[0.07] leading-none select-none shrink-0 mt-1">{s.number}</span>
@@ -196,6 +214,7 @@ export default function PrivacyPolicy() {
               </div>
               <div className="pl-12 space-y-3">
                 {s.body.map((para, i) => (
+                  // Render each paragraph string as a separate <p> element.
                   <p key={i} className="font-[family-name:var(--font-body)] text-sm text-forest/55 leading-relaxed">
                     {para}
                   </p>

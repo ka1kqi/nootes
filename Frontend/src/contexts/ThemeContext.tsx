@@ -1,7 +1,13 @@
+/**
+ * ThemeContext — manages the active color theme, font scale, compact mode,
+ * and LaTeX preview toggle. Persists all preferences to localStorage and
+ * applies them as CSS custom properties on `<html>`.
+ */
 import { createContext, useContext, useEffect, useState } from 'react'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+/** Semantic color tokens used throughout the Nootes UI. */
 export interface ThemeColors {
   forest: string
   forestDeep: string
@@ -15,6 +21,7 @@ export interface ThemeColors {
   lichen: string
 }
 
+/** A named color theme with a 4-color preview swatch and full color token set. */
 export interface Theme {
   id: string
   name: string
@@ -23,10 +30,12 @@ export interface Theme {
   colors: ThemeColors
 }
 
+/** Editor font size scale: small, medium (default), or large. */
 export type FontScale = 'sm' | 'md' | 'lg'
 
 // ─── Theme Definitions ─────────────────────────────────────────────────────────
 
+/** All available themes. The first entry is the default (Botanical / GMK Botanical palette). */
 export const THEMES: Theme[] = [
   {
     id: 'botanical',
@@ -289,22 +298,37 @@ export const THEMES: Theme[] = [
 
 // ─── Context ───────────────────────────────────────────────────────────────────
 
+/** Shape of the value provided by {@link ThemeProvider}. */
 interface ThemeContextValue {
+  /** ID of the currently active theme (matches a `Theme.id`). */
   themeId: string
+  /** Persists and activates a new theme by ID. */
   setThemeId: (id: string) => void
+  /** The full `Theme` object for the active theme. */
   currentTheme: Theme
+  /** Current font scale preference for the editor. */
   fontScale: FontScale
+  /** Persists and applies a new font scale. */
   setFontScale: (scale: FontScale) => void
+  /** When true, the editor uses a denser layout. */
   compactMode: boolean
+  /** Persists and applies compact mode. */
   setCompactMode: (v: boolean) => void
+  /** When true, LaTeX blocks render the equation inline instead of raw source. */
   latexPreview: boolean
+  /** Persists and applies the LaTeX preview preference. */
   setLatexPreview: (v: boolean) => void
 }
 
+/** React context for theme state; consume with {@link useTheme}. */
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
+/**
+ * Reads theme preferences from localStorage on mount, applies them as CSS
+ * variables, and provides setters that persist changes immediately.
+ */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeId, setThemeIdState] = useState<string>(
     () => localStorage.getItem('nootes-theme') ?? 'botanical'
@@ -351,21 +375,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     else document.documentElement.classList.remove('compact-mode')
   }, [compactMode])
 
+  /** Persists the chosen theme ID and updates state. */
   const setThemeId = (id: string) => {
     localStorage.setItem('nootes-theme', id)
     setThemeIdState(id)
   }
 
+  /** Persists the chosen font scale and updates state. */
   const setFontScale = (scale: FontScale) => {
     localStorage.setItem('nootes-font-scale', scale)
     setFontScaleState(scale)
   }
 
+  /** Persists the compact mode preference and updates state. */
   const setCompactMode = (v: boolean) => {
     localStorage.setItem('nootes-compact', String(v))
     setCompactModeState(v)
   }
 
+  /** Persists the LaTeX preview preference and updates state. */
   const setLatexPreview = (v: boolean) => {
     localStorage.setItem('nootes-latex-preview', String(v))
     setLatexPreviewState(v)
@@ -382,6 +410,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Consumes the theme context. Throws if called outside {@link ThemeProvider}.
+ * @returns The full theme context value including active theme and setters.
+ */
 export function useTheme() {
   const ctx = useContext(ThemeContext)
   if (!ctx) throw new Error('useTheme must be used within ThemeProvider')

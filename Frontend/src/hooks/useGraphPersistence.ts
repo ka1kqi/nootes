@@ -1,21 +1,42 @@
+/**
+ * useGraphPersistence — handles saving and versioning of knowledge graphs.
+ *
+ * Manages a `graphs` row (one per conversation) and immutable `graph_versions`
+ * rows. A `graph_heads` row tracks the pointer to the latest version.
+ *
+ * Usage pattern:
+ * 1. `saveItems()` — called once with the initial AI-generated TaskItems
+ * 2. `upsert()` — called on every subsequent graph mutation (expand, drag, etc.)
+ * 3. `loadGraph()` — called when restoring from history
+ * 4. `reset()` — called when clearing the conversation
+ */
 import { useRef, useState } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 import type { TaskItem } from '../pages/GraphView'
 
+/** Optional metadata passed when creating or updating a graph version. */
 interface SaveOpts {
+  /** Human-readable title for the graph row. */
   title?: string
+  /** AI-generated summary of the graph content. */
   summary?: string
+  /** The original user prompt that generated the graph. */
   prompt?: string
 }
 
+/**
+ * Provides `saveItems`, `upsert`, `loadGraph`, and `reset` for persisting
+ * knowledge graphs across the graphs / graph_versions / graph_heads tables.
+ */
 export function useGraphPersistence() {
   const { user } = useAuth()
   const graphIdRef   = useRef<string | null>(null)
   const versionRef   = useRef(0)
   const [saving, setSaving] = useState(false)
 
+  /** Inserts a new immutable version row and returns its UUID. */
   const _insertVersion = async (
     graphId: string,
     versionNum: number,
@@ -32,6 +53,7 @@ export function useGraphPersistence() {
     return v.id as string
   }
 
+  /** Creates a brand-new graph row + first version + head pointer. */
   const _createGraph = async (
     nodes: unknown,
     edges: unknown,
@@ -56,6 +78,7 @@ export function useGraphPersistence() {
     versionRef.current = 1
   }
 
+  /** Appends a new version to an existing graph and advances the head pointer. */
   const _updateGraph = async (nodes: unknown, edges: unknown) => {
     const nextVersion = versionRef.current + 1
 

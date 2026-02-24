@@ -1,3 +1,11 @@
+/**
+ * useMyRepos — hooks and helpers for managing a user's personal documents.
+ *
+ * Exports:
+ * - {@link createDocument}    — inserts a new document row for the current user
+ * - {@link useUserDocuments}  — fetches all documents owned by the current user
+ * - {@link deleteDocument}    — deletes a document by ID
+ */
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
@@ -5,11 +13,13 @@ import { newBlock, type Block } from './useDocument'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** Input required to create a new document. */
 export interface CreateDocumentInput {
   title: string
   tags?: string[]
 }
 
+/** A document row as returned by the `documents` select query (includes embedding). */
 export interface UserDocument {
   id: string
   title: string
@@ -24,6 +34,10 @@ export interface UserDocument {
 
 // ─── createDocument ───────────────────────────────────────────────────────────
 
+/**
+ * Inserts a new document row owned by `user` with a single blank paragraph block.
+ * @returns `{ docId, error }` — `docId` is null on failure.
+ */
 export async function createDocument(
   user: import('@supabase/supabase-js').User,
   input: CreateDocumentInput,
@@ -45,12 +59,19 @@ export async function createDocument(
 
 // ─── useUserDocuments ─────────────────────────────────────────────────────────
 
+/**
+ * Fetches all documents owned by the current user, ordered newest-first.
+ * Waits for `sessionReady` before querying to avoid stale token errors.
+ *
+ * @returns `{ docs, loading, refetch }`
+ */
 export function useUserDocuments() {
   const { user, sessionReady } = useAuth()
   const [docs, setDocs] = useState<UserDocument[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchDocs = useCallback(async () => {
+    // Wait for a valid session before querying to avoid stale-token 401 errors
     if (!user || !sessionReady) { setDocs([]); setLoading(true); return }
     setLoading(true)
     const { data } = await supabase
@@ -62,6 +83,7 @@ export function useUserDocuments() {
     setLoading(false)
   }, [user, sessionReady])
 
+  // Fetch documents on mount and whenever user/session state changes
   useEffect(() => { fetchDocs() }, [fetchDocs])
 
   return { docs, loading, refetch: fetchDocs }
@@ -69,6 +91,11 @@ export function useUserDocuments() {
 
 // ─── deleteDocument ───────────────────────────────────────────────────────────
 
+/**
+ * Permanently deletes a document by its UUID.
+ * RLS ensures only the document owner can delete their own rows.
+ * @returns `{ error }` — null on success.
+ */
 export async function deleteDocument(docId: string): Promise<{ error: string | null }> {
   const { error } = await supabase.from('documents').delete().eq('id', docId)
   return { error: error?.message ?? null }

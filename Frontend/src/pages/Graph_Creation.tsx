@@ -16,6 +16,17 @@ import { useGraphPersistence } from '../hooks/useGraphPersistence'
 import { useGraphHistory, rawNodesToItems } from '../hooks/useGraphHistory'
 import { supabase } from '../lib/supabase'
 
+/**
+ * Graph_Creation — the primary AI graph-building page (route: /graphs).
+ *
+ * Provides an LLM-backed chat interface where the user describes a project or
+ * concept and receives an interactive ReactFlow graph of subtasks.  Key exports:
+ *   - `parseGraphResponse` — parses raw LLM output into structured TaskItems.
+ *   - `MessageBubble`, `TypingIndicator`, `GraphMessage` — chat UI primitives
+ *     reused across other pages.
+ *   - `App` (default) — full page component with chat, graph canvas, and history.
+ */
+
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const API_URL     = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/prompt'
 const EXPLAIN_URL = API_URL.replace(/\/api\/prompt$/, '/api/explain')
@@ -31,6 +42,10 @@ interface Message {
 }
 
 // ─── SYNTAX THEME (GMK Botanical) ──────────────────────────────────────────
+/**
+ * Custom syntax-highlight theme derived from the GMK Botanical keycap palette.
+ * Passed to react-syntax-highlighter's `style` prop in `CodeBlock`.
+ */
 const botanicalTheme: Record<string, React.CSSProperties> = {
   'code[class*="language-"]': {
     color: '#264635',
@@ -53,6 +68,7 @@ const botanicalTheme: Record<string, React.CSSProperties> = {
 }
 
 // ─── DOODLE DECORATIONS ─────────────────────────────────────────────────────
+/** Circular dashed-ring doodle used as a floating background decoration on the empty state. */
 const Doodle = () => (
   <svg width="120" height="120" viewBox="0 0 120 120" fill="none" className="animate-float opacity-20">
     <circle cx="60" cy="60" r="28" stroke="#264635" strokeWidth="1.5" strokeDasharray="4 3"/>
@@ -63,6 +79,7 @@ const Doodle = () => (
   </svg>
 )
 
+/** Leaf-outline doodle with vein lines — floats in the bottom-left of the empty state. */
 const LeafDoodle = () => (
   <svg width="80" height="80" viewBox="0 0 80 80" fill="none" className="animate-float-delayed opacity-15">
     <path d="M40 10 C60 10 70 25 70 40 C70 60 55 70 40 70 C25 70 10 60 10 40 C10 25 20 10 40 10Z" 
@@ -74,6 +91,7 @@ const LeafDoodle = () => (
   </svg>
 )
 
+/** Slow-spinning geometric grid doodle for the right edge of the empty state. */
 const GridDoodle = () => (
   <svg width="60" height="60" viewBox="0 0 60 60" fill="none" className="animate-spin-slow opacity-10">
     <rect x="10" y="10" width="40" height="40" stroke="#264635" strokeWidth="1.5"/>
@@ -83,14 +101,24 @@ const GridDoodle = () => (
 )
 
 // ─── CODE BLOCK ─────────────────────────────────────────────────────────────
+/**
+ * Props for the `CodeBlock` component.
+ * @property language - Syntax language identifier (e.g. "python", "ts").
+ * @property children - Raw source code string to highlight and display.
+ */
 interface CodeBlockProps {
   language: string
   children: string
 }
 
+/**
+ * Syntax-highlighted code block with a header bar showing the language label and
+ * a one-click copy button. Renders inside ReactMarkdown `code` components.
+ */
 const CodeBlock = ({ language, children }: CodeBlockProps) => {
   const [copied, setCopied] = useState(false)
   const copy = () => {
+    // Write the raw code string to the clipboard, then revert the label after 2 s.
     navigator.clipboard.writeText(children)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -127,6 +155,13 @@ const CodeBlock = ({ language, children }: CodeBlockProps) => {
 }
 
 // ─── MESSAGE BUBBLE ─────────────────────────────────────────────────────────
+/**
+ * Renders a single chat message bubble.
+ * - User messages: right-aligned, dark forest background.
+ * - Assistant messages: left-aligned, rendered with ReactMarkdown + KaTeX.
+ *   Graph JSON in the content is stripped — only the summary is shown.
+ * - Error messages: amber-tinted mono text.
+ */
 export const MessageBubble = ({ msg }: { msg: Message }) => {
   const isUser = msg.role === 'user'
   const isError = msg.role === 'error'
@@ -169,6 +204,7 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
                 components={{
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
+                      // Inline code: no language class and no newlines → render as <code> span.
                     const isInline = !match && !String(children).includes('\n')
                     return isInline ? (
                       <code className="font-mono text-[0.82em] bg-forest/8 border border-forest/15 px-1.5 py-0.5 rounded-md" {...props}>
@@ -187,6 +223,7 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
                   ul({ children }) { return <ul className="list-none pl-4 mb-3 space-y-1">{children}</ul> },
                   ol({ children }) { return <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol> },
                   li({ children, node, ...props }) {
+                    // Detect ordered vs unordered parent to conditionally show the ◆ bullet.
                     const isOrdered = (node as any)?.parent?.tagName === 'ol'
                     return (
                       <li className="flex gap-2 items-start" {...props}>
@@ -216,6 +253,7 @@ export const MessageBubble = ({ msg }: { msg: Message }) => {
 }
 
 // ─── TYPING INDICATOR ────────────────────────────────────────────────────────
+/** Animated three-dot "AI is thinking" indicator shown while awaiting a response. */
 export const TypingIndicator = () => (
   <motion.div
     initial={{ opacity: 0, y: 8 }}
@@ -246,6 +284,7 @@ export const TypingIndicator = () => (
 // Extracts the JSON array and any plain-text summary that follows it.
 // Falls back to a text-format parser if the AI doesn't emit valid JSON.
 
+/** Removes TaskItems with duplicate `name` fields, keeping the first occurrence. */
 function dedupeItems(parsed: TaskItem[]): TaskItem[] {
   const seen = new Set<string>()
   return parsed.filter(it => {
@@ -257,6 +296,13 @@ function dedupeItems(parsed: TaskItem[]): TaskItem[] {
 
 // Fallback: parses the text format the AI sometimes emits instead of JSON:
 //   Node Name text: "description" depends_on: ["Dep1", "Dep2"]
+/**
+ * Fallback parser for the line-by-line text format the model sometimes emits.
+ * Extracts `name`, `text`, and `depends_on` from each matching line; any
+ * non-matching lines are collected as a plain-text summary.
+ *
+ * @returns Parsed items + summary, or `null` if no lines matched.
+ */
 function parseTextFormat(content: string): { items: TaskItem[]; summary: string } | null {
   // Regex: capture name / text / depends_on from each line
   const re = /^(.+?)\s+text:\s+"((?:[^"\\]|\\.)*)"\s+depends_on:\s+(\[[^\]]*\])/gm
@@ -287,6 +333,12 @@ function parseTextFormat(content: string): { items: TaskItem[]; summary: string 
 // Normalise AI output before any parsing attempt:
 //   1. Strip leading [TAG_LABEL] prefixes (e.g. [BURGER_RECIPE], [GRAPH])
 //   2. If the content is bare comma-separated objects (no outer [ ]), wrap them
+/**
+ * Pre-processes raw LLM output before JSON or text parsing.
+ * Strips leading `[TAG]` prefixes and wraps bare object literals in an array.
+ *
+ * @returns `body` — cleaned JSON/text string; `suffix` — trailing text after the JSON array.
+ */
 function normaliseContent(raw: string): { body: string; suffix: string } {
   // Remove any leading [ALL_CAPS_TAG] or [Mixed Tag] prefix
   const stripped = raw.replace(/^\s*\[[A-Z_a-z\s]+\]\s*/g, '').trim()
@@ -305,6 +357,13 @@ function normaliseContent(raw: string): { body: string; suffix: string } {
   return { body: stripped, suffix: '' }
 }
 
+/**
+ * Primary LLM-output parser. Attempts JSON extraction first, then falls back to
+ * the plain-text node format via `parseTextFormat`.
+ *
+ * @param content - Raw string returned by the AI API.
+ * @returns Parsed `{ items, summary }` or `null` if the content could not be interpreted.
+ */
 export function parseGraphResponse(content: string): { items: TaskItem[]; summary: string } | null {
   const { body, suffix } = normaliseContent(content)
 
@@ -345,6 +404,10 @@ export function parseGraphResponse(content: string): { items: TaskItem[]; summar
 // Defined inside App (see below) so it can close over historyRef.
 
 // ─── GRAPH MESSAGE ───────────────────────────────────────────────────────────
+/**
+ * Chat message variant that renders a full interactive `GraphView` for assistant
+ * responses that contain graph data, along with a summary strip below.
+ */
 export const GraphMessage = ({ msg, items, summary, onExpand, onQuery }: { msg: Message; items: TaskItem[]; summary: string; onExpand: ExpandFn; onQuery: QueryFn }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
@@ -423,6 +486,7 @@ function assistantBlurb(content: string): string {
   return `${prefix} ${firstSentence}`
 }
 
+/** Preset prompt examples shown on the empty state to help users get started quickly. */
 const EXAMPLES = [
   { label: 'Build a todo app', icon: '◈', prompt: 'Build a full-stack todo app with React frontend, Node.js API, and PostgreSQL database.' },
   { label: 'Launch a SaaS product', icon: '◉', prompt: 'Plan the launch of a SaaS product for project management targeting small teams.' },
@@ -431,6 +495,18 @@ const EXAMPLES = [
 ]
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
+/**
+ * Full-page AI graph builder (route: /graphs).
+ *
+ * Flow:
+ *  1. User types a prompt → `sendPrompt` posts to the API.
+ *  2. Response is parsed by `parseGraphResponse`; if valid, a `GraphView` fills
+ *     the canvas; otherwise a plain error bubble is shown.
+ *  3. Users can expand any node (AI subtasks) or query it (explanation), and
+ *     export the final graph as a new personal note document.
+ *  4. All graph versions are persisted via `useGraphPersistence` and browsable
+ *     through the history panel.
+ */
 export default function App() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -462,15 +538,18 @@ export default function App() {
     const allMessages = historyRef.current
     const userMessages = allMessages.filter(m => m.role === 'user')
     const topLevelPrompt = userMessages[0]?.content ?? ''
+    // Include follow-up messages as additional context for the expansion prompt.
     const followUpPrompts = userMessages.slice(1).map(m => m.content)
 
     let prompt = `other context: Top-level goal: ${topLevelPrompt}`
 
     if (followUpPrompts.length > 0) {
+      // Append any follow-up queries from the user so the model can refine the expansion.
       prompt += `\n\nother context: Follow-up context from user:\n${followUpPrompts.map(p => `- ${p}`).join('\n')}`
     }
 
     if (ancestors.length > 0) {
+      // Provide the full ancestry chain so the model understands the hierarchical context.
       prompt += `\n\nother context: Ancestor task chain (root → parent):\n${ancestors.map((a, i) => `${i + 1}. ${a.name}: ${a.text}`).join('\n')}`
     }
 
@@ -508,6 +587,7 @@ export default function App() {
     const userMessages = historyRef.current.filter(m => m.role === 'user')
     const topLevelPrompt = userMessages[0]?.content ?? ''
 
+    // Build context string from the top-level prompt, ancestry path, and the question.
     let context = `Topic: ${topLevelPrompt}`
     if (ancestors.length > 0) {
       context += `\nPath: ${ancestors.map(a => a.name).join(' → ')}`
@@ -531,6 +611,7 @@ export default function App() {
   }, [])
 
   const scrollToBottom = () => {
+    /** Smooth-scrolls the message list to the latest message after state updates. */
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
@@ -539,6 +620,7 @@ export default function App() {
   const autoResize = useCallback(() => {
     const ta = textareaRef.current
     if (!ta) return
+    // Reset to 'auto' so scrollHeight shrinks when text is deleted, then expand to fit.
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
   }, [])
@@ -582,13 +664,13 @@ export default function App() {
       const parsed = parseGraphResponse(content)
       if (parsed) {
         latestSummaryRef.current = parsed.summary
-        // Save immediately — don't wait for GraphView's useEffect
+        // Save immediately — don't wait for GraphView's useEffect to trigger a second save.
         persistence.saveItems(parsed.items, {
           title:   text.trim().slice(0, 60),
           summary: parsed.summary,
           prompt:  text.trim(),
         })
-        // Refresh history list so it shows the new graph
+        // Refresh history list so it shows the new graph in the sidebar.
         history.refresh()
       }
 
@@ -608,6 +690,7 @@ export default function App() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Enter (without Shift); Shift+Enter inserts a newline instead.
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendPrompt(input)
@@ -619,6 +702,7 @@ export default function App() {
   // Persist graph whenever GraphView reports a change (expand, manual node)
   const handleGraphChanged = useCallback((nodes: Node[], edges: Edge[]) => {
     if (!user) return
+    // Upsert using the latest prompt/summary refs so metadata stays current even after expansions.
     persistence.upsert(nodes, edges, {
       title:   latestPromptRef.current.slice(0, 60) || 'Untitled Graph',
       summary: latestSummaryRef.current,
@@ -629,6 +713,7 @@ export default function App() {
   // Load a graph from history by injecting a synthetic assistant message
   const handleLoadFromHistory = useCallback((item: ReturnType<typeof useGraphHistory>['graphs'][number]) => {
     const items = rawNodesToItems(item.rawNodes, item.rawEdges)
+    // Re-serialize as if the LLM had returned the JSON so parseGraphResponse can handle it in render.
     const fakeContent = JSON.stringify(items) + '\n\n' + (item.summary ?? '')
     latestPromptRef.current  = item.title
     latestSummaryRef.current = item.summary
@@ -645,6 +730,7 @@ export default function App() {
 
   // Most recent graph response in the conversation
   const latestGraph = useMemo(() => {
+    // Walk backwards so the most recent graph wins when there are multiple in the thread.
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'assistant') {
         const parsed = parseGraphResponse(messages[i].content)

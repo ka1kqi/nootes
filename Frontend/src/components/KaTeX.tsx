@@ -1,6 +1,22 @@
+/**
+ * @file KaTeX.tsx
+ * Thin React wrapper around the KaTeX library.
+ * Strips markdown-style `$…$` / `$$…$$` delimiters before rendering
+ * so callers can pass either bare LaTeX or delimited strings.
+ */
+
 import { useEffect, useRef } from 'react'
 import katex from 'katex'
 
+/**
+ * Renders a LaTeX expression inline or in display mode using KaTeX.
+ *
+ * @param math      - LaTeX source string. Dollar-sign delimiters (`$…$` or
+ *                    `$$…$$`) are stripped automatically before rendering.
+ * @param display   - When `true`, renders in block/display mode (centred,
+ *                    larger operators). Defaults to `false` (inline).
+ * @param className - Optional CSS class applied to the wrapping `<span>`.
+ */
 export function KaTeX({
   math,
   display = false,

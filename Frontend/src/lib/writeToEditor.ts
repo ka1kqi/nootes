@@ -1,17 +1,29 @@
-// ─── Shared write-to-editor parsing & normalisation ──────────────────────────
-// Used by Home.tsx and SpotlightSearch.tsx so the logic stays in one place.
+/**
+ * writeToEditor.ts — shared parsing and normalisation utilities for AI responses
+ * that write blocks directly into the active BlockEditor.
+ *
+ * Used by Home.tsx and SpotlightSearch.tsx so the logic stays in one place.
+ * The AI agent sends a `[WRITE_TO_EDITOR]` sentinel prefix followed by a JSON
+ * array of {@link BlockSpec} objects. {@link parseWriteResponse} extracts them.
+ */
 
+/** A single block specification as returned by the AI in a write response. */
 export interface BlockSpec {
   type: string
   content: unknown
   meta?: Record<string, unknown>
 }
 
+/** The result of a successfully parsed write response. */
 export interface ParsedWrite {
   blocks: BlockSpec[]
   confirmation: string
 }
 
+/**
+ * Maps shorthand block type aliases (used by the AI) to canonical BlockEditor types.
+ * e.g. `"ul"` → `"bullet_list"`, `"steps"` → `"ordered_list"`.
+ */
 const TYPE_MAP: Record<string, string> = {
   ul: 'bullet_list',
   ol: 'ordered_list',

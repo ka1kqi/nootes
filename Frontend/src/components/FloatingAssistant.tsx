@@ -1,3 +1,12 @@
+/**
+ * @file FloatingAssistant.tsx
+ * Compact AI chat panel anchored to the bottom-left of the screen.
+ * A star (✦) FAB expands into a 320 × 400 chat window that sends
+ * messages to the `/api/noot` endpoint and renders assistant replies
+ * with {@link NootMarkdown}. The greeting message adapts to the
+ * current route each time the panel is opened.
+ */
+
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
@@ -9,12 +18,14 @@ import { NootMarkdown } from './NootMarkdown'
 /* Appears on all authenticated pages except /home                     */
 /* ------------------------------------------------------------------ */
 
+/** A single chat turn stored in the panel's local message history. */
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
 }
 
+/** Route-specific contextual greetings injected when the panel first opens on a page. */
 const PAGE_GREETINGS: Record<string, string> = {
   '/editor': "Hey — working on some notes? Ask me anything about this document.",
   '/diff': "I can help you understand what changed between these versions.",
@@ -22,6 +33,15 @@ const PAGE_GREETINGS: Record<string, string> = {
   '/my-repos': "Looking for something specific? I can find the right nootbook for you.",
 }
 
+/**
+ * Returns a contextual greeting string for a given route.
+ * Checks exact pathname matches first, then falls back to prefix matching
+ * for dynamic segments (e.g. `/editor/:id`), and finally uses a generic
+ * personalised greeting with the user's first name.
+ *
+ * @param pathname  - Current `location.pathname`.
+ * @param firstName - The user's first name extracted from their display name.
+ */
 function getGreeting(pathname: string, firstName: string): string {
   // Check exact match first, then prefix match for dynamic routes
   if (PAGE_GREETINGS[pathname]) return PAGE_GREETINGS[pathname]
@@ -29,6 +49,11 @@ function getGreeting(pathname: string, firstName: string): string {
   return `Hi ${firstName} ✦ What can I help you with?`
 }
 
+/**
+ * Floating AI assistant panel rendered on every authenticated page.
+ * Manages its own message list, loading state, and auto-scroll behaviour.
+ * Resets conversation history on route changes so each page gets a fresh start.
+ */
 export function FloatingAssistant() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -44,6 +69,7 @@ export function FloatingAssistant() {
 
   // Inject contextual greeting when panel opens on a new page
   useEffect(() => {
+    // Only inject once per route — greetedForPath guards against re-injection on re-renders
     if (open && greetedForPath.current !== location.pathname) {
       greetedForPath.current = location.pathname
       const greeting = getGreeting(location.pathname, firstName)
@@ -53,6 +79,7 @@ export function FloatingAssistant() {
 
   // Reset on page navigation so next open greets fresh
   useEffect(() => {
+    // Clear the guard and wipe messages; the panel will reinitialise on next open
     greetedForPath.current = null
     if (!open) setMessages([])
   }, [location.pathname]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -60,14 +87,22 @@ export function FloatingAssistant() {
   // Auto-scroll + focus input when opening
   useEffect(() => {
     if (open) {
+      // Delay focus slightly so the CSS expansion animation doesn't cause a jarring jump
       setTimeout(() => inputRef.current?.focus(), 120)
     }
   }, [open])
 
   useEffect(() => {
+    // Scroll the sentinel div into view whenever messages update or loading changes
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  /**
+   * Sends the current input to the `/api/noot` endpoint.
+   * Prepends a `[NO GRAPH]` instruction so the compact panel always
+   * receives readable markdown rather than raw JSON graph data.
+   * Appends both the user message and the assistant reply to `messages`.
+   */
   const sendMessage = async () => {
     const text = input.trim()
     if (!text || loading) return
@@ -119,7 +154,8 @@ export function FloatingAssistant() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {messages.map(msg => (
+            {/* Render each message bubble; user messages are right-aligned, assistant messages left */}
+          {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[85%] px-3 py-2 text-xs leading-relaxed ${
@@ -138,7 +174,8 @@ export function FloatingAssistant() {
             {loading && (
               <div className="flex justify-start">
                 <div className="bg-parchment border border-forest/10 squircle-sm px-3 py-2.5 flex items-center gap-1">
-                  {[0, 1, 2].map(i => (
+                  {/* Staggered bounce animation for each of the three loading dots */}
+            {[0, 1, 2].map(i => (
                     <span key={i} className="w-1 h-1 rounded-full bg-sage/50 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                   ))}
                 </div>

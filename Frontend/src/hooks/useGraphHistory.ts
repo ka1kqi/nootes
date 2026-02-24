@@ -1,8 +1,16 @@
+/**
+ * useGraphHistory — fetches the current user's saved knowledge graphs from
+ * Supabase (`graphs` + `graph_heads` + `graph_versions` tables).
+ *
+ * Returns a list of {@link GraphHistoryItem} objects, each representing the
+ * latest version of a graph with its raw nodes/edges for reconstruction.
+ */
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
 import type { TaskItem } from '../pages/GraphView'
 
+/** A summary of a graph at its latest version, ready for display in a history list. */
 export interface GraphHistoryItem {
   graphId: string
   title: string
@@ -16,7 +24,14 @@ export interface GraphHistoryItem {
   rawEdges: unknown[]
 }
 
-/** Convert whatever format is stored in graph_versions.nodes → TaskItem[] */
+/**
+ * Converts raw node/edge data stored in `graph_versions` into {@link TaskItem}[].
+ * Handles two storage formats:
+ * - Legacy TaskItem format: `{ name, text }`
+ * - ReactFlow Node format: `{ id, data: { label, text } }`
+ *
+ * Edges are used to populate `depends_on` arrays (source → target label).
+ */
 export function rawNodesToItems(rawNodes: unknown[], rawEdges: unknown[]): TaskItem[] {
   if (!Array.isArray(rawNodes) || rawNodes.length === 0) return []
 
@@ -41,11 +56,18 @@ export function rawNodesToItems(rawNodes: unknown[], rawEdges: unknown[]): TaskI
   }))
 }
 
+/**
+ * Fetches the current user's 30 most recently updated graphs with their
+ * latest version data. Re-fetches whenever the user ID changes.
+ *
+ * @returns `{ graphs, loading, refresh }` — call `refresh()` to manually refetch.
+ */
 export function useGraphHistory() {
   const { user } = useAuth()
   const [graphs, setGraphs]   = useState<GraphHistoryItem[]>([])
   const [loading, setLoading] = useState(false)
 
+  /** Fetches all graphs for the current user with their latest versions. */
   const refresh = async () => {
     if (!user) return
     setLoading(true)
@@ -79,6 +101,7 @@ export function useGraphHistory() {
       const headByGraphId = new Map(heads.map(h => [h.graph_id, h]))
 
       setGraphs(
+        // Map each graph row to a GraphHistoryItem, skipping any without a head pointer
         graphRows.flatMap(g => {
           const head = headByGraphId.get(g.id)
           if (!head) return []
@@ -105,6 +128,7 @@ export function useGraphHistory() {
     }
   }
 
+  // Fetch graphs on mount and whenever the signed-in user changes
   useEffect(() => { refresh() }, [user?.id])
 
   return { graphs, loading, refresh }
